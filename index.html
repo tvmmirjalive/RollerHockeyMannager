@@ -284,18 +284,24 @@
     <div class="card">
       <b>Le principe</b>
       <p class="note">Tu es le coach-manager des <b>Outlaws de Moreuil</b>, club de roller hockey (patins en ligne)
-      qui démarre en Nationale 3. Ton objectif : gérer l'effectif, les finances et le staff pour gravir la pyramide
-      des divisions — N3 → N2 → N1 → Élite — saison après saison.</p>
+      qui démarre en Régional, tout en bas de la pyramide. Ton objectif : gérer l'effectif, les finances et le staff pour gravir
+      les 6 échelons — Régional → Pré-Nationale → N3 → N2 → N1 → Élite — saison après saison.</p>
     </div>
 
     <div class="card">
       <b>▶ Dérouler une saison</b>
       <p class="note">Le gros bouton en haut à droite fait avancer le jeu. Il joue une journée de championnat à la fois
-      (26 journées, aller-retour à 14 équipes). Ton match s'affiche en <b>direct 2D</b> ; les autres se jouent en coulisses.
-      À la fin de la saison régulière, les <b>8 premiers</b> disputent les playoffs (quarts, demies, finale — séries au meilleur des 3,
-      schéma visuel dans l'onglet Classement). Les <b>2 finalistes montent</b>, les <b>2 derniers du classement descendent</b>
-      (sauf en N3, plancher de la pyramide). Une fois ton équipe éliminée des playoffs, le bouton résout le reste du tableau
-      instantanément — plus besoin de rejouer les matchs des autres.</p>
+      (aller-retour, le nombre de journées dépend du nombre d'équipes de la division). Ton match s'affiche en <b>direct 2D</b> ;
+      les autres se jouent en coulisses. À la fin de la saison régulière, les <b>8 premiers</b> disputent les playoffs
+      (quarts, demies, finale — séries au meilleur des 3, schéma visuel dans l'onglet Classement). Les <b>2 finalistes montent</b>,
+      les <b>2 derniers du classement descendent</b> (sauf en Régional, plancher de la pyramide). Une fois ton équipe éliminée
+      des playoffs, le bouton résout le reste du tableau instantanément — plus besoin de rejouer les matchs des autres.</p>
+    </div>
+
+    <div class="card">
+      <b>🏆 Coupe de France</b>
+      <p class="note">Comme en vrai, la Coupe de France n'existe qu'à partir de la <b>Nationale 3</b> — pas de coupe en
+      Régional ni en Pré-Nationale, seul le championnat compte à ces niveaux.</p>
     </div>
 
     <div class="card">
@@ -456,77 +462,101 @@ window.addEventListener('unhandledrejection', function(e) {
 <script>
 // ---------------- Données de base ----------------
 const DIVISIONS = [
-  { key: 'N3', label: 'Nationale 3', qual: [42, 56], tv: 300, prestige: 0,
+  { key: 'Regional', label: 'Régional', qual: [26, 38], tv: 0, prestige: -0.6,
     teams: [
       { name: "Outlaws de Moreuil", short: "MOR", human: true },
-      { name: "Diables de Rethel", short: "RET" },
-      { name: "Comètes d'Amiens", short: "AMI" },
-      { name: "Aigles de Ris-Orangis", short: "RIS" },
-      { name: "Loups de Reims", short: "REI" },
-      { name: "Griffons de Villard", short: "VIL" },
-      { name: "Bisons de Neuilly", short: "NEU" },
-      { name: "Faucons d'Évreux", short: "EVR" },
-      { name: "Aigles de Compiègne", short: "COM" },
-      { name: "Panthères de Beauvais", short: "BEA" },
-      { name: "Loups de Creil", short: "CRE" },
-      { name: "Corsaires de Cambrai", short: "CAM" },
-      { name: "Faucons de Laon", short: "LAO" },
-      { name: "Guépards de Soissons", short: "SOI" }
+      { name: "Les Warriors de Camon", short: "CAM" },
+      { name: "Roller Club Tourcoing", short: "TRC" },
+      { name: "Club des Patineurs de Roubaix", short: "RBX" },
+      { name: "Les Saints Patineurs", short: "DOU" },
+      { name: "Les Dragons de Boulogne-sur-Mer", short: "BLG" },
+      { name: "Lille Métropole Roller", short: "LIL" },
+      { name: "Roller Sports Lambersart", short: "LAM" }
+    ] },
+  { key: 'PreNat', label: 'Pré-Nationale', qual: [33, 46], tv: 60, prestige: -0.3,
+    teams: [
+      { name: "Hockey Club Fresnoy Tourcoing", short: "FRE" },
+      { name: "Viry-Châtillon", short: "VIR" },
+      { name: "Antony", short: "ANT" },
+      { name: "Les Ulis", short: "ULI" },
+      { name: "Gennevilliers", short: "GEN" },
+      { name: "Fosses", short: "FOS" },
+      { name: "Élancourt", short: "ELA" },
+      { name: "Bordeaux Chartrons", short: "BDX" },
+      { name: "Mahois de Pessac", short: "PES" },
+      { name: "Fox d'Angoulême", short: "AGO" }
+    ] },
+  { key: 'N3', label: 'Nationale 3', qual: [42, 56], tv: 300, prestige: 0,
+    teams: [
+      { name: "Rolling Fox de l'Albenc", short: "ALB" },
+      { name: "Les Salyens d'Aix In Roller", short: "AIX" },
+      { name: "AS Bassan Roller Hockey", short: "BAS" },
+      { name: "Tricastin Roller et Hockey Club", short: "TRI" },
+      { name: "Les Karibous de St Orens", short: "STO" },
+      { name: "Vixens Pamiers Roller Hockey", short: "PAM" },
+      { name: "Colomiers Roller Hockey", short: "CLM" },
+      { name: "Les Astronuts de Saint Sulpice", short: "AST" },
+      { name: "Hockey Club de Cergy Pontoise", short: "CGY" },
+      { name: "Les Samouraïs RH Gennevillois", short: "GNV" },
+      { name: "Les Hyènes d'Aubergenville", short: "AUB" },
+      { name: "Roller Hockey Aubagne 2", short: "AGN" },
+      { name: "Bombardiers d'Épernay 2", short: "EP2" },
+      { name: "Corsaires de Paris 3", short: "CP3" }
     ] },
   { key: 'N2', label: 'Nationale 2', qual: [50, 64], tv: 900, prestige: 1,
     teams: [
-      { name: "Corsaires de Dunkerque", short: "DUN" },
-      { name: "Hawks d'Angers", short: "ANG" },
-      { name: "Yétis de Grenoble", short: "GRE" },
-      { name: "Requins de Nice", short: "NIC" },
-      { name: "Taureaux de Toulouse", short: "TOU" },
-      { name: "Guépards de Nantes", short: "NAN" },
-      { name: "Ours de Chambéry", short: "CHA" },
-      { name: "Panthères de Bordeaux", short: "BOR" },
-      { name: "Aigles de Rennes", short: "REN" },
-      { name: "Dragons de Caen", short: "CAE" },
-      { name: "Tigres de Limoges", short: "LIM" },
-      { name: "Ours de Besançon", short: "BES" },
-      { name: "Faucons de Clermont", short: "CLM" },
-      { name: "Requins de Perpignan", short: "PER" }
+      { name: "Pucmania", short: "PUC" },
+      { name: "Roller Club Castelbriantais", short: "CAS" },
+      { name: "Roller Skating Hockey Caen 2", short: "CN2" },
+      { name: "Corsaires de Paris 2", short: "CP2" },
+      { name: "Kroko Sports", short: "KRO" },
+      { name: "Frelons de Varces", short: "VAR" },
+      { name: "Roller Hockey Champsaur Valgaudemar", short: "CHV" },
+      { name: "Lyon Roller Hockey", short: "LYO" },
+      { name: "Nounours - Roller Riviera", short: "RIV" },
+      { name: "Montpellier RHC - Mantas 2", short: "MT2" },
+      { name: "Toulouse RHC 2", short: "TL2" },
+      { name: "Rollers Club de Villard Bonnot", short: "VBO" },
+      { name: "Voreppe Roller Hockey", short: "VOR" },
+      { name: "Hawks Angers Rollers 2", short: "AN2" }
     ] },
   { key: 'N1', label: 'Nationale 1', qual: [58, 72], tv: 2200, prestige: 2,
     teams: [
-      { name: "Lynx de Lyon", short: "LYO" },
-      { name: "Scorpions de Montpellier", short: "MTP" },
-      { name: "Vikings de Rouen", short: "ROU" },
-      { name: "Faucons de Mulhouse", short: "MUL" },
-      { name: "Dragons de Strasbourg", short: "STR" },
-      { name: "Cobras de Marseille", short: "MAR" },
-      { name: "Tigres de Lille", short: "LIL" },
-      { name: "Aigles de Metz", short: "MET" },
-      { name: "Cobras de Nancy", short: "NCY" },
-      { name: "Aigles d'Orléans", short: "ORL" },
-      { name: "Panthères de Tours", short: "TRS" },
-      { name: "Lynx de Dijon", short: "DIJ" },
-      { name: "Guépards de Poitiers", short: "POI" },
-      { name: "Vikings du Havre", short: "HAV" }
+      { name: "AS Roller Hockey Pont de Metz", short: "PDM" },
+      { name: "Maisons-Laffitte", short: "MLA" },
+      { name: "La Chapelle sur Erdre", short: "LCH" },
+      { name: "Nord Cotentin Hockey Plus", short: "NCH" },
+      { name: "Écureuils d'Amiens", short: "AMI" },
+      { name: "Roller Club de Bourges", short: "BOU" },
+      { name: "Roller Hockey Aubagne", short: "AGB" },
+      { name: "Rollerbug Saint-Médard", short: "RBG" },
+      { name: "Tigres de Garges", short: "GAR" },
+      { name: "Roller Hockey Collegien", short: "COL" },
+      { name: "Les Rapaces de Reims", short: "RAP" },
+      { name: "Les Phénix US Ris Orangis", short: "RIS" },
+      { name: "AS Saint Gratien Roller Sports", short: "SGR" },
+      { name: "Pirates de Rennes", short: "REN" }
     ] },
   { key: 'Elite', label: 'Élite', qual: [68, 88], tv: 6000, prestige: 3,
     teams: [
-      { name: "Phénix de Paris", short: "PAR" },
-      { name: "Titans de Wasquehal", short: "WAS" },
-      { name: "Léopards de Coutras", short: "COU" },
-      { name: "Vipères de Quévert", short: "QUE" },
-      { name: "Sang & Or d'Anglet", short: "ANG2" },
-      { name: "Comète de Meudon", short: "MEU" },
-      { name: "Étoile de Fréjus", short: "FRE" },
-      { name: "Aztèques de Noisy", short: "NOI" },
-      { name: "Titans de Villeneuve-d'Ascq", short: "VDA" },
-      { name: "Vipères de Wittenheim", short: "WIT" },
-      { name: "Aztèques de Créteil", short: "CRT" },
-      { name: "Loups de Cergy", short: "CER" },
-      { name: "Guépards de Massy", short: "MAS" },
-      { name: "Faucons d'Épinal", short: "EPI" }
+      { name: "Fous du Bitume Villeneuve", short: "VIL" },
+      { name: "Prédateurs de Vierzon", short: "VIE" },
+      { name: "Diables de Rethel", short: "RET" },
+      { name: "Yeti's Grenoble", short: "GRE" },
+      { name: "Bombardiers d'Epernay", short: "EPE" },
+      { name: "Conquérants de Caen", short: "CAE" },
+      { name: "Artzak d'Anglet", short: "ANG" },
+      { name: "Greenfalcons Pont de Metz", short: "GPM" },
+      { name: "Hawks d'Angers", short: "HAN" },
+      { name: "Alchimistes de Bourges", short: "ALC" },
+      { name: "Spiders de Rouen", short: "ROU" },
+      { name: "Corsaires de Paris", short: "CDP" },
+      { name: "Aiglons de Valence", short: "VAL" },
+      { name: "Toulouse Roller Hockey Club", short: "TRH" }
     ] }
 ];
-const PROMOTION_BONUS = [0, 8000, 20000, 45000]; // chèque de montée reçu en arrivant dans cette division
-const DIVISION_BASE_BUDGET = [8000, 15000, 35000, 80000]; // apport de trésorerie complémentaire à la montée
+const PROMOTION_BONUS = [0, 2000, 4500, 8000, 20000, 45000]; // chèque de montée reçu en arrivant dans cette division
+const DIVISION_BASE_BUDGET = [5000, 6500, 8000, 15000, 35000, 80000]; // apport de trésorerie complémentaire à la montée
 
 const PRENOMS = ["Lucas","Hugo","Théo","Nathan","Enzo","Léo","Maxime","Antoine","Julien","Romain",
   "Bastien","Quentin","Clément","Florian","Adrien","Mathis","Kylian","Rémi","Damien","Thibault",
@@ -778,12 +808,12 @@ function simulateAITransferWindow(teams) {
 
 function newGame() {
   nextPlayerId = 1;
-  const divIdx = 0; // départ en N3
+  const divIdx = 0; // départ en Régional, plancher de la pyramide
   const teams = buildDivisionTeams(divIdx);
   G = {
     season: 1,
     day: 0, // index de la prochaine journée à jouer
-    budget: 8000, // budget de départ d'un club amateur de N3 (permet un premier coach modeste)
+    budget: 5000, // budget de départ d'un club amateur de Régional (permet un premier coach modeste)
     divIdx,
     teams,
     schedule: buildSchedule(teams.length),
@@ -987,12 +1017,12 @@ function simulateMatch(home, away) {
 }
 
 const SPONSOR_TIERS = [
-  { name: "Garage Chartier", income: 300, reqDiv: 0, reqStade: 1, reqConfort: 1 },
-  { name: "Supermarché Coop'Sport", income: 700, reqDiv: 0, reqStade: 2, reqConfort: 2 },
-  { name: "Groupe Régional BTP", income: 1400, reqDiv: 1, reqStade: 3, reqConfort: 2 },
-  { name: "Banque Nord-Picardie", income: 2600, reqDiv: 2, reqStade: 4, reqConfort: 3 },
-  { name: "Assurances Hauts-de-France", income: 4200, reqDiv: 2, reqStade: 6, reqConfort: 5 },
-  { name: "Groupe Média National", income: 6500, reqDiv: 3, reqStade: 8, reqConfort: 7 }
+  { name: "Garage Chartier", income: 300, reqDiv: 2, reqStade: 1, reqConfort: 1 },
+  { name: "Supermarché Coop'Sport", income: 700, reqDiv: 2, reqStade: 2, reqConfort: 2 },
+  { name: "Groupe Régional BTP", income: 1400, reqDiv: 3, reqStade: 3, reqConfort: 2 },
+  { name: "Banque Nord-Picardie", income: 2600, reqDiv: 4, reqStade: 4, reqConfort: 3 },
+  { name: "Assurances Hauts-de-France", income: 4200, reqDiv: 4, reqStade: 6, reqConfort: 5 },
+  { name: "Groupe Média National", income: 6500, reqDiv: 5, reqStade: 8, reqConfort: 7 }
 ];
 function sponsorUnlocked(tier) {
   return G.divIdx >= tier.reqDiv && G.club.stade >= tier.reqStade && G.club.confort >= tier.reqConfort;
@@ -1017,15 +1047,15 @@ function upgradeCost(kind) {
 // Les niveaux élevés d'infrastructure exigent d'avoir gravi la pyramide — un stade de standing
 // Élite ne se construit pas depuis la N3, même à budget illimité.
 function infraLevelDivRequirement(nextLevel) {
-  if (nextLevel <= 3) return 0; // N3 : accessible dès le début
-  if (nextLevel <= 6) return 1; // N2
-  if (nextLevel <= 8) return 2; // N1
-  return 3; // 9-10 : réservé à l'Élite
+  if (nextLevel <= 3) return 2; // N3 : accessible dès l'arrivée en National
+  if (nextLevel <= 6) return 3; // N2
+  if (nextLevel <= 8) return 4; // N1
+  return 5; // 9-10 : réservé à l'Élite
 }
 function logeDivRequirement(nextLoge) {
-  if (nextLoge <= 6) return 0;
-  if (nextLoge <= 10) return 1;
-  return 2; // 11-15 : N1+
+  if (nextLoge <= 6) return 2; // N3
+  if (nextLoge <= 10) return 3; // N2
+  return 4; // 11-15 : N1+
 }
 const MAX_UPGRADES_PER_SEASON = 2;
 function upgradeInfra(kind) {
@@ -1445,7 +1475,7 @@ function advancePlayoffs() {
 function assignBoardObjective() {
   const n = G.teams.length;
   const lastRank = G.lastSeasonRank;
-  const atFloor = G.divIdx === 0; // N3 : plancher de la pyramide, la descente n'existe pas
+  const atFloor = G.divIdx === 0; // Régional : plancher de la pyramide, la descente n'existe pas
   let objective;
   if (atFloor) {
     // en N3 il n'y a rien "en dessous" : viser le milieu de tableau puis les playoffs, jamais le maintien
@@ -1679,10 +1709,10 @@ const ROLES = {
   defense:      { label: "Coach défense", stat: "def", icon: "🛡️", desc: "Fait progresser la Défense des joueurs de champ", trains: true, reqDiv: 0, reqCentre: 1 },
   physique:     { label: "Préparateur physique", stat: "vit", icon: "⚡", desc: "Fait progresser la Vitesse de tout l'effectif", trains: true, reqDiv: 0, reqCentre: 1 },
   gardiens:     { label: "Coach des gardiens", stat: "gar", icon: "🥅", desc: "Fait progresser la stat Gardien des gardiens", trains: true, reqDiv: 0, reqCentre: 1 },
-  discipline:   { label: "Coach mental / discipline", stat: "agr", icon: "🧘", desc: "Fait baisser l'Agressivité des joueurs et réduit les pénalités en match", trains: true, reqDiv: 1, reqCentre: 1 },
-  medecin:      { label: "Médecin du club", stat: null, icon: "⚕️", desc: "Réduit le risque et la durée des blessures", trains: false, reqDiv: 1, reqCentre: 2 },
-  recruteur:    { label: "Recruteur", stat: null, icon: "🔎", desc: "Réduit le coût des transferts et élargit le vivier de recrutement hors division", trains: false, reqDiv: 2, reqCentre: 2 },
-  specialistes: { label: "Coach situations spéciales", stat: null, icon: "🎯⚡", desc: "Améliore l'efficacité en supériorité numérique et solidifie l'infériorité numérique", trains: false, reqDiv: 2, reqCentre: 3 }
+  discipline:   { label: "Coach mental / discipline", stat: "agr", icon: "🧘", desc: "Fait baisser l'Agressivité des joueurs et réduit les pénalités en match", trains: true, reqDiv: 2, reqCentre: 1 },
+  medecin:      { label: "Médecin du club", stat: null, icon: "⚕️", desc: "Réduit le risque et la durée des blessures", trains: false, reqDiv: 2, reqCentre: 2 },
+  recruteur:    { label: "Recruteur", stat: null, icon: "🔎", desc: "Réduit le coût des transferts et élargit le vivier de recrutement hors division", trains: false, reqDiv: 3, reqCentre: 2 },
+  specialistes: { label: "Coach situations spéciales", stat: null, icon: "🎯⚡", desc: "Améliore l'efficacité en supériorité numérique et solidifie l'infériorité numérique", trains: false, reqDiv: 3, reqCentre: 3 }
 };
 
 function roleUnlocked(role) {
@@ -2070,7 +2100,7 @@ function checkUnlockNotifications() {
       G.cupKnownUnlockedRound = unlockedNow;
       G.tabNotify.coupe = true;
     }
-  } else if (!G.cup && G.day >= cupRoundUnlockDay(0) && G.cupKnownUnlockedRound < 0) {
+  } else if (!G.cup && G.divIdx >= CUP_MIN_DIV_IDX && G.day >= cupRoundUnlockDay(0) && G.cupKnownUnlockedRound < 0) {
     G.cupKnownUnlockedRound = 0;
     G.tabNotify.coupe = true;
   }
@@ -2649,11 +2679,17 @@ function cupRoundLabelFor(nTeams) {
   return 'Tour préliminaire';
 }
 
-// La Coupe de France engage TOUTES les équipes de TOUTES les divisions (N3, N2, N1, Élite).
+// La Coupe de France engage TOUTES les équipes des divisions NATIONALES (N3, N2, N1, Élite).
+// Le Régional et la Pré-Nationale n'ont pas de Coupe de France, comme en vrai.
+const CUP_MIN_DIV_IDX = 2; // index de N3 dans DIVISIONS
 // Seule ta division est réellement simulée en saison ; les 3 autres sont générées pour l'occasion.
 // Avec 56 équipes, le tableau est calé sur 64 places : les 8 meilleures têtes de série sont
 // exemptées du tour préliminaire (comme un vrai tableau à élimination directe).
 function startCup() {
+  if (G.divIdx < CUP_MIN_DIV_IDX) {
+    alert(`La Coupe de France n'existe qu'à partir de la Nationale 3. Le ${DIVISIONS[G.divIdx].label} n'y participe pas.`);
+    return;
+  }
   if (G.day < cupRoundUnlockDay(0)) {
     alert(`Le tirage au sort de la Coupe de France sera disponible à partir de la journée ${cupRoundUnlockDay(0) + 1} du championnat.`);
     return;
@@ -2663,6 +2699,7 @@ function startCup() {
   const add = (t) => { t.cupId = nid; teamsById[nid] = t; nid++; };
 
   const divBlocks = DIVISIONS.map((div, di) => {
+    if (di < CUP_MIN_DIV_IDX) return null; // Régional et Pré-Nationale : pas de Coupe de France
     let teams;
     if (di === G.divIdx) {
       teams = sortedTeams(); // ta division : vrai classement de la saison en cours
@@ -2675,7 +2712,7 @@ function startCup() {
       teams.sort((a, b) => teamSeedScore(b) - teamSeedScore(a));
     }
     return { prestige: div.prestige, teams };
-  });
+  }).filter(Boolean);
   divBlocks.sort((a, b) => b.prestige - a.prestige); // Élite d'abord, N3 en dernier
   const allTeams = [];
   divBlocks.forEach(b => allTeams.push(...b.teams));
@@ -2753,6 +2790,7 @@ function cupAutoResolveRest() {
 // Indique si une action de coupe est due AVANT de pouvoir jouer la prochaine journée de championnat :
 // tirage au sort à faire, ou tour actuel débloqué mais pas encore entièrement résolu.
 function cupHasPendingAction() {
+  if (G.divIdx < CUP_MIN_DIV_IDX) return false; // pas de Coupe de France en Régional / Pré-Nationale
   if (!G.cup || G.cup.season !== G.season) {
     return G.day >= cupRoundUnlockDay(0);
   }
@@ -2813,13 +2851,21 @@ function advanceCup() { advanceCupStep(); }
 function renderCoupe() {
   const box = document.getElementById('tab-coupe');
   if (!box) return;
+  if (G.divIdx < CUP_MIN_DIV_IDX) {
+    box.innerHTML = `
+      <h2>🏆 Coupe de France</h2>
+      <p class="note">La Coupe de France n'existe qu'à partir de la <b>Nationale 3</b>. Le ${DIVISIONS[G.divIdx].label},
+      comme en vrai, n'a pas de compétition de coupe — seul le championnat compte à ce niveau.
+      Monte en Nationale 3 pour y participer !</p>`;
+    return;
+  }
   if (!G.cup || G.cup.season !== G.season) {
     const unlockDay0 = cupRoundUnlockDay(0);
     const locked = G.day < unlockDay0;
     box.innerHTML = `
       <h2>🏆 Coupe de France</h2>
-      <p class="note">Une compétition à élimination directe qui engage <b>toutes les équipes de toutes les divisions</b>,
-      de la N3 à l'Élite — ta division au complet (classement réel de la saison), et les 3 autres générées pour l'occasion.
+      <p class="note">Une compétition à élimination directe qui engage <b>toutes les équipes de toutes les divisions nationales</b>,
+      de la N3 à l'Élite — ta division au complet (classement réel de la saison), et les autres générées pour l'occasion.
       Les meilleures têtes de série sont exemptées du tour préliminaire. Pas de match nul possible.</p>
       <p class="note">Les tours se débloquent progressivement au fil des journées de championnat — la coupe est toujours
       terminée bien avant les demi-finales des playoffs.</p>
