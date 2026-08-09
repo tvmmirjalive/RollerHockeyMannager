@@ -261,7 +261,10 @@
     background-size: contain;
     background-repeat: no-repeat;
     background-position: center;
-    opacity: 0.06;
+    /* Atténué et décalé vers le bas : à 6 % d'opacité au centre, il devenait le sujet
+       principal de tout écran court — Messages et Palmarès en particulier. */
+    opacity: 0.035;
+    top: 78%;
     pointer-events: none;
     z-index: 0;
   }
@@ -821,6 +824,115 @@
   #btnPlay .ic { flex: 0 0 auto; display: flex; }
   #btnPlay .ic img { width: 24px; height: 24px; filter: brightness(0) saturate(100%); }
   #btnPlayLabel { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+  /* ==================== Habillage des écrans ====================
+     --div porte la couleur de la division en cours. Elle est posée sur :root par
+     majCouleurDivision() à chaque rendu : toute l'interface change de teinte quand
+     le club monte, sans qu'aucune règle n'ait à le savoir. */
+  :root { --div: #8a93a3; }
+
+  /* --- bandeau d'écran --- */
+  .bandeau { position: relative; height: 136px; overflow: hidden;
+             margin: -10px calc(-10px - env(safe-area-inset-right,0px)) 0 calc(-10px - env(safe-area-inset-left,0px)); }
+  .bandeau img { width: 100%; height: 100%; object-fit: cover; display: block;
+                 transform: scale(1.05); filter: saturate(.85) contrast(1.05); }
+  .bandeau::after { content: ''; position: absolute; inset: 0;
+    background: linear-gradient(180deg, rgba(13,13,15,.15) 0%, rgba(13,13,15,.72) 55%, var(--noir) 100%); }
+  .bandeau-txt { position: absolute; left: 14px; right: 14px; bottom: 11px; z-index: 2; }
+  .bandeau h2 { margin: 0; font-size: 21px; font-weight: 800; letter-spacing: .2px;
+                border: 0; padding: 0; color: var(--txt); text-shadow: 0 2px 14px rgba(0,0,0,.9); }
+  .bandeau .sous { font-size: 11.5px; color: #cbd4de; text-shadow: 0 1px 8px rgba(0,0,0,.9); }
+  .bandeau-fil { position: absolute; left: 0; right: 0; bottom: 0; height: 2px;
+                 background: var(--div); z-index: 3; opacity: .85; }
+  .eyebrow { display: inline-flex; align-items: center; gap: 6px; font-size: 9.5px;
+    text-transform: uppercase; letter-spacing: 1.4px; color: var(--div); font-weight: 700; margin-bottom: 3px; }
+  .eyebrow::before { content: ''; width: 16px; height: 2px; background: var(--div); border-radius: 1px; }
+
+  /* --- en-tête de section --- */
+  .sect { display: flex; align-items: center; gap: 9px; margin: 18px 0 9px; }
+  .sect b { font-size: 10.5px; text-transform: uppercase; letter-spacing: 1.3px;
+            color: var(--muted); font-weight: 700; }
+  .sect i { flex: 1 1 auto; height: 1px; background: linear-gradient(90deg, #2c313a, transparent); }
+
+  /* --- classement en liste --- */
+  .clst { background: var(--panel); border: 1px solid #2c313a; border-radius: 12px; overflow: hidden; }
+  .clst-l { display: flex; align-items: center; gap: 9px; padding: 10px 11px; font-size: 13px; position: relative; }
+  .clst-l + .clst-l { border-top: 1px solid rgba(255,255,255,.05); }
+  .clst-l .rk { flex: 0 0 20px; text-align: center; font-size: 12px; color: var(--muted);
+                font-variant-numeric: tabular-nums; }
+  .clst-l.podium .rk { color: var(--div); font-weight: 800; }
+  .clst-l .nm { flex: 1 1 auto; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .clst-l .pt { flex: 0 0 auto; font-weight: 800; color: var(--tan);
+                font-variant-numeric: tabular-nums; font-size: 15px; min-width: 26px; text-align: right; }
+  .clst-l .fm { flex: 0 0 auto; display: flex; gap: 2.5px; }
+  .clst-l .fm i { width: 5px; height: 5px; border-radius: 50%; background: #3a4048; }
+  .clst-l .fm i.v { background: var(--vert); }
+  .clst-l .fm i.d { background: var(--rouge); }
+  .clst-l .fm i.n { background: var(--tan); }
+  .clst-l.me { background: linear-gradient(90deg, color-mix(in srgb, var(--bleu) 20%, transparent), transparent); }
+  .clst-l.me::before { content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 3px; background: var(--bleu); }
+  .clst-l.me .nm { color: var(--bleu); font-weight: 700; }
+  .coupe-po { display: flex; align-items: center; gap: 8px; padding: 5px 11px; background: rgba(255,255,255,.03); }
+  .coupe-po span { font-size: 9px; text-transform: uppercase; letter-spacing: 1.1px;
+                   color: var(--div); font-weight: 700; }
+  .coupe-po i { flex: 1 1 auto; height: 1px; opacity: .6;
+    background: repeating-linear-gradient(90deg, var(--div) 0 5px, transparent 5px 10px); }
+
+  /* --- carte de rencontre --- */
+  .match-c { display: flex; align-items: center; gap: 11px; padding: 13px; border-radius: 12px;
+    background: linear-gradient(140deg, var(--panel2), var(--panel)); border: 1px solid #2c313a; }
+  .match-c .c { flex: 1 1 0; min-width: 0; text-align: center; }
+  .match-c .c b { display: block; font-size: 12.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .match-c .c span { font-size: 9.5px; color: var(--muted); }
+  .match-c .vs { flex: 0 0 auto; font-size: 11px; color: var(--div); font-weight: 800; letter-spacing: 1px; }
+
+  /* --- messages --- */
+  .msg { display: flex; gap: 10px; background: var(--panel); border: 1px solid #2c313a;
+         border-left: 3px solid var(--muted); border-radius: 10px; padding: 11px 12px; margin-bottom: 7px; }
+  .msg.t-objectif, .msg.t-board { border-left-color: var(--tan); }
+  .msg.t-transfert { border-left-color: var(--vert); }
+  .msg.t-contrat { border-left-color: var(--rouge); }
+  .msg.t-cup { border-left-color: var(--div); }
+  .msg .ic { flex: 0 0 auto; font-size: 16px; }
+  .msg .tx { flex: 1 1 auto; min-width: 0; }
+  .msg .tx b { display: block; font-size: 13px; margin-bottom: 2px; }
+  .msg .tx p { margin: 0; font-size: 11.5px; color: var(--muted); line-height: 1.45; }
+  .msg .tx .q { font-size: 9.5px; color: #6b7480; margin-top: 4px; display: block; }
+
+  /* --- état vide --- */
+  .vide { text-align: center; padding: 26px 20px 20px; }
+  .vide .rond { width: 78px; height: 78px; margin: 0 auto 14px; border-radius: 50%; display: flex;
+    align-items: center; justify-content: center; font-size: 31px;
+    background: radial-gradient(circle at 38% 30%, color-mix(in srgb, var(--div) 26%, var(--panel2)), var(--panel));
+    border: 1px solid color-mix(in srgb, var(--div) 45%, transparent); }
+  .vide h3 { margin: 0 0 6px; font-size: 15px; }
+  .vide p { margin: 0 auto; max-width: 270px; font-size: 12.5px; color: var(--muted); line-height: 1.55; }
+  .vide .apercu { margin-top: 18px; text-align: left; }
+  .vide .apercu-l { display: flex; align-items: center; gap: 9px; padding: 9px 11px; border-radius: 9px;
+    background: rgba(255,255,255,.025); border: 1px dashed #2c313a; margin-bottom: 6px;
+    font-size: 11.5px; color: #6b7480; }
+  .vide .apercu-l b { color: var(--muted); font-weight: 600; }
+
+  /* --- fiches de saison --- */
+  .saison { display: flex; align-items: center; gap: 11px; background: var(--panel);
+    border: 1px solid #2c313a; border-radius: 11px; padding: 11px 12px; margin-bottom: 7px;
+    position: relative; overflow: hidden; }
+  .saison::before { content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 3px; background: var(--sc, var(--div)); }
+  .saison .an { flex: 0 0 auto; text-align: center; min-width: 42px; }
+  .saison .an b { display: block; font-size: 13px; color: var(--tan); font-weight: 800; }
+  .saison .an span { font-size: 9px; color: var(--muted); text-transform: uppercase; letter-spacing: .8px; }
+  .saison .de { flex: 1 1 auto; min-width: 0; font-size: 12px; }
+  .saison .de span { display: block; font-size: 10.5px; color: var(--muted); margin-top: 2px; }
+  .saison .tr { flex: 0 0 auto; font-size: 19px; }
+
+  /* --- règle repliable --- */
+  .chip-info { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; color: var(--muted);
+    background: rgba(255,255,255,.04); border: 1px solid #2c313a; border-radius: 20px;
+    padding: 8px 13px; cursor: pointer; min-height: 40px; margin-top: 10px; font-family: inherit; }
+  .chip-info.open { color: var(--txt); border-color: var(--div); }
+  .regle { display: none; font-size: 11.5px; color: var(--muted); line-height: 1.55; margin-top: 8px;
+    padding: 11px; background: rgba(255,255,255,.025); border-radius: 9px; border: 1px solid #2c313a; }
+  .regle.show { display: block; }
 </style>
 </head>
 <body>
@@ -1430,7 +1542,7 @@ function makeTeam(def, idx, qualBand) {
   return {
     id: idx, name: def.name, short: def.short, human: !!def.human,
     players,
-    pts: 0, v: 0, n: 0, d: 0, bp: 0, bc: 0
+    pts: 0, v: 0, n: 0, d: 0, bp: 0, bc: 0, forme5: []
   };
 }
 
@@ -2190,11 +2302,19 @@ function simulateMatch(home, away) {
 
   // maj classement
   home.bp += gH; home.bc += gA; away.bp += gA; away.bc += gH;
-  if (gH > gA) { home.pts += 3; home.v++; away.d++; }
-  else if (gH < gA) { away.pts += 3; away.v++; home.d++; }
-  else { home.pts++; away.pts++; home.n++; away.n++; }
+  if (gH > gA) { home.pts += 3; home.v++; away.d++; noterForme(home, 'v'); noterForme(away, 'd'); }
+  else if (gH < gA) { away.pts += 3; away.v++; home.d++; noterForme(away, 'v'); noterForme(home, 'd'); }
+  else { home.pts++; away.pts++; home.n++; away.n++; noterForme(home, 'n'); noterForme(away, 'n'); }
 
   return { gH, gA, scorers, penalties };
+}
+
+// Cinq derniers résultats par équipe, remis à zéro à chaque nouvelle saison en même
+// temps que le reste du classement.
+function noterForme(t, r) {
+  if (!t.forme5) t.forme5 = [];
+  t.forme5.push(r);
+  if (t.forme5.length > 5) t.forme5.shift();
 }
 
 const SPONSOR_TIERS = [
@@ -3676,6 +3796,57 @@ function appliquerReglagesPartie() {
   renderOptions();
 }
 
+// ==================== Habillage : bandeaux et couleur de division ====================
+// La couleur de la division est posée en variable CSS. Tout ce qui utilise var(--div)
+// suit automatiquement le club dans sa progression : gris acier en Régional,
+// rouge en Élite.
+function majCouleurDivision() {
+  const key = DIVISIONS[G.divIdx] && DIVISIONS[G.divIdx].key;
+  const c = (typeof DIV_COLORS !== 'undefined' && DIV_COLORS[key]) || '#8a93a3';
+  document.documentElement.style.setProperty('--div', c);
+}
+
+// Quelle image d'infrastructure sert de bandeau à quel écran. On prend le dernier
+// niveau disponible : c'est décoratif, autant que ce soit la plus belle version.
+const BANDEAU_SRC = {
+  classement: 'tribune',
+  inbox: 'club',
+  historique: 'VIP',
+  calendrier: 'tribune',
+  coupe: 'club'
+};
+
+function bandeauImg(ecran) {
+  const k = BANDEAU_SRC[ecran];
+  const v = (typeof INFRA_IMAGES !== 'undefined') && INFRA_IMAGES[k];
+  if (!v) return null;
+  return Array.isArray(v) ? v[v.length - 1] : v;
+}
+
+// Bandeau d'écran. Si l'image manque, on retombe sur un simple titre : le jeu ne doit
+// jamais dépendre d'un visuel pour rester utilisable.
+function bandeau(ecran, sur, titre, sous) {
+  const img = bandeauImg(ecran);
+  if (!img) return `<h2>${titre}</h2>${sous ? `<p class="note">${sous}</p>` : ''}`;
+  return `<div class="bandeau">
+    <img src="${img}" alt="">
+    <div class="bandeau-txt">
+      <div class="eyebrow">${sur}</div>
+      <h2>${titre}</h2>
+      ${sous ? `<div class="sous">${sous}</div>` : ''}
+    </div>
+    <div class="bandeau-fil"></div>
+  </div>`;
+}
+
+// Les cinq derniers résultats, en pastilles. C'est l'information la plus regardée
+// d'un classement, et elle n'existait nulle part.
+function pastillesForme(t) {
+  const f = (t.forme5 || []).slice(-5);
+  if (!f.length) return '';
+  return `<span class="fm">${f.map(c => `<i class="${c}"></i>`).join('')}</span>`;
+}
+
 // ==================== Navigation ====================
 // Les 11 écrans sont regroupés derrière 5 entrées de barre basse. Le contenu des
 // écrans est inchangé : seul le chemin pour y accéder change.
@@ -3870,6 +4041,7 @@ function seasonLabel(n) {
 }
 
 function renderTop() {
+  majCouleurDivision();
   document.getElementById('uiDay').textContent = Math.min(G.day + 1, G.schedule.length);
   document.getElementById('uiDayTotal').textContent = G.schedule.length;
   document.getElementById('uiBudget').textContent = euros(G.budget);
@@ -4040,12 +4212,42 @@ function renderEffectif() {
 }
 
 function renderClassement() {
-  const rows = sortedTeams().map((t, i) => `
-    <tr class="${t.human ? 'me' : ''} ${i < 8 ? 'sel' : ''}">
-      <td>${i + 1}</td><td>${t.name}${i < 8 ? ' <span class="tag">(playoffs)</span>' : ''}</td>
+  const classe = sortedTeams();
+  const rows = classe.map((t, i) => `
+    ${i === 8 ? '<div class="coupe-po"><i></i><span>Barre des playoffs</span><i></i></div>' : ''}
+    <div class="clst-l ${t.human ? 'me' : ''} ${i < 3 ? 'podium' : ''}">
+      <span class="rk">${i + 1}</span>
+      <span class="nm">${t.name}</span>
+      ${pastillesForme(t)}
+      <span class="pt">${t.pts}</span>
+    </div>`).join('');
+
+  // Le détail chiffré reste accessible, mais replié : il occupait tout l'écran.
+  const detail = classe.map((t, i) => `
+    <tr class="${t.human ? 'me' : ''}">
+      <td>${i + 1}</td><td>${t.name}</td>
       <td>${t.v + t.n + t.d}</td><td>${t.v}</td><td>${t.n}</td><td>${t.d}</td>
       <td>${t.bp}</td><td>${t.bc}</td><td>${t.bp - t.bc}</td><td><b>${t.pts}</b></td>
     </tr>`).join('');
+
+  // Prochaine rencontre : ce qu'on cherche juste après avoir lu le classement.
+  let prochaine = '';
+  if (G.day < G.schedule.length) {
+    const r = G.schedule[G.day];
+    const mm = r.find(m => G.teams[m.home].human || G.teams[m.away].human);
+    if (mm) {
+      const me = myTeam();
+      const dom = G.teams[mm.home] === me;
+      const adv = dom ? G.teams[mm.away] : G.teams[mm.home];
+      const rangAdv = classe.indexOf(adv) + 1;
+      prochaine = `<div class="sect"><b>Prochaine rencontre</b><i></i></div>
+        <div class="match-c">
+          <div class="c"><b>${me.short}</b><span>${classe.indexOf(me) + 1}<sup>e</sup> · ${dom ? 'à domicile' : 'à l\'extérieur'}</span></div>
+          <div class="vs">J${G.day + 1}</div>
+          <div class="c"><b>${adv.short}</b><span>${rangAdv}<sup>e</sup> · ${adv.pts} pts</span></div>
+        </div>`;
+    }
+  }
   const po = G.playoff;
 
   function bbox(series, extraClass) {
@@ -4090,12 +4292,21 @@ function renderClassement() {
     ${po.humanOut && po.stage !== 'done' ? "<p class=\"note\" style=\"text-align:center\">Ton équipe est éliminée — le reste du tableau se résout automatiquement au clic sur le bouton d'action.</p>" : ''}
   ` : `<p class="note">Les 8 premiers du classement disputeront les playoffs à l'issue de la saison régulière : quarts de finale, demi-finales puis finale, chaque tour en série aller-retour + match d'appui éventuel (au meilleur des 3).</p>`;
 
+  const journee = Math.min(G.day + 1, G.schedule.length);
   document.getElementById('tab-classement').innerHTML = `
-    <h2>Classement — Saison ${seasonLabel(G.season)} (${DIVISIONS[G.divIdx].label})</h2>
-    <table>
-      <tr><th>#</th><th>Équipe</th><th>J</th><th>V</th><th>N</th><th>D</th><th>BP</th><th>BC</th><th>Diff</th><th>Pts</th></tr>
-      ${rows}
-    </table>
+    ${bandeau('classement', `${DIVISIONS[G.divIdx].label} · Saison ${seasonLabel(G.season)}`,
+              'Classement', `Journée ${journee} sur ${G.schedule.length} · ${G.teams.length} équipes`)}
+    <div class="clst">${rows}</div>
+    <button class="chip-info" onclick="this.classList.toggle('open');this.nextElementSibling.classList.toggle('show')">ⓘ Détail chiffré et règles des playoffs</button>
+    <div class="regle">
+      <table style="margin-bottom:10px">
+        <tr><th>#</th><th>Équipe</th><th>J</th><th>V</th><th>N</th><th>D</th><th>BP</th><th>BC</th><th>Diff</th><th>Pts</th></tr>
+        ${detail}
+      </table>
+      Les 8 premiers disputent les playoffs : quarts, demi-finales puis finale, chaque tour au
+      meilleur des 3 (aller, retour, match d'appui éventuel). Les deux finalistes montent.
+    </div>
+    ${prochaine}
     ${bracket}`;
 }
 
@@ -4654,36 +4865,73 @@ function renderInbox() {
   if (!box) return;
   const items = (G.inbox || []);
   const typeIcon = { board: '📋', contrat: '📝', objectif: '🎯', cup: '🏆', transfert: '💰', info: 'ℹ️' };
-  const rows = items.map(m => `
-    <div class="card">
-      <b>${typeIcon[m.type] || 'ℹ️'} ${m.title}</b>
-      <span class="tag" style="float:right">Saison ${m.season}, j.${m.day}</span>
-      <p class="note">${m.body}</p>
+  const rows = items.slice().reverse().map(m => `
+    <div class="msg t-${m.type || 'info'}">
+      <span class="ic">${typeIcon[m.type] || 'ℹ️'}</span>
+      <div class="tx">
+        <b>${m.title}</b>
+        <p>${m.body}</p>
+        <span class="q">Saison ${m.season} · journée ${m.day}</span>
+      </div>
     </div>`).join('');
+
+  const vide = `<div class="vide">
+      <div class="rond">✉</div>
+      <h3>Aucun message pour l'instant</h3>
+      <p>La direction, le staff et les autres clubs t'écriront au fil de la saison.</p>
+      <div class="apercu">
+        <div class="apercu-l">🎯 <b>Objectifs</b> — ce que la direction attend de toi</div>
+        <div class="apercu-l">🏥 <b>Blessures</b> — qui est indisponible, et pour combien de temps</div>
+        <div class="apercu-l">📝 <b>Contrats</b> — les fins de contrat à anticiper</div>
+        <div class="apercu-l">💰 <b>Sponsors</b> — les offres qui se débloquent</div>
+      </div>
+    </div>`;
+
+  const nb = items.filter(m => !m.read).length;
   box.innerHTML = `
-    <h2>📬 Boîte de réception</h2>
-    <p class="note">Toute l'actualité du club : objectifs de la direction, fins de contrat, objectifs individuels, résultats de coupe...</p>
-    ${rows || '<p class="note">Aucun message pour l\'instant.</p>'}`;
+    ${bandeau('inbox', myTeam().name, 'Messages',
+              items.length ? `${items.length} message${items.length > 1 ? 's' : ''}${nb ? ` · ${nb} non lu${nb > 1 ? 's' : ''}` : ''}` : 'Boîte vide')}
+    ${rows || vide}`;
 }
 
 function renderHistorique() {
   const box = document.getElementById('tab-historique');
   if (!box) return;
   const hist = (G.history || []);
-  const rows = hist.slice().reverse().map(h => `
-    <tr>
-      <td>${h.season}</td><td>${h.division}</td><td>${h.rank}e</td>
-      <td>${h.champion ? '🏆 Champion' : h.finalist ? '🥈 Finaliste' : ''}</td>
-      <td>${h.promoted ? '🎉 Montée' : h.relegated ? '⚠️ Descente' : '—'}</td>
-      <td>${h.topScorer || '—'}</td>
-    </tr>`).join('');
+  const couleurDiv = (label) => {
+    const d = DIVISIONS.find(x => x.label === label);
+    return (d && DIV_COLORS[d.key]) || 'var(--div)';
+  };
+  const rows = hist.slice().reverse().map(h => {
+    const trophee = h.champion ? '🏆' : h.finalist ? '🥈' : h.promoted ? '🎉' : h.relegated ? '⚠️' : '';
+    const mouv = h.promoted ? 'Montée' : h.relegated ? 'Descente' : 'Maintien';
+    const an = seasonLabel(h.season).split('-');
+    return `<div class="saison" style="--sc:${couleurDiv(h.division)}">
+      <div class="an"><b>${an[0]}</b><span>${an[1]}</span></div>
+      <div class="de">${h.rank}<sup>e</sup>${h.champion ? ' · champion' : h.finalist ? ' · finaliste' : ''}
+        <span>${h.division} · ${mouv}${h.topScorer ? ' · ' + h.topScorer : ''}</span></div>
+      <div class="tr">${trophee}</div>
+    </div>`;
+  }).join('');
+
+  const vide = `<div class="vide">
+      <div class="rond">🗓</div>
+      <h3>Ta première saison est en cours</h3>
+      <p>Le palmarès se remplit à la fin de chaque saison. Voici ce qui y sera consigné.</p>
+      <div class="apercu">
+        <div class="apercu-l">🏁 <b>Classement final</b> — ta place en saison régulière</div>
+        <div class="apercu-l">🏆 <b>Playoffs</b> — jusqu'où tu es allé</div>
+        <div class="apercu-l">↕ <b>Mouvement</b> — montée, maintien ou descente</div>
+        <div class="apercu-l">⭐ <b>Meilleur buteur</b> — celui qui aura porté la saison</div>
+      </div>
+    </div>`;
+
+  const montees = hist.filter(h => h.promoted).length;
   box.innerHTML = `
-    <h2>🏛️ Historique & Palmarès</h2>
-    <p class="note">Le résumé de chaque saison écoulée avec ${myTeam().name}.</p>
-    <table>
-      <tr><th>Saison</th><th>Division</th><th>Classement</th><th>Playoffs</th><th>Mouvement</th><th>Meilleur buteur du club</th></tr>
-      ${rows || '<tr><td colspan="6" class="note">Aucune saison terminée pour le moment.</td></tr>'}
-    </table>`;
+    ${bandeau('historique', myTeam().name, 'Palmarès',
+              hist.length ? `${hist.length} saison${hist.length > 1 ? 's' : ''}${montees ? ` · ${montees} montée${montees > 1 ? 's' : ''}` : ''}`
+                          : `Saison ${G.season} en cours`)}
+    ${rows || vide}`;
 }
 
 // ---------------- Export de la sauvegarde en fichier ----------------
