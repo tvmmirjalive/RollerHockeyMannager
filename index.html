@@ -633,6 +633,136 @@
     .modal-foot .btn { flex: 1 1 auto; text-align: center; }
     .toast { font-size: 13px; }
   }
+
+  /* ==================== Navigation mobile (variante C) ====================
+     La barre passe en bas : sur un écran de 844 px, le pouce atteint le tiers
+     inférieur, pas le sommet. Les cibles font 58 px, au-delà des 44 pt d'Apple
+     et des 48 dp de Material. */
+
+  body.game-started header { padding: 0; display: block; }
+  .hd-main { display: flex; align-items: center; gap: 10px;
+             padding: 10px calc(13px + env(safe-area-inset-right,0px)) 10px calc(13px + env(safe-area-inset-left,0px));
+             padding-top: calc(10px + env(safe-area-inset-top,0px)); }
+  .hd-crest { width: 36px; height: 36px; flex: 0 0 auto; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center; font-size: 12.5px;
+    font-weight: 800; color: var(--noir);
+    background: radial-gradient(circle at 34% 28%, var(--tan), #c9a468); }
+  .hd-txt { flex: 1 1 auto; min-width: 0; }
+  .hd-club { font-size: 14.5px; font-weight: 700; letter-spacing: .3px;
+             white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .hd-sub { font-size: 10.5px; color: var(--muted); white-space: nowrap;
+            overflow: hidden; text-overflow: ellipsis; }
+  .hd-btn { flex: 0 0 auto; width: 44px; height: 44px; border-radius: 11px;
+    border: 1px solid #2c313a; background: var(--panel2); color: var(--txt);
+    font-size: 16px; cursor: pointer; position: relative; font-family: inherit; }
+  .hd-btn b { position: absolute; top: -5px; right: -5px; min-width: 18px; height: 18px;
+    border-radius: 9px; background: var(--rouge); color: #fff; font-size: 10px;
+    line-height: 18px; font-weight: 700; }
+  .hd-btn b:empty { display: none; }
+  .hd-stats { display: flex; border-top: 1px solid rgba(255,255,255,.07); }
+  .hd-stat { flex: 1 1 0; min-width: 0; padding: 6px 3px 7px; text-align: center; }
+  .hd-stat span { display: block; font-size: 8.5px; color: var(--muted);
+                  text-transform: uppercase; letter-spacing: .7px; }
+  .hd-stat b { display: block; font-size: 12.5px; color: var(--tan);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .hd-stat + .hd-stat { border-left: 1px solid rgba(255,255,255,.07); }
+
+  /* la barre du bas ; l'ancienne barre du haut n'existe plus */
+  body.game-started nav {
+    position: fixed; left: 0; right: 0; bottom: 0; z-index: 120;
+    display: flex; align-items: stretch; gap: 0; flex-wrap: nowrap;
+    background: var(--panel); border-top: 1px solid #2c313a;
+    padding: 0 0 env(safe-area-inset-bottom, 0px);
+  }
+  nav button[data-nav] {
+    flex: 1 1 0; min-width: 0; min-height: 58px; border: 0; border-radius: 0;
+    background: none; color: var(--muted); font-family: inherit; font-size: 9.5px;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 3px; padding: 7px 2px; cursor: pointer; position: relative;
+  }
+  nav button[data-nav] .ic { font-size: 19px; line-height: 1; }
+  nav button[data-nav] .lb { white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+                             max-width: 100%; }
+  nav button[data-nav].active { background: none; color: var(--bleu); font-weight: 700; }
+  nav button[data-nav].active::before { content: ''; position: absolute; top: 0;
+    left: 22%; right: 22%; height: 2.5px; background: var(--bleu); border-radius: 0 0 3px 3px; }
+  nav button[data-nav].notify::after { content: ''; position: absolute; top: 7px;
+    right: calc(50% - 19px); width: 8px; height: 8px; border-radius: 50%;
+    background: var(--tan); animation: navPulse 1.6s ease-in-out infinite; }
+
+  /* le contenu doit dégager la barre du bas et le bouton flottant */
+  body.game-started main { padding-bottom: calc(150px + env(safe-area-inset-bottom, 0px)); }
+
+  /* sous-onglets du groupe Compétition */
+  #subnav { display: none; gap: 6px; padding: 9px 0 3px; }
+  #subnav.show { display: flex; }
+  #subnav button { flex: 1 1 0; min-height: 44px; border-radius: 9px;
+    border: 1px solid #2c313a; background: var(--panel2); color: var(--txt);
+    font-family: inherit; font-size: 12.5px; cursor: pointer; }
+  #subnav button.active { background: var(--bleu); color: #04121f;
+                          font-weight: 700; border-color: var(--bleu); }
+  #subnav button.notify { border-color: var(--tan); }
+
+  /* bouton d'action flottant */
+  #btnPlay {
+    position: fixed; z-index: 118; right: calc(14px + env(safe-area-inset-right, 0px));
+    bottom: calc(72px + env(safe-area-inset-bottom, 0px));
+    max-width: calc(100% - 28px); min-height: 52px; padding: 0 20px; border: 0;
+    border-radius: 26px; background: var(--bleu); color: #04121f;
+    font-family: inherit; font-size: 13.5px; font-weight: 800; cursor: pointer;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    box-shadow: 0 10px 26px -6px rgba(0,173,233,.6);
+  }
+  #btnPlay:disabled { opacity: .4; }
+  body:not(.game-started) #btnPlay, body:not(.game-started) nav { display: none; }
+
+  /* tiroir « Plus » */
+  #drawer { display: none; position: fixed; inset: 0; z-index: 200;
+            background: rgba(4,6,10,.72); backdrop-filter: blur(3px); }
+  #drawer.show { display: block; animation: tsFade .18s both; }
+  .drawer-in { position: absolute; left: 0; right: 0; bottom: 0;
+    background: var(--panel2); border-top: 1px solid #2c313a;
+    border-radius: 16px 16px 0 0; padding: 8px 12px 14px;
+    padding-bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+    animation: drawerUp .22s cubic-bezier(.2,.8,.3,1) both; }
+  @keyframes drawerUp { from { transform: translateY(100%); } to { transform: none; } }
+  .drawer-grab { width: 38px; height: 4px; border-radius: 2px; background: #2c313a; margin: 4px auto 12px; }
+  .drawer-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+  .drawer-grid button { min-height: 76px; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; gap: 5px; background: var(--panel);
+    border: 1px solid #2c313a; border-radius: 11px; color: var(--txt);
+    font-family: inherit; font-size: 11px; cursor: pointer; position: relative; }
+  .drawer-grid button .ic { font-size: 21px; }
+  .drawer-grid button.notify { border-color: var(--tan); }
+  .drawer-grid button.notify::after { content: ''; position: absolute; top: 7px; right: 7px;
+    width: 8px; height: 8px; border-radius: 50%; background: var(--tan); }
+
+  /* réglage du son, dans le tiroir */
+  .drawer-audio { display: flex; align-items: center; gap: 11px; margin-top: 10px;
+    padding: 11px 12px; background: var(--panel); border: 1px solid #2c313a; border-radius: 11px; }
+  .drawer-audio button { min-width: 44px; min-height: 44px; border-radius: 9px;
+    border: 1px solid #2c313a; background: var(--panel2); color: var(--txt);
+    font-size: 17px; cursor: pointer; font-family: inherit; }
+  .drawer-audio button.on { border-color: var(--vert); color: var(--vert); }
+  .drawer-audio input[type=range] { flex: 1 1 auto; min-width: 0; accent-color: var(--bleu); height: 30px; }
+  .drawer-audio .lab { font-size: 11.5px; color: var(--muted); flex: 0 0 auto; }
+
+  /* Cibles tactiles du contenu. Les boutons du jeu faisaient 24 px de haut : sous les
+     44 pt d'Apple et les 48 dp de Material, les taps ratés sont mesurables. On ne
+     touche qu'à la hauteur et au rembourrage — ni la couleur, ni la bordure, ni la
+     place qu'ils occupent dans les grilles. */
+  @media (max-width: 760px) {
+    body.game-started .btn { min-height: 44px; padding: 10px 14px; font-size: 13.5px; }
+    body.game-started select,
+    body.game-started input[type=number],
+    body.game-started input[type=text] { min-height: 44px; }
+  }
+
+  @media (min-width: 760px) {
+    /* au-delà du téléphone, la barre reste en bas mais se recentre */
+    body.game-started nav { justify-content: center; }
+    nav button[data-nav] { flex: 0 0 130px; }
+  }
 </style>
 </head>
 <body>
@@ -708,32 +838,54 @@
 </div>
 <div id="toastStack" aria-live="polite" aria-atomic="false"></div>
 <header>
-  <h1>ROLLER HOCKEY <span>MANAGER</span> — Outlaws de Moreuil</h1>
-  <div id="topinfo">
-    <div>Saison <b id="uiSeason">1</b></div>
-    <div>Journée <b id="uiDay">1</b>/<span id="uiDayTotal">26</span></div>
-    <div>Budget <b id="uiBudget"></b></div>
-    <div>Classement <b id="uiRank">—</b></div>
-    <div>Objectif <b id="uiObjective" style="color:var(--tan)">—</b></div>
-    <div>Direction <b id="uiBoardConf">—</b></div>
+  <div class="hd-main">
+    <div class="hd-crest" id="uiCrest">MOR</div>
+    <div class="hd-txt">
+      <div class="hd-club" id="uiClubName">Outlaws de Moreuil</div>
+      <div class="hd-sub"><span id="uiRank">—</span> · saison <span id="uiSeason">1</span>
+        · journée <span id="uiDay">1</span>/<span id="uiDayTotal">26</span></div>
+    </div>
+    <button class="hd-btn" id="hdInbox" title="Messages">✉<b id="hdInboxCount"></b></button>
+  </div>
+  <div class="hd-stats">
+    <div class="hd-stat"><span>Budget</span><b id="uiBudget">—</b></div>
+    <div class="hd-stat"><span>Objectif</span><b id="uiObjective">—</b></div>
+    <div class="hd-stat"><span>Direction</span><b id="uiBoardConf">—</b></div>
   </div>
 </header>
 <nav>
-  <button data-tab="effectif" class="active">Effectif</button>
-  <button data-tab="club">Club</button>
-  <button data-tab="entrainement">Entraînement</button>
-  <button data-tab="classement">Classement</button>
-  <button data-tab="calendrier">Calendrier</button>
-  <button data-tab="transferts">Transferts</button>
-  <button data-tab="inbox">📬 Messages</button>
-  <button data-tab="historique">Historique</button>
-  <button data-tab="coupe">Coupe</button>
-  <button data-tab="aide">Aide</button>
-  <button data-tab="options">Sauvegarde</button>
-  <button class="play" id="btnPlay">▶ Jouer la journée</button>
+  <button data-nav="effectif" class="active"><span class="ic">👥</span><span class="lb">Effectif</span></button>
+  <button data-nav="competition"><span class="ic">📊</span><span class="lb">Compétition</span></button>
+  <button data-nav="entrainement"><span class="ic">🏋️</span><span class="lb">Entraînement</span></button>
+  <button data-nav="transferts"><span class="ic">🔁</span><span class="lb">Transferts</span></button>
+  <button data-nav="plus"><span class="ic">⋯</span><span class="lb">Plus</span></button>
 </nav>
+<button id="btnPlay">▶ Jouer la journée</button>
+<div id="drawer">
+  <div class="drawer-in">
+    <div class="drawer-grab"></div>
+    <div class="drawer-grid">
+      <button data-tab="club"><span class="ic">🏟</span>Club</button>
+      <button data-tab="inbox"><span class="ic">✉</span>Messages</button>
+      <button data-tab="coupe"><span class="ic">🏆</span>Coupe</button>
+      <button data-tab="historique"><span class="ic">📜</span>Historique</button>
+      <button data-tab="aide"><span class="ic">❓</span>Aide</button>
+      <button data-tab="options"><span class="ic">💾</span>Sauvegarde</button>
+    </div>
+    <div class="drawer-audio">
+      <button id="audioToggle" title="Couper ou remettre la musique">🔊</button>
+      <span class="lab">Musique</span>
+      <input type="range" id="audioVol" min="0" max="100" value="60" aria-label="Volume de la musique">
+    </div>
+  </div>
+</div>
 <main>
   <div id="matchReport"></div>
+  <div id="subnav">
+    <button data-tab="classement" class="active">Classement</button>
+    <button data-tab="calendrier">Calendrier</button>
+    <button data-tab="coupe">Coupe</button>
+  </div>
   <section id="tab-effectif"></section>
   <section id="tab-club" style="display:none"></section>
   <section id="tab-entrainement" style="display:none"></section>
@@ -1749,7 +1901,9 @@ function flushSave() {
   clearTimeout(autosaveTimer);
   saveLocal();
 }
-document.addEventListener('visibilitychange', () => { if (document.hidden) flushSave(); });
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) { flushSave(); audioPause(); } else { audioReprendre(); }
+});
 window.addEventListener('pagehide', flushSave);
 
 let lastTeamChoice = null;
@@ -1775,6 +1929,10 @@ function applyTeamChoice(pickedDivIdx, pickedSlotIdx) {
 // Met à jour le titre de page, l'en-tête et le filigrane selon le club effectivement choisi.
 function updateBranding() {
   const name = myTeam().name;
+  const el = document.getElementById('uiClubName');
+  if (el) el.textContent = name;
+  const crest = document.getElementById('uiCrest');
+  if (crest) crest.textContent = (myTeam().short || name.slice(0, 3)).toUpperCase();
   document.title = `Roller Hockey Manager — ${name}`;
   const h1 = document.querySelector('header h1');
   if (h1) h1.innerHTML = `ROLLER HOCKEY <span>MANAGER</span> — ${name}`;
@@ -2344,6 +2502,7 @@ function startPlayoffs() {
   G.playoff = { stage: 'quarts', seedRank, quarts, demis: null, finale: null, champion: null, finalists: [], humanOut: false };
   renderAll();
   const myId = myTeam().id;
+  jouerMusique('playoffs');
   notify({
     title: "Place aux playoffs", ico: '🏒',
     html: `<p class="modal-note">Saison régulière terminée. Le Top 8 est qualifié — séries au meilleur des 3 :
@@ -2556,6 +2715,8 @@ function endSeason() {
     moveMsg = `<div class="modal-flash bad"><b>⚠️ Descente en ${escHtml(DIVISIONS[G.divIdx].label)}</b>Il faudra remonter la pente la saison prochaine.</div>`;
   }
 
+  if (wasPromoted || iAmChampion) jouerJingle('montee');
+  else if (wasRelegated) jouerJingle('defaite');
   notify({
     title: `Fin de saison ${seasonLabel(G.season)}`, ico: '📅',
     html: `${trophyMsg}${moveMsg}
@@ -3141,21 +3302,263 @@ function checkUnlockNotifications() {
   applyNavNotifications();
 }
 
-function applyNavNotifications() {
-  document.querySelectorAll('nav button[data-tab]').forEach(b => {
-    b.classList.toggle('notify', !!(G.tabNotify && G.tabNotify[b.dataset.tab]));
+// ==================== Bande-son ====================
+// Les pistes sont des fichiers séparés dans audio/, pas du base64 : neuf morceaux
+// encodés dans le HTML pèseraient 7 Mo, soit trois fois le jeu entier.
+// Tout est facultatif : si le dossier est absent (page servie seule), le jeu se
+// lance en silence sans une seule erreur.
+
+const AUDIO_DIR = 'audio/';
+const MUSIQUES = {
+  menu:        '01-menu',
+  gestion:     '02-gestion',
+  transferts:  '03-transferts',
+  avantMatch:  '04-avant-match',
+  match:       '05-match',
+  playoffs:    '06-playoffs'
+};
+const JINGLES = { victoire: '07-victoire', defaite: '08-defaite', montee: '09-montee' };
+
+// quel écran appelle quelle boucle
+const MUSIQUE_ECRAN = {
+  transferts: 'transferts',
+  coupe: 'playoffs'
+};
+
+const audio = {
+  actif: true,
+  volume: 0.6,
+  debloque: false,      // iOS exige une interaction avant toute lecture
+  courant: null,        // clé de la piste en cours
+  el: {},               // éléments Audio, créés à la demande
+  fondu: null
+};
+
+function audioCharger(nom) {
+  if (audio.el[nom]) return audio.el[nom];
+  const a = new Audio(AUDIO_DIR + nom + '.m4a');
+  a.preload = 'none';
+  a.volume = 0;
+  a.addEventListener('error', () => { a.__ko = true; }, { once: true });
+  audio.el[nom] = a;
+  return a;
+}
+
+function audioFondu(el, vers, ms, finir) {
+  const depart = el.volume, pas = 40, n = Math.max(1, Math.round(ms / pas));
+  let i = 0;
+  clearInterval(el.__fondu);
+  el.__fondu = setInterval(() => {
+    i++;
+    const v = depart + (vers - depart) * (i / n);
+    try { el.volume = Math.max(0, Math.min(1, v)); } catch (e) {}
+    if (i >= n) { clearInterval(el.__fondu); if (finir) finir(); }
+  }, pas);
+}
+
+// Joue une boucle. Un enchaînement d'écrans ne doit pas produire de coupure sèche :
+// l'ancienne s'efface pendant que la nouvelle monte.
+function jouerMusique(cle) {
+  if (!audio.actif || !audio.debloque) { audio.courant = cle; return; }
+  const nom = MUSIQUES[cle];
+  if (!nom || audio.courant === cle) { audio.courant = cle; return; }
+
+  const ancien = audio.courant && MUSIQUES[audio.courant] && audio.el[MUSIQUES[audio.courant]];
+  audio.courant = cle;
+
+  if (ancien && !ancien.paused) {
+    audioFondu(ancien, 0, 400, () => { try { ancien.pause(); } catch (e) {} });
+  }
+  const a = audioCharger(nom);
+  if (a.__ko) return;
+  a.loop = true;
+  a.volume = 0;
+  const p = a.play();
+  if (p && p.catch) p.catch(() => {});
+  audioFondu(a, audio.volume, 400);
+}
+
+function jouerJingle(cle) {
+  if (!audio.actif || !audio.debloque) return;
+  const nom = JINGLES[cle];
+  if (!nom) return;
+  const a = audioCharger(nom);
+  if (a.__ko) return;
+  a.loop = false;
+  try { a.currentTime = 0; } catch (e) {}
+  a.volume = Math.min(1, audio.volume * 1.15);   // les jingles doivent primer
+  const p = a.play();
+  if (p && p.catch) p.catch(() => {});
+}
+
+function musiquePourEcran(tab) {
+  if (!document.body.classList.contains('game-started')) return;
+  jouerMusique(MUSIQUE_ECRAN[tab] || 'gestion');
+}
+
+function audioAppliquerVolume() {
+  Object.values(audio.el).forEach(a => {
+    if (!a.paused && a.loop) { try { a.volume = audio.volume; } catch (e) {} }
   });
 }
 
-document.querySelectorAll('nav button[data-tab]').forEach(b => {
-  b.addEventListener('click', () => {
-    document.querySelectorAll('nav button[data-tab]').forEach(x => x.classList.remove('active'));
-    b.classList.add('active');
-    tabs.forEach(t => document.getElementById('tab-' + t).style.display = t === b.dataset.tab ? '' : 'none');
-    if (G.tabNotify) G.tabNotify[b.dataset.tab] = false;
-    b.classList.remove('notify');
-    if (b.dataset.tab === 'inbox' && G.inbox) { G.inbox.forEach(m => { m.read = true; }); }
+function audioPause() {
+  Object.values(audio.el).forEach(a => { try { a.pause(); } catch (e) {} });
+}
+
+function audioReprendre() {
+  if (!audio.actif || !audio.debloque) return;
+  const cle = audio.courant;
+  audio.courant = null;
+  jouerMusique(cle || 'gestion');
+}
+
+function audioMajBouton() {
+  const b = document.getElementById('audioToggle');
+  if (b) { b.textContent = audio.actif ? '🔊' : '🔇'; b.classList.toggle('on', audio.actif); }
+  const v = document.getElementById('audioVol');
+  if (v) v.value = Math.round(audio.volume * 100);
+}
+
+// Déblocage : iOS et Android n'autorisent la lecture qu'après un geste de l'utilisateur.
+// Le premier tap, quel qu'il soit, sert de déclencheur.
+function audioDebloquer() {
+  if (audio.debloque) return;
+  audio.debloque = true;
+  const cle = audio.courant || (document.body.classList.contains('game-started') ? 'gestion' : 'menu');
+  audio.courant = null;
+  jouerMusique(cle);
+}
+['pointerdown', 'keydown'].forEach(ev =>
+  document.addEventListener(ev, audioDebloquer, { once: true, capture: true }));
+
+document.addEventListener('DOMContentLoaded', audioMajBouton);
+setTimeout(() => {
+  const t = document.getElementById('audioToggle');
+  if (t) t.addEventListener('click', () => {
+    audio.actif = !audio.actif;
+    if (audio.actif) audioReprendre(); else audioPause();
+    audioMajBouton();
+    audioSauverReglages();
   });
+  const v = document.getElementById('audioVol');
+  if (v) v.addEventListener('input', () => {
+    audio.volume = Number(v.value) / 100;
+    audioAppliquerVolume();
+    audioSauverReglages();
+  });
+  audioMajBouton();
+}, 0);
+
+// Les réglages du son survivent à la partie : ils vivent hors de la sauvegarde,
+// pour ne pas être écrasés quand on charge un autre fichier.
+const AUDIO_KEY = 'rhm_audio_v1';
+function audioSauverReglages() {
+  try { localStorage.setItem(AUDIO_KEY, JSON.stringify({ actif: audio.actif, volume: audio.volume })); } catch (e) {}
+}
+function audioLireReglages() {
+  try {
+    const r = JSON.parse(localStorage.getItem(AUDIO_KEY) || 'null');
+    if (r) { audio.actif = r.actif !== false; audio.volume = typeof r.volume === 'number' ? r.volume : 0.6; }
+  } catch (e) {}
+  audioMajBouton();
+}
+audioLireReglages();
+
+// ==================== Navigation ====================
+// Les 11 écrans sont regroupés derrière 5 entrées de barre basse. Le contenu des
+// écrans est inchangé : seul le chemin pour y accéder change.
+
+const NAV_GROUPES = {
+  effectif:     ['effectif'],
+  competition:  ['classement', 'calendrier', 'coupe'],
+  entrainement: ['entrainement'],
+  transferts:   ['transferts'],
+  plus:         ['club', 'inbox', 'historique', 'aide', 'options']
+};
+
+function groupeDe(tab) {
+  for (const g in NAV_GROUPES) if (NAV_GROUPES[g].includes(tab)) return g;
+  return 'effectif';
+}
+
+let ongletCourant = 'effectif';
+
+function showTab(tab) {
+  if (!tabs.includes(tab)) return;
+  ongletCourant = tab;
+  tabs.forEach(t => {
+    const el = document.getElementById('tab-' + t);
+    if (el) el.style.display = (t === tab) ? '' : 'none';
+  });
+
+  const groupe = groupeDe(tab);
+  document.querySelectorAll('nav button[data-nav]').forEach(b => {
+    b.classList.toggle('active', b.dataset.nav === groupe);
+  });
+
+  // sous-onglets : visibles uniquement pour le groupe Compétition
+  const sub = document.getElementById('subnav');
+  if (sub) {
+    sub.classList.toggle('show', groupe === 'competition');
+    sub.querySelectorAll('button').forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
+  }
+
+  // la pastille de l'écran visité s'éteint
+  if (G && G.tabNotify) G.tabNotify[tab] = false;
+  if (tab === 'inbox' && G && G.inbox) G.inbox.forEach(m => { m.read = true; });
+  applyNavNotifications();
+
+  const main = document.querySelector('main');
+  if (main) main.scrollTop = 0;
+  window.scrollTo(0, 0);
+  musiquePourEcran(tab);
+}
+
+function applyNavNotifications() {
+  const n = (G && G.tabNotify) || {};
+  document.querySelectorAll('nav button[data-nav]').forEach(b => {
+    const alerte = (NAV_GROUPES[b.dataset.nav] || []).some(t => n[t]);
+    b.classList.toggle('notify', !!alerte);
+  });
+  document.querySelectorAll('#subnav button[data-tab], .drawer-grid button[data-tab]').forEach(b => {
+    b.classList.toggle('notify', !!n[b.dataset.tab]);
+  });
+  // compteur de messages non lus sur l'enveloppe de l'en-tête
+  const badge = document.getElementById('hdInboxCount');
+  if (badge) {
+    const nb = ((G && G.inbox) || []).filter(m => !m.read).length;
+    badge.textContent = nb > 0 ? (nb > 9 ? '9+' : nb) : '';
+  }
+}
+
+function ouvrirTiroir(ouvert) {
+  const d = document.getElementById('drawer');
+  if (d) d.classList.toggle('show', ouvert !== false);
+}
+function tiroirOuvert() {
+  const d = document.getElementById('drawer');
+  return !!(d && d.classList.contains('show'));
+}
+
+document.querySelectorAll('nav button[data-nav]').forEach(b => {
+  b.addEventListener('click', () => {
+    if (b.dataset.nav === 'plus') { ouvrirTiroir(true); return; }
+    ouvrirTiroir(false);
+    const groupe = NAV_GROUPES[b.dataset.nav];
+    // on revient sur le dernier écran du groupe si on y est déjà, sinon le premier
+    showTab(groupe.includes(ongletCourant) ? ongletCourant : groupe[0]);
+  });
+});
+document.querySelectorAll('#subnav button[data-tab], .drawer-grid button[data-tab]').forEach(b => {
+  b.addEventListener('click', () => { ouvrirTiroir(false); showTab(b.dataset.tab); });
+});
+document.getElementById('drawer').addEventListener('click', e => {
+  if (e.target.id === 'drawer') ouvrirTiroir(false);
+});
+document.getElementById('hdInbox').addEventListener('click', () => { ouvrirTiroir(false); showTab('inbox'); });
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape' && tiroirOuvert() && !modalIsOpen()) ouvrirTiroir(false);
 });
 document.getElementById('btnPlay').addEventListener('click', () => {
   try {
@@ -3181,12 +3584,13 @@ function seasonLabel(n) {
 }
 
 function renderTop() {
-  document.getElementById('uiSeason').textContent = `${G.season} (${seasonLabel(G.season)})`;
   document.getElementById('uiDay').textContent = Math.min(G.day + 1, G.schedule.length);
   document.getElementById('uiDayTotal').textContent = G.schedule.length;
   document.getElementById('uiBudget').textContent = euros(G.budget);
   const rank = sortedTeams().indexOf(myTeam()) + 1;
-  document.getElementById('uiRank').textContent = rank + 'e / ' + G.teams.length + ' — ' + DIVISIONS[G.divIdx].label;
+  document.getElementById('uiRank').textContent =
+    DIVISIONS[G.divIdx].label + ' · ' + rank + 'e/' + G.teams.length;
+  document.getElementById('uiSeason').textContent = seasonLabel(G.season);
   document.getElementById('uiObjective').textContent = G.boardObjective ? G.boardObjective.label : '—';
   const bc = G.boardConfidence ?? 60;
   document.getElementById('uiBoardConf').textContent = bc + '/100';
@@ -3940,6 +4344,7 @@ function renderCoupe() {
 
 function renderAll() {
   renderTop();
+  applyNavNotifications();
   renderEffectif();
   renderClub();
   renderEntrainement();
@@ -4888,7 +5293,8 @@ function initNative() {
 
     // Sauvegarde immédiate dès que l'app perd le premier plan.
     App.addListener('appStateChange', state => {
-      if (state && state.isActive === false) flushSave();
+      if (state && state.isActive === false) { flushSave(); audioPause(); }
+      else audioReprendre();
     });
   }
 }
