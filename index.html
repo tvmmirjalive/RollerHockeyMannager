@@ -281,27 +281,31 @@
   #mvCtrls { display: flex; gap: 6px; margin-top: 10px; flex-wrap: wrap; }
   #mvCtrls .btn.on { border-color: var(--bleu); color: var(--bleu); }
 
-  /* --- Filigrane logo du club : icone generique par defaut --- */
+  /* --- Fond : patinoire floutée + halo de division --- */
+  /* La photo donne la profondeur, le halo donne l'appartenance : le fond se teinte de
+     la couleur de la division en cours, et change donc à chaque montée. Les deux
+     couches tiennent dans un seul pseudo-élément, les dégradés étant empilés avant
+     l'image — dans background, la première couche est celle du dessus. */
   body::before {
-    content: '';
-    position: fixed;
-    top: 50%; left: 50%;
-    width: 900px; height: 896px;
-    max-width: 90vw; max-height: 90vw;
-    transform: translate(-50%, -50%);
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 200 200'%3E%3Ccircle cx='100' cy='100' r='92' fill='none' stroke='white' stroke-width='6'/%3E%3Ccircle cx='100' cy='100' r='58' fill='none' stroke='white' stroke-width='4'/%3E%3Cline x1='38' y1='162' x2='152' y2='38' stroke='white' stroke-width='11' stroke-linecap='round'/%3E%3Ccircle cx='152' cy='38' r='15' fill='white'/%3E%3C/svg%3E");
-    background-size: contain;
-    background-repeat: no-repeat;
-    background-position: center;
-    /* Atténué et décalé vers le bas : à 6 % d'opacité au centre, il devenait le sujet
-       principal de tout écran court — Messages et Palmarès en particulier. */
-    opacity: 0.035;
-    top: 78%;
-    pointer-events: none;
-    z-index: 0;
+    content: ''; position: fixed; inset: 0; pointer-events: none; z-index: 0;
+    background:
+      radial-gradient(100% 55% at 50% -6%,
+        color-mix(in srgb, var(--div) 20%, transparent) 0%, transparent 62%),
+      url('images/fond-ambiance.webp') center 26% / cover no-repeat;
+    opacity: .62;
   }
-  /* Le filigrane reste générique : aucun visuel partagé ne porte le marquage
-     d'un club en particulier. */
+  /* Voile dégradé : maintient le contraste du texte et éteint le bas de l'écran,
+     là où passe la barre de navigation. */
+  body::after {
+    content: ''; position: fixed; inset: 0; pointer-events: none; z-index: 0;
+    background:
+      radial-gradient(120% 78% at 50% 4%, transparent 0%, rgba(13,13,15,.58) 68%,
+        rgba(13,13,15,.92) 100%),
+      linear-gradient(180deg, rgba(13,13,15,.46) 0%, rgba(13,13,15,.76) 55%,
+        rgba(13,13,15,.95) 100%),
+      url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3'/%3E%3C/filter%3E%3Crect width='140' height='140' filter='url(%23n)' opacity='.5'/%3E%3C/svg%3E");
+    background-size: cover, cover, 140px 140px;
+  }
   header, nav, main { position: relative; z-index: 1; }
 
   /* le jeu principal reste caché tant qu'aucune partie n'est lancée */
