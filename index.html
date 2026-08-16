@@ -3184,6 +3184,27 @@ function endSeason() {
     }
   }
 
+  // ---- Play-down de Nationale 1 (art. 2.8) ----
+  // Seule division où l'on joue pour ne pas descendre : 7ᵉ contre 8ᵉ, le perdant tombe en
+  // N2. Le croisement réel entre les deux poules n'est pas simulable — le jeu n'en tient
+  // qu'une — mais la mécanique tient : une place de barragiste n'est ni sauve ni perdue.
+  let playdownMsg = null, playdownSauve = null;
+  if (G.divIdx === IDX_N1 && n >= 4 && (rank === n - 2 || rank === n - 1)) {
+    const adverse = ranking[rank === n - 2 ? n - 1 : n - 2];
+    if (adverse && adverse !== myTeam()) {
+      const jeRecois = rank === n - 2; // le mieux classé reçoit (art. 2.8 D)
+      const res = jeRecois ? simulatePlayoffMatch(myTeam(), adverse)
+                           : simulatePlayoffMatch(adverse, myTeam());
+      const mes = jeRecois ? res.gH : res.gA, siens = jeRecois ? res.gA : res.gH;
+      playdownSauve = mes > siens;
+      playdownMsg = `<div class="modal-flash ${playdownSauve ? 'good' : 'bad'}">
+        <b>${playdownSauve ? '🛡️ Play-down remporté — maintien en Nationale 1'
+                           : '⚠️ Play-down perdu — descente en Nationale 2'}</b>
+        ${rank + 1}ᵉ de la poule, tu ${jeRecois ? 'recevais' : 'te déplaçais chez'}
+        ${escHtml(adverse.name)}. Score : ${mes} — ${siens}${res.wentOT ? ' après prolongation' : ''}.</div>`;
+    }
+  }
+
   // la montée se joue aux playoffs ; en N1 le finaliste doit en plus gagner son barrage
   let promote = rank === 0 || (po ? iAmFinalist : rank < 2); // `let` : une salle non classée peut l'annuler
   if (G.divIdx === IDX_N1 && barrageGagne !== null) promote = barrageGagne || iAmChampion;
@@ -3223,7 +3244,8 @@ function endSeason() {
     }
     moveMsg = `<div class="modal-flash good"><b>🎉 Montée en ${escHtml(DIVISIONS[G.divIdx].label)}</b>Chèque de montée : ${euros(bonus)}. L'effectif progresse pour encaisser le niveau supérieur.</div>`;
   } else if (rank >= n - 2 && G.divIdx > 0
-             && !(G.divIdx === IDX_ELITE && rank === n - 2 && barrageGagne === true)) {
+             && !(G.divIdx === IDX_ELITE && rank === n - 2 && barrageGagne === true)
+             && !(G.divIdx === IDX_N1 && playdownSauve === true)) {
     // le 9e d'Élite vainqueur de son barrage conserve sa place (art. 1.10 A)
     G.divIdx--;
     wasRelegated = true;
@@ -3234,7 +3256,7 @@ function endSeason() {
   else if (wasRelegated) jouerJingle('defaite');
   notify({
     title: `Fin de saison ${seasonLabel(G.season)}`, ico: '📅',
-    html: `${trophyMsg}${barrageMsg || ''}${montreeRefusee || ''}${moveMsg}
+    html: `${trophyMsg}${barrageMsg || ''}${playdownMsg || ''}${montreeRefusee || ''}${moveMsg}
       <div class="modal-sub">Bilan de la saison régulière</div>
       <div class="modal-stat"><span>Division</span><span>${escHtml(div.label)}</span></div>
       <div class="modal-stat"><span>Classement</span><span>${rank + 1}<sup>e</sup> sur ${n}</span></div>
@@ -5147,12 +5169,13 @@ function startCup() {
     let teams;
     if (di === G.divIdx) {
       teams = sortedTeams(); // ta division : vrai classement de la saison en cours
+      teams.forEach(t => { t.cupDiv = di; });
     } else {
       // on exclut la définition de l'équipe humaine : sa présence dans la liste statique d'une division
       // qui n'est plus la tienne créerait un second exemplaire fantôme (human:true) de ton club, qui
       // brouille la détection de ton propre match et bloque la coupe.
       teams = div.teams.filter(def => !def.human).map(def => makeTeam(def, -1, div.qual));
-      teams.forEach(t => { t.cupOrigin = div.label; });
+      teams.forEach(t => { t.cupOrigin = div.label; t.cupDiv = di; });
       teams.sort((a, b) => teamSeedScore(b) - teamSeedScore(a));
     }
     return { prestige: div.prestige, teams };
@@ -5186,7 +5209,24 @@ function cupHumanInMatch(m) { return cupTeam(m.home).human || cupTeam(m.away).hu
 function cupCurrentRound() { return G.cup.rounds[G.cup.roundIdx]; }
 function cupIsDone() { return G.cup.champion !== null && G.cup.champion !== undefined; }
 
+// Art. 7.3 B : jusqu'aux 1/16ᵉ inclus, quand deux clubs de niveaux différents se
+// rencontrent, le match se joue chez le moins élevé. Art. 7.3 C : en 1/8ᵉ, la même règle
+// dès deux niveaux d'écart. C'est la règle qui fait la Coupe — un club de Régional tiré
+// contre l'Élite le reçoit, devant sa buvette et son affluence.
+// Le tour se reconnaît à son nombre de rencontres : plus de 8, on est avant les 1/8ᵉ.
+function inverserPourLePetit(m) {
+  const h = cupTeam(m.home), a = cupTeam(m.away);
+  if (h.cupDiv === undefined || a.cupDiv === undefined) return false;
+  const ecart = h.cupDiv - a.cupDiv;          // > 0 : le receveur est le plus haut placé
+  if (ecart <= 0) return false;               // le receveur est déjà le moins élevé
+  const nbMatchs = (G.cup.rounds[G.cup.roundIdx] || []).length;
+  if (nbMatchs > 8) return true;              // jusqu'aux 1/16ᵉ inclus : tout écart compte
+  if (nbMatchs === 8) return ecart >= 2;      // 1/8ᵉ : au moins deux niveaux
+  return false;                               // quarts et au-delà : le tirage fait foi
+}
+
 function runCupMatch(m) {
+  if (inverserPourLePetit(m)) { const t = m.home; m.home = m.away; m.away = t; }
   const home = cupTeam(m.home), away = cupTeam(m.away);
   const res = simulatePlayoffMatch(home, away); // pas de nul possible, cohérent avec une coupe à élimination directe
   m.res = res;
