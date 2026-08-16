@@ -3511,13 +3511,20 @@ function endSeason() {
       });
     }
     moveMsg = `<div class="modal-flash good"><b>🎉 Montée en ${escHtml(DIVISIONS[G.divIdx].label)}</b>Chèque de montée : ${euros(bonus)}. L'effectif progresse pour encaisser le niveau supérieur.</div>`;
-  } else if (rank >= n - 2 && G.divIdx > 0
+  } else if (estRelegable(rank, n) && G.divIdx > 0
              && !(G.divIdx === IDX_ELITE && rank === n - 2 && barrageGagne === true)
              && !(G.divIdx === IDX_N1 && playdownSauve === true)) {
     // le 9e d'Élite vainqueur de son barrage conserve sa place (art. 1.10 A)
     G.divIdx--;
     wasRelegated = true;
-    moveMsg = `<div class="modal-flash bad"><b>⚠️ Descente en ${escHtml(DIVISIONS[G.divIdx].label)}</b>Il faudra remonter la pente la saison prochaine.</div>`;
+    const quota = DESCENTES_DIVISION[G.divIdx + 1];
+    const surDivision = quota && G.poules && G.poules.length > 1;
+    const posNat = surDivision ? classementNational().findIndex(e => e.t === myTeam()) + 1 : 0;
+    moveMsg = `<div class="modal-flash bad"><b>⚠️ Descente en ${escHtml(DIVISIONS[G.divIdx].label)}</b>
+      ${surDivision
+        ? `${posNat}<sup>e</sup> sur ${classementNational().length} au classement de division : les ${quota} derniers descendent.
+           Ce n'est pas ta poule qui t'a condamné, c'est l'ensemble de la division.`
+        : `Il faudra remonter la pente la saison prochaine.`}</div>`;
   }
 
   if (wasPromoted || iAmChampion) jouerJingle('montee');
@@ -3689,6 +3696,25 @@ function pointsEntre(equipe, adversaires) {
 // Classement national : toutes les poules de la division, triées ensemble. Sert à
 // l'affichage et, plus tard, aux croisements de phase finale — la FFRS établit bien un
 // classement final unique par division (art. 4.6, 3.7, 2.9).
+// Nombre de descendants par division, quand elle se joue en plusieurs poules.
+// N3 : 8 sur 64 (art. 4.7 C). N2 : 4 sur 32 (art. 3.8 C).
+// La N1 et l'Élite n'y figurent pas : leurs descentes se décident par un match — play-down
+// (art. 2.8) et barrage (art. 1.8.2) — et non par un classement.
+const DESCENTES_DIVISION = { 2: 8, 3: 4 };
+
+// Le club est-il en position de descendre ? Sur le classement de division si elle compte
+// plusieurs poules, sur celui de la poule sinon. Être dernier de sa poule ne condamne donc
+// plus : encore faut-il l'être à l'échelle de la division.
+function estRelegable(rangPoule, taillePoule) {
+  const quota = DESCENTES_DIVISION[G.divIdx];
+  if (quota && G.poules && G.poules.length > 1) {
+    const cl = classementNational();
+    const pos = cl.findIndex(e => e.t === myTeam());
+    return pos >= 0 && pos >= cl.length - quota;
+  }
+  return rangPoule >= taillePoule - 2;
+}
+
 function classementNational() {
   const toutes = [];
   (G.poules || [G.teams]).forEach((p, k) => p.forEach(t => toutes.push({ t, poule: k })));
