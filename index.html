@@ -2415,6 +2415,37 @@ function noterForme(t, r) {
   if (t.forme5.length > 5) t.forme5.shift();
 }
 
+// Noms de sponsors par région. Cinq paliers régionaux ; le sixième reste national.
+// Ce sont des noms inventés, construits sur la géographie : nommer de vraies enseignes
+// exposerait le projet sans rien lui apporter.
+const SPONSORS_REGION = {
+  "Auvergne-Rhône-Alpes": ["Garage des Volcans", "Coop des Alpes", "BTP Rhône-Alpes", "Banque des Alpes", "Assurances d'Auvergne"],
+  "Bourgogne-Franche-Comté": ["Garage du Morvan", "Coop de Bourgogne", "BTP Franche-Comté", "Banque de Bourgogne", "Assurances du Jura"],
+  "Bretagne": ["Garage d'Armor", "Coop de Bretagne", "BTP Breizh", "Banque de Bretagne", "Assurances d'Armorique"],
+  "Centre-Val de Loire": ["Garage de Sologne", "Coop du Berry", "BTP Val de Loire", "Banque du Val de Loire", "Assurances de Touraine"],
+  "Corse": ["Garage de Balagne", "Coop de l'Île", "BTP Corsica", "Banque de Corse", "Assurances Insulaires"],
+  "Grand Est": ["Garage des Vosges", "Coop d'Alsace", "BTP Lorraine", "Banque de Lorraine", "Assurances du Grand Est"],
+  "Hauts-de-France": ["Garage Chartier", "Supermarché Coop'Sport", "BTP Picardie", "Banque Nord-Picardie", "Assurances des Hauts-de-France"],
+  "Île-de-France": ["Garage de Nanterre", "Coop Francilienne", "BTP Île-de-France", "Banque de Paris", "Assurances Franciliennes"],
+  "La Réunion": ["Garage de Saint-Denis", "Coop des Hauts", "BTP Océan Indien", "Banque de l'Océan Indien", "Assurances de La Réunion"],
+  "Normandie": ["Garage du Bocage", "Coop de Normandie", "BTP Cotentin", "Banque de Normandie", "Assurances Normandes"],
+  "Nouvelle-Aquitaine": ["Garage des Landes", "Coop d'Aquitaine", "BTP Atlantique", "Banque d'Aquitaine", "Assurances du Sud-Ouest"],
+  "Occitanie": ["Garage du Lauragais", "Coop d'Occitanie", "BTP Pyrénées", "Banque d'Occitanie", "Assurances du Midi"],
+  "Pays de la Loire": ["Garage de Vendée", "Coop Ligérienne", "BTP Loire-Atlantique", "Banque de Loire", "Assurances Ligériennes"],
+  "Provence-Alpes-Côte d’Azur": ["Garage du Verdon", "Coop de Provence", "BTP Méditerranée", "Banque de Provence", "Assurances de Méditerranée"]
+};
+
+// Nom du palier `idx` pour la région du club incarné. Repli sur le libellé d'origine si
+// la région est inconnue — une région ajoutée au relevé ne doit pas faire disparaître un
+// sponsor, seulement lui laisser son nom générique.
+function nomSponsor(idx) {
+  const tier = SPONSOR_TIERS[idx];
+  if (idx >= 5) return tier.name; // le palier national ne se régionalise pas
+  const a = (typeof assoIncarnee === 'function') ? assoIncarnee() : null;
+  const noms = a ? SPONSORS_REGION[a[3]] : null;
+  return (noms && noms[idx]) ? noms[idx] : tier.name;
+}
+
 const SPONSOR_TIERS = [
   { name: "Garage Chartier", income: 300, reqDiv: 2, reqStade: 1, reqConfort: 1 },
   { name: "Supermarché Coop'Sport", income: 700, reqDiv: 2, reqStade: 2, reqConfort: 2 },
@@ -2513,11 +2544,11 @@ async function toggleSponsor(idx) {
   if (sponsorSigned(idx)) {
     // résilier ce sponsor
     if (!(await ask({ title: "Résilier un sponsor", ico: '📝', danger: true, okLabel: "Résilier",
-      text: `Résilier le contrat avec ${tier.name} ?\n\nTu perds ${euros(tier.income)} par match.` }))) return;
+      text: `Résilier le contrat avec ${nomSponsor(idx)} ?\n\nTu perds ${euros(tier.income)} par match.` }))) return;
     G.club.sponsors = G.club.sponsors.filter(i => i !== idx);
   } else {
     if (!sponsorUnlocked(tier)) {
-      toast(`Prérequis non remplis pour ${tier.name} : ${sponsorRequirementText(tier)}.`);
+      toast(`Prérequis non remplis pour ${nomSponsor(idx)} : ${sponsorRequirementText(tier)}.`);
       return;
     }
     G.club.sponsors.push(idx);
@@ -2756,19 +2787,36 @@ function startPlayoffs() {
     cupAutoResolveRest();
     pushInbox('🏆 Coupe de France', `La coupe a été résolue automatiquement avant le coup d'envoi des playoffs (vainqueur : ${cupTeam(G.cup.champion).name}).`, 'cup');
   }
-  const seeds = sortedTeams().slice(0, 8);
+  // La barre des playoffs s'adapte à la poule : les poules réelles vont de 4 à 11 équipes,
+  // et un Top 8 figé sortait du tableau (seeds[7] indéfini) dans toute poule de moins de
+  // 8 — la saison ne pouvait alors pas se terminer.
+  const classe = sortedTeams();
+  const nQual = classe.length >= 8 ? 8 : (classe.length >= 4 ? 4 : 2);
+  const seeds = classe.slice(0, nQual);
   const seedRank = {};
   seeds.forEach((t, i) => { seedRank[t.id] = i; });
-  // bracket classique : 1v8, 4v5, 3v6, 2v7
-  const pairs = [[0, 7], [3, 4], [2, 5], [1, 6]];
-  const quarts = pairs.map(([a, b], i) => makeSeries(seeds[a].id, seeds[b].id, `Quart de finale ${i + 1}`));
-  G.playoff = { stage: 'quarts', seedRank, quarts, demis: null, finale: null, champion: null, finalists: [], humanOut: false };
+  let stage, quarts = null, demis = null, finale = null;
+  if (nQual === 8) {
+    // bracket classique : 1v8, 4v5, 3v6, 2v7
+    quarts = [[0, 7], [3, 4], [2, 5], [1, 6]]
+      .map(([a, b], i) => makeSeries(seeds[a].id, seeds[b].id, `Quart de finale ${i + 1}`));
+    stage = 'quarts';
+  } else if (nQual === 4) {
+    // 1v4 et 2v3, comme le règlement le prévoit en N3, N2 et N1 (art. 4.4 G, 3.5 E, 2.6 C)
+    demis = [[0, 3], [1, 2]]
+      .map(([a, b], i) => makeSeries(seeds[a].id, seeds[b].id, `Demi-finale ${i + 1}`));
+    stage = 'demis';
+  } else {
+    finale = [makeSeries(seeds[0].id, seeds[1].id, 'Finale')];
+    stage = 'finale';
+  }
+  G.playoff = { stage, seedRank, quarts, demis, finale, champion: null, finalists: [], humanOut: false, nQual };
   renderAll();
   const myId = myTeam().id;
   jouerMusique('playoffs');
   notify({
     title: "Place aux playoffs", ico: '🏒',
-    html: `<p class="modal-note">Saison régulière terminée. Le Top 8 est qualifié — séries au meilleur des 3 :
+    html: `<p class="modal-note">Saison régulière terminée. Le Top ${seeds.length} est qualifié — séries au meilleur des 3 :
       aller, retour, et match d'appui si nécessaire.</p>
       <div class="modal-sub">Qualifiés</div>
       <ul class="modal-list">${seeds.map((t, i) =>
@@ -4382,7 +4430,7 @@ function renderEffectif() {
 function renderClassement() {
   const classe = sortedTeams();
   const rows = classe.map((t, i) => `
-    ${i === 8 ? '<div class="coupe-po"><i></i><span>Barre des playoffs</span><i></i></div>' : ''}
+    ${i === (classe.length >= 8 ? 8 : 4) ? '<div class="coupe-po"><i></i><span>Barre des playoffs</span><i></i></div>' : ''}
     <div class="clst-l ${t.human ? 'me' : ''} ${i < 3 ? 'podium' : ''}">
       <span class="rk">${i + 1}</span>
       <span class="nm">${t.name}</span>
@@ -4433,32 +4481,32 @@ function renderClassement() {
   }
 
   const bracket = po ? `
-    <h2>🏆 Playoffs — ${DIVISIONS[G.divIdx].label} (Top 8, séries au meilleur des 3)</h2>
+    <h2>🏆 Playoffs — ${DIVISIONS[G.divIdx].label} (Top ${po.nQual || 8}, séries au meilleur des 3)</h2>
     <div class="bracket">
-      <div class="bcol qf">
+      ${po.quarts ? `<div class="bcol qf">
         <div class="bround-label">Quarts</div>
         ${bbox(po.quarts[0])}${bbox(po.quarts[1])}
-      </div>
-      <div class="bcol sf">
+      </div>` : ''}
+      ${po.demis || po.stage === 'quarts' ? `<div class="bcol sf">
         <div class="bround-label">Demies</div>
         ${bbox(po.demis && po.demis[0])}
-      </div>
+      </div>` : ''}
       <div class="bcol final">
         <div class="bround-label">Finale</div>
         ${bbox(po.finale && po.finale[0], 'final-box')}
         ${po.champion !== null && po.champion !== undefined ? `<div class="bchampion">🏆 ${playoffTeam(po.champion).name}</div>` : ''}
       </div>
-      <div class="bcol sf">
+      ${po.demis || po.stage === 'quarts' ? `<div class="bcol sf">
         <div class="bround-label">Demies</div>
         ${bbox(po.demis && po.demis[1])}
-      </div>
-      <div class="bcol qf">
+      </div>` : ''}
+      ${po.quarts ? `<div class="bcol qf">
         <div class="bround-label">Quarts</div>
         ${bbox(po.quarts[2])}${bbox(po.quarts[3])}
-      </div>
+      </div>` : ''}
     </div>
     ${po.humanOut && po.stage !== 'done' ? "<p class=\"note\" style=\"text-align:center\">Ton équipe est éliminée — le reste du tableau se résout automatiquement au clic sur le bouton d'action.</p>" : ''}
-  ` : `<p class="note">Les 8 premiers du classement disputeront les playoffs à l'issue de la saison régulière : quarts de finale, demi-finales puis finale, chaque tour en série aller-retour + match d'appui éventuel (au meilleur des 3).</p>`;
+  ` : `<p class="note">Les ${G.teams.length >= 8 ? 8 : (G.teams.length >= 4 ? 4 : 2)} premiers du classement disputeront les playoffs à l'issue de la saison régulière, chaque tour en série aller-retour + match d'appui éventuel (au meilleur des 3).</p>`;
 
   const journee = Math.min(G.day + 1, G.schedule.length);
   document.getElementById('tab-classement').innerHTML = `
@@ -4694,7 +4742,7 @@ function renderClub() {
     else action = `<span class="tag" style="color:var(--rouge)">Requis : ${sponsorRequirementText(s)}</span>`;
     return `<div class="card" style="${signed ? 'border-color:var(--vert)' : !unlocked ? 'opacity:.6' : ''}">
       <img class="sponsor-img" src="${sponsorImage(i)}" alt="" onerror="this.remove()">
-      <b>${s.name}</b> — ${euros(s.income)}/match<br>${action}
+      <b>${nomSponsor(i)}</b> — ${euros(s.income)}/match<br>${action}
     </div>`;
   }).join('');
   const sponsorTotal = totalSponsorIncome();
