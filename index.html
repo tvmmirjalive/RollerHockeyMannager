@@ -2854,6 +2854,18 @@ function makeSeries(homeId, awayId, label) {
 function betterSeed(a, b) { return G.playoff.seedRank[a] < G.playoff.seedRank[b] ? a : b; }
 function worseSeed(a, b) { return G.playoff.seedRank[a] < G.playoff.seedRank[b] ? b : a; }
 
+// Nombre de qualifiés pour la phase finale. C'est la DIVISION qui décide, pas l'effectif :
+// l'Élite qualifie ses huit premiers (art. 1.7 C), les divisions nationales les quatre
+// premiers de chaque poule (art. 4.4 G, 3.5 E, 2.6 C), et la Pré-Nationale suit une formule
+// libre fixée par sa ligue (art. 9.2 E) — on retient quatre, comme au-dessus.
+// Le résultat est borné par la taille réelle de la poule : les poules régionales
+// descendent à quatre équipes, et un tableau plus large qu'elles planterait.
+function nbQualifies(divIdx, taillePoule) {
+  const vise = (divIdx === DIVISIONS.length - 1) ? 8 : 4;
+  if (taillePoule < 4) return 2;
+  return Math.min(vise, taillePoule >= 8 ? vise : 4);
+}
+
 function startPlayoffs() {
   // garantie : la Coupe de France doit toujours être terminée avant les playoffs (donc bien avant les demies)
   if (G.cup && G.cup.season === G.season && !cupIsDone()) {
@@ -2864,7 +2876,7 @@ function startPlayoffs() {
   // et un Top 8 figé sortait du tableau (seeds[7] indéfini) dans toute poule de moins de
   // 8 — la saison ne pouvait alors pas se terminer.
   const classe = sortedTeams();
-  const nQual = classe.length >= 8 ? 8 : (classe.length >= 4 ? 4 : 2);
+  const nQual = nbQualifies(G.divIdx, classe.length);
   const seeds = classe.slice(0, nQual);
   const seedRank = {};
   seeds.forEach((t, i) => { seedRank[t.id] = i; });
@@ -3131,8 +3143,50 @@ function endSeason() {
     trophyMsg = `<div class="modal-flash warn"><b>🥈 Finaliste des playoffs ${escHtml(div.label)}</b>Battu en finale, mais la saison reste réussie.</div>`;
   }
 
-  // la montée se joue désormais aux playoffs (les 2 finalistes montent) ; à défaut (ancienne sauvegarde), top 2 du classement
+  // ---- Barrage Élite/N1 (art. 1.8.2 et 2.10 A) ----
+  // Le 9e d'Élite défend sa place contre le 2e de N1, sur le terrain du club de l'Élite.
+  // Le champion de N1 monte directement ; le 10e d'Élite descend directement. Seule la
+  // place charnière se dispute — c'est là qu'est la tension.
+  const IDX_ELITE = DIVISIONS.length - 1, IDX_N1 = IDX_ELITE - 1;
+  let barrageMsg = null, barrageGagne = null;
+
+  function jouerBarrage(adverseDef, adverseDiv, aDomicile) {
+    const adv = makeTeam({ name: adverseDef.name, short: adverseDef.short, force: adverseDef.force },
+                         999, DIVISIONS[adverseDiv].qual);
+    const moi = myTeam();
+    const res = aDomicile ? simulatePlayoffMatch(moi, adv) : simulatePlayoffMatch(adv, moi);
+    const mesButs = aDomicile ? res.gH : res.gA;
+    const sesButs = aDomicile ? res.gA : res.gH;
+    return { gagne: mesButs > sesButs, adv, mesButs, sesButs, ot: res.wentOT };
+  }
+
+  if (G.divIdx === IDX_ELITE && rank === n - 2) {
+    // 9e d'Élite : barrage à domicile pour rester dans l'élite
+    const advDef = [...(DIVISIONS[IDX_N1].teams || [])].sort((a, b) => (b.force || 0) - (a.force || 0))[0];
+    if (advDef) {
+      const b = jouerBarrage(advDef, IDX_N1, true);
+      barrageGagne = b.gagne;
+      barrageMsg = `<div class="modal-flash ${b.gagne ? 'good' : 'bad'}">
+        <b>${b.gagne ? '🛡️ Barrage remporté — maintien en Élite' : '⚠️ Barrage perdu — descente en Nationale 1'}</b>
+        9ᵉ de la phase de qualification, tu recevais ${escHtml(b.adv.name)}, 2ᵉ de Nationale 1.
+        Score : ${b.mesButs} — ${b.sesButs}${b.ot ? ' après prolongation' : ''}.</div>`;
+    }
+  } else if (G.divIdx === IDX_N1 && po && iAmFinalist && !iAmChampion) {
+    // 2e de N1 : barrage à l'extérieur, chez le club de l'Élite
+    const advDef = [...(DIVISIONS[IDX_ELITE].teams || [])].sort((a, b) => (a.force || 0) - (b.force || 0))[0];
+    if (advDef) {
+      const b = jouerBarrage(advDef, IDX_ELITE, false);
+      barrageGagne = b.gagne;
+      barrageMsg = `<div class="modal-flash ${b.gagne ? 'good' : 'warn'}">
+        <b>${b.gagne ? '🎉 Barrage remporté — montée en Élite' : '🥈 Barrage perdu — maintien en Nationale 1'}</b>
+        Finaliste des playoffs, tu te déplaçais chez ${escHtml(b.adv.name)}, 9ᵉ de l'Élite —
+        le règlement donne le terrain au club de l'Élite. Score : ${b.mesButs} — ${b.sesButs}${b.ot ? ' après prolongation' : ''}.</div>`;
+    }
+  }
+
+  // la montée se joue aux playoffs ; en N1 le finaliste doit en plus gagner son barrage
   let promote = rank === 0 || (po ? iAmFinalist : rank < 2); // `let` : une salle non classée peut l'annuler
+  if (G.divIdx === IDX_N1 && barrageGagne !== null) promote = barrageGagne || iAmChampion;
   let moveMsg = "";
   let wasPromoted = false, wasRelegated = false;
   // Art. 2.2.7.2 : sans installation classée pour la division visée, la montée est
@@ -3168,7 +3222,9 @@ function endSeason() {
       });
     }
     moveMsg = `<div class="modal-flash good"><b>🎉 Montée en ${escHtml(DIVISIONS[G.divIdx].label)}</b>Chèque de montée : ${euros(bonus)}. L'effectif progresse pour encaisser le niveau supérieur.</div>`;
-  } else if (rank >= n - 2 && G.divIdx > 0) {
+  } else if (rank >= n - 2 && G.divIdx > 0
+             && !(G.divIdx === IDX_ELITE && rank === n - 2 && barrageGagne === true)) {
+    // le 9e d'Élite vainqueur de son barrage conserve sa place (art. 1.10 A)
     G.divIdx--;
     wasRelegated = true;
     moveMsg = `<div class="modal-flash bad"><b>⚠️ Descente en ${escHtml(DIVISIONS[G.divIdx].label)}</b>Il faudra remonter la pente la saison prochaine.</div>`;
@@ -3178,7 +3234,7 @@ function endSeason() {
   else if (wasRelegated) jouerJingle('defaite');
   notify({
     title: `Fin de saison ${seasonLabel(G.season)}`, ico: '📅',
-    html: `${trophyMsg}${montreeRefusee || ''}${moveMsg}
+    html: `${trophyMsg}${barrageMsg || ''}${montreeRefusee || ''}${moveMsg}
       <div class="modal-sub">Bilan de la saison régulière</div>
       <div class="modal-stat"><span>Division</span><span>${escHtml(div.label)}</span></div>
       <div class="modal-stat"><span>Classement</span><span>${rank + 1}<sup>e</sup> sur ${n}</span></div>
@@ -4581,7 +4637,7 @@ function renderEffectif() {
 function renderClassement() {
   const classe = sortedTeams();
   const rows = classe.map((t, i) => `
-    ${i === (classe.length >= 8 ? 8 : 4) ? '<div class="coupe-po"><i></i><span>Barre des playoffs</span><i></i></div>' : ''}
+    ${i === nbQualifies(G.divIdx, classe.length) ? '<div class="coupe-po"><i></i><span>Barre des playoffs</span><i></i></div>' : ''}
     <div class="clst-l ${t.human ? 'me' : ''} ${i < 3 ? 'podium' : ''}">
       <span class="rk">${i + 1}</span>
       <span class="nm">${t.name}</span>
@@ -4657,7 +4713,7 @@ function renderClassement() {
       </div>` : ''}
     </div>
     ${po.humanOut && po.stage !== 'done' ? "<p class=\"note\" style=\"text-align:center\">Ton équipe est éliminée — le reste du tableau se résout automatiquement au clic sur le bouton d'action.</p>" : ''}
-  ` : `<p class="note">Les ${G.teams.length >= 8 ? 8 : (G.teams.length >= 4 ? 4 : 2)} premiers du classement disputeront les playoffs à l'issue de la saison régulière, chaque tour en série aller-retour + match d'appui éventuel (au meilleur des 3).</p>`;
+  ` : `<p class="note">Les ${nbQualifies(G.divIdx, G.teams.length)} premiers du classement disputeront les playoffs à l'issue de la saison régulière, chaque tour en série aller-retour + match d'appui éventuel (au meilleur des 3).</p>`;
 
   const journee = Math.min(G.day + 1, G.schedule.length);
   document.getElementById('tab-classement').innerHTML = `
