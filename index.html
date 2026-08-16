@@ -509,6 +509,10 @@
     box-shadow: 0 0 0 4px color-mix(in srgb, var(--div-color, var(--tan)) 22%, transparent);
   }
   .ts-team-name { font-size: 12.5px; font-weight: 600; line-height: 1.28; }
+  /* La ville sous le nom : discrète, mais c'est elle qui permet de se repérer parmi
+     184 clubs dont les surnoms ne disent pas la géographie. */
+  .ts-team-ville { font-size: 11px; color: var(--muted); margin-top: 2px;
+                   overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .ts-team-card.ts-defaut { border-color: var(--vert); }
   .ts-team-card.ts-defaut .ts-crest { border-color: var(--vert);
     background: radial-gradient(circle at 34% 28%, color-mix(in srgb, var(--vert) 38%, var(--panel2)), var(--panel)); }
@@ -1496,6 +1500,16 @@ const CLUB_DEFAUT = CLUBS_ASSOS.findIndex(a => a[0] === 'Les Outlaws');
 // n'est fait, ce qui garantit qu'une poule est toujours constructible.
 let CLUB_ASSO = CLUB_DEFAUT >= 0 ? CLUB_DEFAUT : 0;
 
+// Ville affichée, quand le siège social du relevé ne correspond pas à la ville sous
+// laquelle le club est connu. Les Outlaws sont déclarés à La Neuville-Sire-Bernard,
+// commune de 300 habitants, mais c'est le club de Moreuil — et c'est sous ce nom qu'il
+// figure dans le jeu depuis l'origine.
+const VILLES_AFFICHAGE = { 'Les Outlaws': 'Moreuil' };
+
+function villeDe(a) {
+  return VILLES_AFFICHAGE[a[0]] || a[1] || '';
+}
+
 function assoIncarnee() {
   return (CLUB_ASSO !== null && CLUBS_ASSOS[CLUB_ASSO]) ? CLUBS_ASSOS[CLUB_ASSO] : null;
 }
@@ -1737,15 +1751,20 @@ function renderTeamSelectScreen() {
       <div class="ts-team-grid">
         ${parDiv[di].map((ai) => {
           const a = CLUBS_ASSOS[ai];
-          const t = { name: a[0], short: sigleDe(a[0]), ville: a[1] };
+          const ville = villeDe(a);
+          const t = { name: a[0], short: sigleDe(a[0]), ville };
           const delay = Math.min(cardIdx++ * 12, 520);
+          // La recherche porte sur le nom ET sur les deux orthographes de ville : celle
+          // affichée et celle du relevé, pour qu'un joueur trouve son club quel que soit
+          // le nom qu'il tape.
           return `
           <div class="ts-team-card ${ai === CLUB_DEFAUT ? 'ts-defaut' : ''}"
-               data-name="${(a[0] + ' ' + a[1]).toLowerCase()}"
+               data-name="${(a[0] + ' ' + ville + ' ' + a[1]).toLowerCase()}"
                style="animation-delay:${delay}ms"
                onclick="openTeamConfirm(${ai})">
             <div class="ts-crest">${tsCrestLabel(t)}</div>
             <div class="ts-team-name">${t.name}</div>
+            ${ville ? `<div class="ts-team-ville">${escHtml(ville)}</div>` : ''}
             ${ai === CLUB_DEFAUT ? '<span class="ts-flag">club d\'origine</span>' : ''}
           </div>`;
         }).join('')}
@@ -1794,8 +1813,8 @@ function openTeamConfirm(assoId) {
   // On annonce la ville et le niveau réel : c'est ce qui situe le club pour le joueur,
   // et ce qui explique pourquoi il démarrera quand même en Régional.
   origin.textContent = a[4] === 0
-    ? `${a[1]} — club de Régional`
-    : `${a[1]} — habituellement en ${div.label}`;
+    ? `${villeDe(a)} — club de Régional`
+    : `${villeDe(a)} — habituellement en ${div.label}`;
   origin.style.color = color;
   const crest = document.getElementById('tsConfirmCrest');
   crest.textContent = tsCrestLabel({ short: sigleDe(a[0]), name: a[0] });
@@ -2544,6 +2563,9 @@ function logeDivRequirement(nextLoge) {
 const MAX_UPGRADES_PER_SEASON = 2;
 async function upgradeInfra(kind) {
   if (G.club[kind] >= 10) return;
+  // Relevé avant travaux : c'est le passage de « insuffisant » à « suffisant » qui
+  // déclenche la confirmation, pas l'état final seul.
+  const suffisantAvant = (G.divIdx + 1 < DIVISIONS.length) && stadeSuffisantPour(G.divIdx + 1);
   const nextLevel = G.club[kind] + 1;
   const reqDiv = infraLevelDivRequirement(nextLevel);
   if (G.divIdx < reqDiv) {
@@ -2583,6 +2605,7 @@ async function buyLoge() {
   G.budget -= cost;
   G.club.loges++;
   G.upgradesThisSeason++;
+  confirmerTravauxSuffisants(suffisantAvant);
   renderAll();
 }
 function sponsorSigned(idx) {
@@ -2986,6 +3009,68 @@ function advancePlayoffs() {
   renderAll();
 }
 
+
+// ==================== Alertes de la direction sur les travaux ====================
+// La salle conditionne la montée depuis la v65. Ces messages vont chercher le joueur au
+// lieu d'attendre qu'il ouvre l'onglet Club — un refus de montée découvert en fin de
+// saison serait vécu comme une punition arbitraire.
+
+// Corps commun des alertes : ce qui manque, ce que ça coûte, et s'il reste un chantier.
+// Les deux derniers chiffres comptent autant que le premier : une alerte qui dit quoi
+// faire sans dire si c'est faisable ne sert à rien.
+function detailTravauxStade(divCible) {
+  const req = classeRequise(divCible);
+  const manque = req.stade - G.club.stade;
+  const cout = upgradeCost('stade');
+  const restants = MAX_UPGRADES_PER_SEASON - G.upgradesThisSeason;
+  const plafond = infraLevelDivRequirement(G.club.stade + 1);
+  const bloqueParDivision = G.divIdx < plafond;
+  return `La ${escHtml(DIVISIONS[divCible].label)} exige une salle de <b>classe ${req.classe}</b>,
+    soit un stade de niveau ${req.stade}. Le nôtre est au niveau ${G.club.stade} :
+    <b>${manque} niveau${manque > 1 ? 'x' : ''}</b> à gagner.
+    ${bloqueParDivision
+      ? `Le niveau ${G.club.stade + 1} n'est pas autorisé avant la ${escHtml(DIVISIONS[plafond].label)} :
+         il faudra d'abord monter, les travaux suivront.`
+      : `Prochain chantier : ${euros(cout)}. Chantiers encore disponibles cette saison :
+         <b>${restants}/${MAX_UPGRADES_PER_SEASON}</b>.`}`;
+}
+
+// Alerte de début de saison : informative, sans urgence.
+function alerterDirectionDebutSaison() {
+  const suiv = G.divIdx + 1;
+  if (suiv >= DIVISIONS.length || stadeSuffisantPour(suiv)) return;
+  pushInbox('🏗️ La direction sur les installations',
+    `Un point avant d'entamer la saison. ${detailTravauxStade(suiv)}
+     Sportivement, rien ne nous empêche de viser plus haut — administrativement, si.`, 'board');
+}
+
+// Relance en cours de saison : seulement si la montée devient une perspective réelle.
+// Une seule fois par saison, passé le tiers du calendrier, pour ne pas harceler.
+function alerterDirectionSiMontee() {
+  const suiv = G.divIdx + 1;
+  if (suiv >= DIVISIONS.length || stadeSuffisantPour(suiv)) return;
+  if (G.alerteStadeSaison === G.season) return;
+  if (G.day < Math.floor(G.schedule.length / 3)) return;
+  const rang = sortedTeams().indexOf(myTeam());
+  if (rang < 0 || rang > 1) return; // seulement en position de montée
+  G.alerteStadeSaison = G.season;
+  pushInbox('⚠️ La direction insiste sur les travaux',
+    `Nous sommes ${rang + 1}${rang === 0 ? 'ᵉʳ' : 'ᵉ'} et la montée se dessine. Or elle nous serait
+     <b>refusée en l'état</b>. ${detailTravauxStade(suiv)}`, 'board');
+  G.tabNotify.club = true;
+}
+
+// Confirmation : le jeu doit aussi savoir dire que c'est réglé.
+function confirmerTravauxSuffisants(avant) {
+  const suiv = G.divIdx + 1;
+  if (suiv >= DIVISIONS.length) return;
+  if (avant || !stadeSuffisantPour(suiv)) return;
+  pushInbox('✅ Installation homologuée',
+    `Les travaux sont réceptionnés. Notre salle est désormais de <b>classe
+     ${classeActuelle()}</b> : elle satisfait aux exigences de la
+     ${escHtml(DIVISIONS[suiv].label)}. La montée ne dépend plus que du terrain.`, 'board');
+}
+
 function assignBoardObjective() {
   const n = G.teams.length;
   const lastRank = G.lastSeasonRank;
@@ -3007,6 +3092,7 @@ function assignBoardObjective() {
   }
   G.boardObjective = objective;
   pushInbox('📋 Objectif de la direction', `Pour cette saison en ${DIVISIONS[G.divIdx].label}, la direction fixe l'objectif : ${objective.label}.`, 'board');
+  alerterDirectionDebutSaison();
 }
 
 function evaluateBoardObjective(rank, iAmChampion, n) {
@@ -3715,6 +3801,9 @@ function checkUnlockNotifications() {
     G.cupKnownUnlockedRound = 0;
     G.tabNotify.coupe = true;
   }
+
+  // la direction relance sur les travaux si la montée se dessine sans salle homologuée
+  alerterDirectionSiMontee();
 
   // nouveaux messages non lus dans la boîte de réception
   if (G.inbox && G.inbox.some(m => !m.read)) G.tabNotify.inbox = true;
