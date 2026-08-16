@@ -4285,11 +4285,15 @@ const ECRANS = {
   options:      { label: 'Réglages',     court: 'Réglages',  emoji: '⚙️' }
 };
 
-// Ordre par défaut : ce qu'on consulte le plus souvent d'abord.
-const NAV_DEFAUT_ORDRE = ['effectif', 'classement', 'entrainement', 'transferts',
-                          'club', 'calendrier', 'coupe', 'inbox', 'historique',
+// Ordre par défaut : le rythme réel d'une journée. On regarde son effectif, on
+// l'entraîne, on voit où on en est au classement, puis on gère le club. Les transferts
+// passent dans le tiroir « Plus » : ce n'est pas un écran qu'on ouvre chaque journée.
+// Le cinquième emplacement de la barre est « Plus », ajouté d'office quand tous les
+// écrans ne tiennent pas — il n'a pas à figurer dans cette liste.
+const NAV_DEFAUT_ORDRE = ['effectif', 'entrainement', 'classement', 'club',
+                          'transferts', 'calendrier', 'coupe', 'inbox', 'historique',
                           'aide', 'options'];
-const NAV_DEFAUT_ACTIFS = ['effectif', 'classement', 'entrainement', 'transferts'];
+const NAV_DEFAUT_ACTIFS = ['effectif', 'entrainement', 'classement', 'club'];
 
 function reglagesDefaut() {
   return {
