@@ -1661,6 +1661,12 @@ function installerPoules(divIdx, equipeJoueur) {
   } else {
     const { poules, idxJoueur } = construirePoules(divIdx);
     poules[idxJoueur] = equipeJoueur;      // la poule du joueur est la sienne, pas une copie
+    // Réattribution globale des identifiants : la poule du joueur arrive numérotée à
+    // partir de 0 et entrait en collision avec la première poule construite. Mesuré en
+    // N3 : 63 équipes pour 56 identifiants, 7 doublons. Sans effet tant que les phases
+    // finales restaient dans une seule poule, fatal dès qu'elles la dépassent.
+    let idUnique = 0;
+    poules.forEach(p => p.forEach(t => { t.id = idUnique++; }));
     G.poules = poules;
     G.pouleIdx = idxJoueur;
   }
@@ -3066,7 +3072,14 @@ function simulatePlayoffMatch(home, away) {
   return { gH, gA, scorers, penalties, wentOT };
 }
 
-function playoffTeam(id) { return G.teams.find(t => t.id === id); }
+// La phase finale mêle les poules : la recherche doit les couvrir toutes.
+function playoffTeam(id) {
+  for (const p of (G.poules || [G.teams])) {
+    const t = p.find(x => x.id === id);
+    if (t) return t;
+  }
+  return undefined;
+}
 
 function makeSeries(homeId, awayId, label) {
   // homeId = mieux classe en saison reguliere : recoit le match aller et l'eventuel match d'appui
@@ -3088,6 +3101,23 @@ function nbQualifies(divIdx, taillePoule) {
   return Math.min(vise, taillePoule >= 8 ? vise : 4);
 }
 
+// Qualifiés de la division entière. Chaque poule envoie ses premiers (nbQualifies), puis
+// le tableau se remplit PAR RANG : tous les 1ᵉʳˢ d'abord, puis tous les 2ᵉˢ, etc. Le
+// champion de chaque poule est ainsi toujours du tableau, et les places restantes vont aux
+// meilleurs suivants. Huit places, ce que la machine à états sait tenir.
+function qualifiesDivision(divIdx) {
+  const poules = (G.poules && G.poules.length) ? G.poules : [G.teams];
+  const tri = (a, b) => b.pts - a.pts || (b.bp - b.bc) - (a.bp - a.bc) || b.bp - a.bp;
+  const parPoule = poules.map(p => [...p].sort(tri).slice(0, nbQualifies(divIdx, p.length)));
+  const out = [];
+  const profondeur = Math.max(...parPoule.map(q => q.length), 0);
+  for (let rang = 0; rang < profondeur && out.length < 8; rang++) {
+    parPoule.map(q => q[rang]).filter(Boolean).sort(tri)
+      .forEach(t => { if (out.length < 8) out.push(t); });
+  }
+  return out;
+}
+
 function startPlayoffs() {
   // garantie : la Coupe de France doit toujours être terminée avant les playoffs (donc bien avant les demies)
   if (G.cup && G.cup.season === G.season && !cupIsDone()) {
@@ -3097,9 +3127,8 @@ function startPlayoffs() {
   // La barre des playoffs s'adapte à la poule : les poules réelles vont de 4 à 11 équipes,
   // et un Top 8 figé sortait du tableau (seeds[7] indéfini) dans toute poule de moins de
   // 8 — la saison ne pouvait alors pas se terminer.
-  const classe = sortedTeams();
-  const nQual = nbQualifies(G.divIdx, classe.length);
-  const seeds = classe.slice(0, nQual);
+  const seeds = qualifiesDivision(G.divIdx);
+  const nQual = seeds.length;
   const seedRank = {};
   seeds.forEach((t, i) => { seedRank[t.id] = i; });
   let stage, quarts = null, demis = null, finale = null;
@@ -4985,6 +5014,25 @@ function renderClassement() {
     ${po.humanOut && po.stage !== 'done' ? "<p class=\"note\" style=\"text-align:center\">Ton équipe est éliminée — le reste du tableau se résout automatiquement au clic sur le bouton d'action.</p>" : ''}
   ` : `<p class="note">Les ${nbQualifies(G.divIdx, G.teams.length)} premiers du classement disputeront les playoffs à l'issue de la saison régulière, chaque tour en série aller-retour + match d'appui éventuel (au meilleur des 3).</p>`;
 
+  // Classement de toute la division, sous celui de la poule. Indispensable dès que la
+  // phase finale se joue entre poules : on ne se compare plus à ses seuls adversaires
+  // directs. Replié par défaut — c'est un repère, pas l'écran principal.
+  const national = (G.poules && G.poules.length > 1) ? `
+    <details class="card">
+      <summary><b>🇫🇷 Classement de ${escHtml(DIVISIONS[G.divIdx].label)}</b> — ${classementNational().length} équipes, ${G.poules.length} poules</summary>
+      <table class="tbl"><thead>
+        <tr><th>#</th><th>Équipe</th><th>Poule</th><th>J</th><th>Pts</th><th>Diff</th></tr>
+      </thead><tbody>
+      ${classementNational().map((e, i) => `
+        <tr class="${e.t.human ? 'me' : ''}">
+          <td>${i + 1}</td><td>${escHtml(e.t.name)}</td>
+          <td>${e.poule + 1}${e.poule === G.pouleIdx ? ' ★' : ''}</td>
+          <td>${e.t.v + (e.t.vp || 0) + (e.t.dp || 0) + (e.t.n || 0) + e.t.d}</td>
+          <td><b>${e.t.pts}</b></td><td>${e.t.bp - e.t.bc}</td>
+        </tr>`).join('')}
+      </tbody></table>
+    </details>` : '';
+
   const journee = Math.min(G.day + 1, G.schedule.length);
   document.getElementById('tab-classement').innerHTML = `
     ${bandeau('classement', `${DIVISIONS[G.divIdx].label} · Saison ${seasonLabel(G.season)}`,
@@ -4996,9 +5044,14 @@ function renderClassement() {
         <tr><th>#</th><th>Équipe</th><th>J</th><th>V</th><th>VP</th><th>DP</th><th>D</th><th>BP</th><th>BC</th><th>Diff</th><th>Pts</th></tr>
         ${detail}
       </table>
-      Les 8 premiers disputent les playoffs : quarts, demi-finales puis finale, chaque tour au
-      meilleur des 3 (aller, retour, match d'appui éventuel). Les deux finalistes montent.
+      ${(G.poules && G.poules.length > 1)
+        ? `Chaque poule qualifie ses ${nbQualifies(G.divIdx, G.teams.length)} premiers. Le tableau final réunit
+           huit équipes de toute la division : d'abord les champions de poule, puis les meilleurs suivants.`
+        : `Les ${nbQualifies(G.divIdx, G.teams.length)} premiers disputent les playoffs.`}
+      Quarts, demi-finales puis finale, chaque tour au meilleur des 3 (aller, retour,
+      match d'appui éventuel). Les deux finalistes montent.
     </div>
+    ${national}
     ${prochaine}
     ${bracket}`;
 }
