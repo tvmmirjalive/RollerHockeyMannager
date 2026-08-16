@@ -1559,7 +1559,7 @@ function chargerPoules() {
     // compléter si la poule est courte (équipes retirées avec l'association incarnée)
     let garde = 0;
     while (teams.length < cible && garde++ < 40) {
-      const remplacant = meilleurDisponible(di, sect.region, utilises, teams);
+      const remplacant = meilleurDisponible(di, sect.region, utilises, teams, sect.pid);
       if (!remplacant) break;
       teams.push(remplacant);
     }
@@ -1593,17 +1593,36 @@ function forceDepart(divHaute) {
 }
 
 // Meilleure équipe encore libre du même secteur, division inférieure d'abord.
-function meilleurDisponible(divIdx, region, utilises, dejaLa) {
+// Régions présentes dans une poule : sert à juger si un club y aurait sa place.
+// Mémoïsé — chargerPoules() interroge la même poule plusieurs fois de suite.
+const _regionsPoule = {};
+function regionsDePoule(pid) {
+  if (_regionsPoule[pid]) return _regionsPoule[pid];
+  const s = new Set();
+  for (const t of CLUBS_EQUIPES) if (t[3] === pid) s.add(CLUBS_ASSOS[t[5]][3]);
+  _regionsPoule[pid] = s;
+  return s;
+}
+
+// Meilleure équipe encore libre pour compléter une poule dégarnie.
+// Pas de filtre éliminatoire mais un classement par proximité : même région d'abord,
+// puis région déjà présente dans la poule, puis n'importe laquelle. Un filtre strict sur
+// la région laissait la poule N3 de Bretagne à 6 équipes au lieu de 8, faute de clubs
+// bretons libres — alors que cette poule mêle Bretagne et Normandie.
+function meilleurDisponible(divIdx, region, utilises, dejaLa, pidCible) {
   const noms = new Set(dejaLa.map(t => t.name));
+  const regions = pidCible !== undefined ? regionsDePoule(pidCible) : new Set([region]);
   for (const dd of [divIdx - 1, divIdx + 1, divIdx]) {
     if (dd < 0 || dd >= DIVISIONS.length) continue;
-    let best = null;
+    let best = null, bestScore = -1;
     for (const t of CLUBS_EQUIPES) {
       if (t[2] !== dd) continue;
       if (CLUB_ASSO !== null && t[5] === CLUB_ASSO) continue;
       if (utilises.has(t[0]) || noms.has(t[0])) continue;
-      if (CLUBS_ASSOS[t[5]][3] !== region) continue;
-      if (!best || t[4] > best[4]) best = t;
+      const r = CLUBS_ASSOS[t[5]][3];
+      const proximite = (r === region) ? 2 : (regions.has(r) ? 1 : 0);
+      const score = proximite * 1000 + t[4]; // la force départage à proximité égale
+      if (score > bestScore) { bestScore = score; best = t; }
     }
     if (best) return { name: best[0], short: best[1], force: best[4], assoId: best[5] };
   }
