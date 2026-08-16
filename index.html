@@ -2275,7 +2275,27 @@ function autoLineup(team) {
   if (gks[0]) gks[0].starter = true;
   field.slice(0, 8).forEach(p => p.starter = true);
 }
-function effOv(p) { return overall(p) * (p.forme / 100) * (0.85 + 0.15 * (p.moral || 70) / 100); }
+function effOv(p) {
+  const brut = overall(p) - (p.consigne === 'prudent' ? MALUS_CONSIGNE : 0);
+  return brut * (p.forme / 100) * (0.85 + 0.15 * (p.moral || 70) / 100);
+}
+
+// Consigne de prudence (le levier de l'art. 10.1.7 C).
+// Un joueur sous consigne commet nettement moins de fautes de crosse, mais joue en
+// retrait. C'est un arbitrage assumé : on calme son cogneur en acceptant qu'il pèse
+// moins. Sans ce coût, la consigne serait un bouton gratuit et la règle sans intérêt.
+const MALUS_CONSIGNE = 4;
+
+function basculerConsigne(id) {
+  const p = myTeam().players.find(x => x.id === id);
+  if (!p) return;
+  p.consigne = (p.consigne === 'prudent') ? null : 'prudent';
+  toast(p.consigne
+    ? `${p.nom} est sous consigne de prudence : moins de fautes, moins de rendement.`
+    : `${p.nom} retrouve sa liberté de jeu.`, 'info');
+  renderEffectif();
+  flushSave();
+}
 
 function lineupOf(team) {
   let gk = team.players.filter(p => p.pos === 'G' && p.starter && !p.injured)[0];
@@ -2304,11 +2324,16 @@ function poisson(lambda) {
   return k - 1;
 }
 
-const FAUTES_MINEURES = ["retenir", "accrocher", "faire trébucher", "obstruction", "cinglage", "retard de jeu", "surnombre"];
+const FAUTES_MINEURES = ["retenir", "accrocher", "faire trébucher", "obstruction", "cinglage", "crosse haute", "piquage", "retard de jeu", "surnombre"];
+// Art. 10.1.7 C : ces quatre-là comptent ensemble. Trois dans le même match, et le joueur
+// est exclu — quelle que soit leur gravité individuelle. C'est le seul cumul du règlement
+// qui vise un TYPE de faute plutôt qu'un nombre.
+const FAUTES_CROSSE = ["cinglage", "crosse haute", "piquage", "charge avec la crosse", "cinglage avec blessure"];
+function estFauteDeCrosse(faute) { return FAUTES_CROSSE.indexOf(faute) >= 0; }
 const FAUTES_MAJEURES = ["charge violente", "dureté excessive", "charge contre la balustrade", "charge avec la crosse", "cinglage avec blessure"];
 const FAUTES_MEC = ["attitude antisportive", "contestation de décision", "conduite antisportive"];
 const FAUTES_GRAVES = ["blessure intentionnelle", "agression physique", "coup de crosse dangereux à la tête"];
-const PENALTY_LABEL = { mineure: "🟨 2'", majeure: "🟧 5'", mec: "⬛ 10'", pm: "🟥 PM" };
+const PENALTY_LABEL = { mineure: "🟨 2'", majeure: "🟧 5'", mec: "⬛ 10'", pm: "🟥 PM", exc: "⛔ EXC" };
 
 // Bareme officiel FFRS Roller Hockey (patins en ligne, art. 10.1 du Reglement Sportif - Dispositions Particulieres) :
 // - Penalite MINEURE : 2 min d'inferiorite numerique, annulee si l'equipe adverse marque.
@@ -2318,7 +2343,10 @@ const PENALTY_LABEL = { mineure: "🟨 2'", majeure: "🟧 5'", mec: "⬛ 10'", 
 // - Penalite de MATCH (PM) : le fautif est expulse, un remplacant designe purge une majeure (5', inferiorite).
 function genPenalties(team, side) {
   const { field } = lineupOf(team);
-  const avgAgr = field.reduce((s, p) => s + p.agr, 0) / Math.max(field.length, 1);
+  // Un joueur sous consigne compte pour la moitié de son agressivité : l'équipe prend
+  // globalement moins de pénalités, en plus d'en concentrer moins sur lui.
+  const agrEff = (p) => (p.consigne === 'prudent' ? p.agr * 0.5 : p.agr);
+  const avgAgr = field.reduce((s, p) => s + agrEff(p), 0) / Math.max(field.length, 1);
   let expected = 0.7 + avgAgr / 42; // environ 1,4 a 2,8 penalites par match
   if (team.human && G.staff.discipline) {
     expected *= 1 - (G.staff.discipline.note - 50) / 110; // jusqu'a ~-38 %
@@ -2329,11 +2357,16 @@ function genPenalties(team, side) {
   const n = Math.min(poisson(Math.max(0.3, expected)), 6);
   const pens = [];
   const minors = {};
+  const crosses = {};      // fautes de crosse par joueur, art. 10.1.7 C
+  const exclus = new Set(); // joueurs exclus : ils ne peuvent plus être tirés au sort
   for (let i = 0; i < n; i++) {
-    const w = field.map(p => p.agr * p.agr);
+    // Un joueur exclu est sorti de la rencontre : il ne peut plus être pénalisé.
+    // La consigne de prudence divise son poids, donc sa probabilité d'être tiré.
+    const w = field.map(p => exclus.has(p.id) ? 0 : agrEff(p) * agrEff(p));
     const tot = w.reduce((a, b) => a + b, 0);
+    if (tot <= 0) break; // toute la ligne est exclue : plus personne à pénaliser
     let r = Math.random() * tot, idx = 0;
-    while (r > w[idx]) { r -= w[idx]; idx++; }
+    while (r > w[idx] && idx < w.length - 1) { r -= w[idx]; idx++; }
     const p = field[idx];
     const minute = irnd(2, 47);
     const roll = Math.random();
@@ -2349,6 +2382,17 @@ function genPenalties(team, side) {
       if (minors[p.id] === 3) {
         pens.push({ minute, nom: p.nom, team: team.short, side, type: 'mec', dur: 10, shorthand: false, endsOnGoal: false,
           faute: "3e penalite mineure -- meconduite additionnelle (art. 10.1.7)" });
+      }
+    }
+    // Art. 10.1.7 C : trois infractions à la crosse dans le même match valent exclusion.
+    // On compte séparément des mineures : un joueur peut cumuler trois obstructions sans
+    // risque, mais trois fautes de crosse le sortent de la rencontre.
+    if (estFauteDeCrosse(faute)) {
+      crosses[p.id] = (crosses[p.id] || 0) + 1;
+      if (crosses[p.id] === 3) {
+        pens.push({ minute, nom: p.nom, team: team.short, side, type: 'exc', dur: 0, shorthand: false, endsOnGoal: false,
+          faute: "3e infraction à la crosse — exclusion (art. 10.1.7 C)" });
+        exclus.add(p.id);
       }
     }
   }
@@ -4588,7 +4632,9 @@ function renderEffectif() {
   const rows = sorted.map(p => playerRow(p, {
     mine: true,
     actions: p.injured ? `<span class="tag">indisponible</span> <button class="btn sell" onclick="sellPlayer(${p.id})">Vendre</button>`
-      : `<button class="btn sell" onclick="sellPlayer(${p.id})">Vendre</button>
+      : `<button class="btn ${p.consigne === 'prudent' ? 'buy' : ''}" onclick="basculerConsigne(${p.id})"
+                 title="Moins de fautes de crosse, mais joue en retrait">${p.consigne === 'prudent' ? '🧊 Sous consigne' : '🧊 Calmer'}</button>
+              <button class="btn sell" onclick="sellPlayer(${p.id})">Vendre</button>
               <button class="btn" onclick="loanPlayer(${p.id})">Prêter</button>`
   })).join('');
   const nField = me.players.filter(p => p.pos !== 'G' && p.starter).length;
