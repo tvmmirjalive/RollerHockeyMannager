@@ -368,6 +368,12 @@
   .menu-btn.menu-hidden { display: none; }
   .menu-btn-label { display: block; font-weight: 700; }
   .menu-btn-detail { display: block; font-size: 11.5px; color: var(--muted); margin-top: 3px; }
+  /* La corbeille d'un emplacement : discrète, et assez grande pour le doigt (44 pt). */
+  .menu-slot-del { position: absolute; right: 8px; top: 50%; transform: translateY(-50%);
+                   min-width: 44px; min-height: 44px; display: flex; align-items: center;
+                   justify-content: center; opacity: .55; touch-action: manipulation; }
+  .menu-slot-del:hover { opacity: 1; }
+  #menuSlots .menu-btn { position: relative; padding-right: 52px; }
   .menu-btn-primary {
     border-color: var(--vert);
     background: linear-gradient(160deg, rgba(63,206,122,.16), var(--panel));
@@ -1015,13 +1021,14 @@
     <h1 class="menu-title">ROLLER HOCKEY <span>MANAGER</span></h1>
     <p class="menu-sub">Prends un club au plancher de la pyramide et fais-le monter jusqu'à l'Élite.</p>
     <div class="menu-actions">
+      <div id="menuSlots"></div>
       <button class="menu-btn menu-btn-primary menu-hidden" id="menuContinue">
         <span class="menu-btn-label">▶ Continuer</span>
         <span class="menu-btn-detail" id="menuContinueDetail">—</span>
       </button>
-      <button class="menu-btn" id="menuNew">
+      <button class="menu-btn menu-hidden" id="menuNew">
         <span class="menu-btn-label">⚡ Nouvelle partie</span>
-        <span class="menu-btn-detail">Choisis ton club parmi 74</span>
+        <span class="menu-btn-detail">Choisis ton club</span>
       </button>
       <label class="menu-btn" for="menuFileLoad">
         <span class="menu-btn-label">📂 Charger une sauvegarde</span>
@@ -1851,25 +1858,70 @@ function backToMenu() {
   window.scrollTo(0, 0);
 }
 
-function refreshMenu() {
-  const saved = loadLocalRaw();
-  const btn = document.getElementById('menuContinue');
-  const detail = document.getElementById('menuContinueDetail');
-  const foot = document.getElementById('menuFoot');
+// Résumé d'un emplacement, ou null s'il est vide ou illisible.
+function resumeSlot(s) {
+  const saved = loadLocalRaw(s);
+  if (!saved || !saved.G || !saved.G.teams) return null;
+  try {
+    const me = saved.G.teams.find(t => t.human);
+    const divLabel = (DIVISIONS[saved.G.divIdx] || {}).label || '—';
+    const when = saved.savedAt
+      ? new Date(saved.savedAt).toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' }) : null;
+    return { nom: me ? me.name : 'Club inconnu', divLabel, saison: seasonLabel(saved.G.season),
+             journee: (saved.G.day || 0) + 1, when };
+  } catch (e) { return null; }
+}
 
-  if (saved && saved.G && saved.G.teams) {
-    try {
-      const me = saved.G.teams.find(t => t.human);
-      const divLabel = (DIVISIONS[saved.G.divIdx] || {}).label || '—';
-      const when = saved.savedAt ? new Date(saved.savedAt).toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' }) : null;
-      detail.textContent = `${me ? me.name : 'Club inconnu'} · ${divLabel} · saison ${seasonLabel(saved.G.season)}, journée ${(saved.G.day || 0) + 1}`
-        + (when ? ` — ${when}` : '');
-      btn.classList.remove('menu-hidden');
-    } catch (e) {
-      btn.classList.add('menu-hidden');
+function choisirSlot(s) {
+  setSlot(s);
+  if (resumeSlot(s)) continueGame(); else openTeamSelect();
+}
+
+async function effacerSlot(s, ev) {
+  if (ev) ev.stopPropagation();
+  const r = resumeSlot(s);
+  if (!r) return;
+  if (!(await ask({ title: 'Effacer cet emplacement', ico: '🗑️', danger: true, okLabel: 'Effacer',
+    text: `Effacer définitivement la partie de ${r.nom} (${r.divLabel}, saison ${r.saison}) ?` }))) return;
+  clearLocal(s);
+  refreshMenu();
+  toast('Emplacement effacé.', 'info');
+}
+
+function refreshMenu() {
+  const btn = document.getElementById('menuContinue');
+  const foot = document.getElementById('menuFoot');
+  btn.classList.add('menu-hidden');
+  document.getElementById('menuNew').classList.add('menu-hidden');
+
+  // Quatre emplacements : rempli, on continue ; vide, on y démarre. La liste EST le menu.
+  const slots = document.getElementById('menuSlots');
+  if (slots) {
+    slots.innerHTML = '';
+    for (let s = 1; s <= NB_SLOTS; s++) {
+      const r = resumeSlot(s);
+      const b = document.createElement('button');
+      b.className = 'menu-btn' + (r ? ' menu-btn-primary' : '');
+      b.onclick = () => choisirSlot(s);
+      const label = document.createElement('span');
+      label.className = 'menu-btn-label';
+      label.textContent = r ? `▶ ${r.nom}` : `⚡ Emplacement ${s} — libre`;
+      const detail = document.createElement('span');
+      detail.className = 'menu-btn-detail';
+      detail.textContent = r
+        ? `${r.divLabel} · saison ${r.saison}, journée ${r.journee}${r.when ? ' — ' + r.when : ''}`
+        : 'Démarrer une nouvelle partie ici';
+      b.appendChild(label); b.appendChild(detail);
+      if (r) {
+        const del = document.createElement('span');
+        del.className = 'menu-slot-del';
+        del.textContent = '🗑️';
+        del.title = 'Effacer cet emplacement';
+        del.onclick = (ev) => effacerSlot(s, ev);
+        b.appendChild(del);
+      }
+      slots.appendChild(b);
     }
-  } else {
-    btn.classList.add('menu-hidden');
   }
 
   // message de pied : prévient si le stockage local est indisponible
@@ -2111,8 +2163,28 @@ document.addEventListener('keydown', e => {
   if (e.key === 'Escape' && modalIsOpen()) { e.stopPropagation(); closeModal(false); }
 });
 
-const SAVE_KEY = 'rhm_autosave_v1';
-let cachedSaveJson = null;
+// Quatre emplacements, chacun autonome sur les trois couches de stockage. La clé change
+// de `rhm_autosave_v1` à `rhm_save_v2_<n>` : les anciennes sauvegardes ne sont pas reprises
+// — elles datent d'avant les clubs réels et contiennent les 74 équipes inventées — mais
+// elles ne sont pas effacées pour autant, elles dorment sous leur ancienne clé.
+const NB_SLOTS = 4;
+const SLOT_KEY = 'rhm_slot_courant';
+function saveKey(slot) { return 'rhm_save_v2_' + slot; }
+
+let SLOT = 1;
+try { const s = parseInt(localStorage.getItem(SLOT_KEY)); if (s >= 1 && s <= NB_SLOTS) SLOT = s; } catch (e) {}
+function setSlot(n) {
+  SLOT = n;
+  try { localStorage.setItem(SLOT_KEY, String(n)); } catch (e) {}
+}
+
+// Cache mémoire par emplacement : sur iOS le stockage web peut être purgé, et c'est lui
+// qui permet au menu (synchrone) de voir quand même les parties.
+const cachedSaves = {};
+Object.defineProperty(window, 'cachedSaveJson', {
+  get() { return cachedSaves[SLOT] || null; },
+  set(v) { cachedSaves[SLOT] = v; }
+});
 
 function saveLocal() {
   if (typeof G === 'undefined' || !G) return false;
@@ -2122,28 +2194,30 @@ function saveLocal() {
   } catch (e) { return false; }
   cachedSaveJson = json;
   let ok = false;
-  try { localStorage.setItem(SAVE_KEY, json); ok = true; } catch (e) {}
+  try { localStorage.setItem(saveKey(SLOT), json); ok = true; } catch (e) {}
   const Prefs = capPlugin('Preferences');
   if (Prefs) {
-    Prefs.set({ key: SAVE_KEY, value: json }).catch(err => console.warn('Preferences.set', err));
+    Prefs.set({ key: saveKey(SLOT), value: json }).catch(err => console.warn('Preferences.set', err));
     ok = true;
   }
   return ok;
 }
 
-function loadLocalRaw() {
+function loadLocalRaw(slot) {
+  const s = slot || SLOT;
   let raw = null;
-  try { raw = localStorage.getItem(SAVE_KEY); } catch (e) {}
-  if (!raw) raw = cachedSaveJson;
+  try { raw = localStorage.getItem(saveKey(s)); } catch (e) {}
+  if (!raw) raw = cachedSaves[s] || null;
   if (!raw) return null;
   try { return JSON.parse(raw); } catch (e) { return null; }
 }
 
-function clearLocal() {
-  cachedSaveJson = null;
-  try { localStorage.removeItem(SAVE_KEY); } catch (e) {}
+function clearLocal(slot) {
+  const s = slot || SLOT;
+  cachedSaves[s] = null;
+  try { localStorage.removeItem(saveKey(s)); } catch (e) {}
   const Prefs = capPlugin('Preferences');
-  if (Prefs) Prefs.remove({ key: SAVE_KEY }).catch(() => {});
+  if (Prefs) Prefs.remove({ key: saveKey(s) }).catch(() => {});
 }
 
 // En natif, on relit d'abord le stockage durable et on le recopie dans le cache synchrone,
@@ -2151,19 +2225,23 @@ function clearLocal() {
 async function initStorage() {
   const Prefs = capPlugin('Preferences');
   if (!Prefs) return;
-  try {
-    const res = await Prefs.get({ key: SAVE_KEY });
-    if (!res || !res.value) return;
-    let localRaw = null;
-    try { localRaw = localStorage.getItem(SAVE_KEY); } catch (e) {}
-    const nativeAt = (JSON.parse(res.value).savedAt) || 0;
-    const localAt = localRaw ? ((JSON.parse(localRaw).savedAt) || 0) : -1;
-    if (nativeAt >= localAt) {
-      cachedSaveJson = res.value;
-      try { localStorage.setItem(SAVE_KEY, res.value); } catch (e) {}
+  // Les quatre emplacements sont relus : le menu doit tous les montrer, pas seulement
+  // celui en cours.
+  for (let s = 1; s <= NB_SLOTS; s++) {
+    try {
+      const res = await Prefs.get({ key: saveKey(s) });
+      if (!res || !res.value) continue;
+      let localRaw = null;
+      try { localRaw = localStorage.getItem(saveKey(s)); } catch (e) {}
+      const nativeAt = (JSON.parse(res.value).savedAt) || 0;
+      const localAt = localRaw ? ((JSON.parse(localRaw).savedAt) || 0) : -1;
+      if (nativeAt >= localAt) {
+        cachedSaves[s] = res.value;
+        try { localStorage.setItem(saveKey(s), res.value); } catch (e) {}
+      }
+    } catch (e) {
+      console.warn('initStorage slot ' + s, e);
     }
-  } catch (e) {
-    console.warn('initStorage', e);
   }
 }
 
@@ -4190,6 +4268,13 @@ function renderOptions() {
     </div>
 
     <div class="rg-bloc">
+      <h3>🏠 Partie en cours</h3>
+      <p class="note">Reviens à l'écran titre pour changer d'emplacement ou démarrer une
+        autre partie. La tienne est sauvegardée automatiquement, tu la retrouveras telle quelle.</p>
+      <button class="btn" onclick="quitterVersTitre()">← Retour à l'écran titre</button>
+    </div>
+
+    <div class="rg-bloc">
       <h3>📱 Barre du bas</h3>
       <p class="note">Choisis les écrans qui apparaissent directement, et leur ordre. Les autres
         restent accessibles par le bouton « Plus ».</p>
@@ -4201,6 +4286,14 @@ function renderOptions() {
           : `Tout tient dans la barre, le bouton « Plus » disparaît.`}
         Élargis la fenêtre et la barre s'étoffe d'elle-même.</p>
     </div>`;
+}
+
+// Quitter une partie en cours mérite qu'on le demande — même si rien n'est perdu.
+async function quitterVersTitre() {
+  if (!(await ask({ title: 'Retour à l\'écran titre', ico: '🏠', okLabel: 'Revenir au titre',
+    text: 'Revenir à l\'écran titre ?\n\nTa partie est sauvegardée, tu la retrouveras à cet emplacement.' }))) return;
+  flushSave();
+  backToMenu();
 }
 
 function basculerEcran(t) {
