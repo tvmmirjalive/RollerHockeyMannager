@@ -517,6 +517,21 @@
   .ts-team-name { font-size: 12.5px; font-weight: 600; line-height: 1.28; }
   /* La ville sous le nom : discrète, mais c'est elle qui permet de se repérer parmi
      184 clubs dont les surnoms ne disent pas la géographie. */
+  /* Le tableau de division : six colonnes dans 390 px. Sans largeur fixe, la colonne des
+     noms prenait 315 px à elle seule — « Les Karibous (Saint-Orens-De-Gameville) N3 » —
+     et poussait Poule, J, Pts et Diff hors du cadre, invisibles. Le contrôle de
+     débordement des tests ne le voyait pas : le dépassement était interne à la table. */
+  .tbl-division { width: 100%; table-layout: fixed; border-collapse: collapse; font-size: 12px; }
+  .tbl-division th, .tbl-division td { padding: 3px 2px; text-align: center; }
+  /* `max-width: 0` est l'astuce qui rend l'ellipse effective dans une cellule de tableau :
+     sans elle la cellule se dimensionne sur son contenu — mesuré à 261 px pour un tableau
+     de 340 — et pousse les colonnes chiffrées hors du cadre, quel que soit table-layout. */
+  .tbl-division th:nth-child(2), .tbl-division td:nth-child(2) {
+    text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    width: 100%; max-width: 0; }
+  .tbl-division th:nth-child(1), .tbl-division td:nth-child(1) { width: 30px; }
+  .tbl-division th:nth-child(3), .tbl-division td:nth-child(3) { width: 52px; }
+  .tbl-division th:nth-child(4), .tbl-division td:nth-child(4) { width: 40px; }
   .ts-team-ville { font-size: 11px; color: var(--muted); margin-top: 2px;
                    overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .ts-team-card.ts-defaut { border-color: var(--vert); }
@@ -1805,32 +1820,34 @@ function renderTeamSelectScreen() {
     heroBg.style.backgroundImage = `url('${DECOR_SELECTION}')`;
   }
 
-  // pastilles de filtre par division
+  // Pastilles de filtre par RÉGION. Quel que soit le club choisi on démarre en Régional :
+  // la division la plus haute est l'information la moins utile ici, la géographie est
+  // celle qui décide de toute la partie.
+  const regions = [...new Set(CLUBS_ASSOS.filter(a => a[5]).map(a => a[3]))]
+    .sort((a, b) => a.localeCompare(b, 'fr'));
   const chips = document.getElementById('tsChips');
   if (chips) {
     chips.innerHTML = `<div class="ts-chip ${tsActiveFilter === 'all' ? 'active' : ''}" style="--chip-color:var(--tan)"
         onclick="tsSetFilter('all')">Toutes</div>` +
-      DIVISIONS.map(d => {
-        const color = DIV_COLORS[d.key] || '#f3cf95';
-        return `<div class="ts-chip ${tsActiveFilter === d.key ? 'active' : ''}" style="--chip-color:${color}"
-          onclick="tsSetFilter('${d.key}')">${d.label}</div>`;
-      }).join('');
+      regions.map(r => `<div class="ts-chip ${tsActiveFilter === r ? 'active' : ''}" style="--chip-color:#8fb8d8"
+          onclick="tsSetFilter(${JSON.stringify(r).replace(/"/g, '&quot;')})">${escHtml(r)}</div>`).join('');
   }
 
   let cardIdx = 0;
-  // Une carte par association jouable, regroupée par la division la plus haute où elle
-  // engage une équipe. Les 7 associations qui ne sont que composantes d'entente sont
-  // exclues : elles n'ont pas d'équipe propre, on ne peut pas les incarner.
-  const parDiv = DIVISIONS.map(() => []);
-  CLUBS_ASSOS.forEach((a, i) => { if (a[5]) parDiv[a[4]].push(i); });
-  parDiv.forEach(l => l.sort((x, y) => CLUBS_ASSOS[x][0].localeCompare(CLUBS_ASSOS[y][0], 'fr')));
-  box.innerHTML = DIVISIONS.map((div, di) => {
-    const color = DIV_COLORS[div.key] || '#f3cf95';
+  // Une carte par association jouable, regroupée par RÉGION. Les 7 associations qui ne
+  // sont que composantes d'entente sont exclues : elles n'ont pas d'équipe propre.
+  const parRegion = {};
+  regions.forEach(r => { parRegion[r] = []; });
+  CLUBS_ASSOS.forEach((a, i) => { if (a[5] && parRegion[a[3]]) parRegion[a[3]].push(i); });
+  regions.forEach(r => parRegion[r].sort((x, y) =>
+    CLUBS_ASSOS[x][0].localeCompare(CLUBS_ASSOS[y][0], 'fr')));
+  box.innerHTML = regions.map((region) => {
+    const color = '#8fb8d8';
     return `
-    <div class="ts-div-block" data-divkey="${div.key}" style="--div-color:${color}">
-      <div class="ts-div-title" style="color:${color}">${div.label} <span class="ts-div-badge">${parDiv[di].length} clubs</span></div>
+    <div class="ts-div-block" data-region="${escHtml(region)}" style="--div-color:${color}">
+      <div class="ts-div-title" style="color:${color}">${escHtml(region)} <span class="ts-div-badge">${parRegion[region].length} clubs</span></div>
       <div class="ts-team-grid">
-        ${parDiv[di].map((ai) => {
+        ${parRegion[region].map((ai) => {
           const a = CLUBS_ASSOS[ai];
           const ville = villeDe(a);
           const t = { name: a[0], short: sigleDe(a[0]), ville };
@@ -1845,7 +1862,7 @@ function renderTeamSelectScreen() {
                onclick="openTeamConfirm(${ai})">
             <div class="ts-crest">${tsCrestLabel(t)}</div>
             <div class="ts-team-name">${t.name}</div>
-            ${ville ? `<div class="ts-team-ville">${escHtml(ville)}</div>` : ''}
+            ${ville ? `<div class="ts-team-ville">${escHtml(ville)} · ${escHtml(DIVISIONS[a[4]].label)}</div>` : ''}
             ${ai === CLUB_DEFAUT ? '<span class="ts-flag">club d\'origine</span>' : ''}
           </div>`;
         }).join('')}
@@ -1860,7 +1877,7 @@ function tsSetFilter(key) {
   tsActiveFilter = key;
   document.querySelectorAll('#tsChips .ts-chip').forEach(c => c.classList.remove('active'));
   const chips = [...document.querySelectorAll('#tsChips .ts-chip')];
-  const target = key === 'all' ? chips[0] : chips.find(c => c.textContent.trim() === (DIVISIONS.find(d => d.key === key) || {}).label);
+  const target = key === 'all' ? chips[0] : chips.find(c => c.textContent.trim() === key);
   if (target) target.classList.add('active');
   tsApplyFilters();
 }
@@ -1869,7 +1886,7 @@ function tsApplyFilters() {
   const q = (document.getElementById('tsSearch')?.value || '').trim().toLowerCase();
   let anyVisible = false;
   document.querySelectorAll('.ts-div-block').forEach(block => {
-    const divMatch = tsActiveFilter === 'all' || block.dataset.divkey === tsActiveFilter;
+    const divMatch = tsActiveFilter === 'all' || block.dataset.region === tsActiveFilter;
     let visibleInBlock = 0;
     block.querySelectorAll('.ts-team-card').forEach(card => {
       const nameMatch = !q || card.dataset.name.includes(q);
@@ -5020,15 +5037,14 @@ function renderClassement() {
   const national = (G.poules && G.poules.length > 1) ? `
     <details class="card">
       <summary><b>🇫🇷 Classement de ${escHtml(DIVISIONS[G.divIdx].label)}</b> — ${classementNational().length} équipes, ${G.poules.length} poules</summary>
-      <table class="tbl"><thead>
-        <tr><th>#</th><th>Équipe</th><th>Poule</th><th>J</th><th>Pts</th><th>Diff</th></tr>
+      <table class="tbl-division"><thead>
+        <tr><th>#</th><th>Équipe</th><th>Poule</th><th>Pts</th></tr>
       </thead><tbody>
       ${classementNational().map((e, i) => `
         <tr class="${e.t.human ? 'me' : ''}">
           <td>${i + 1}</td><td>${escHtml(e.t.name)}</td>
           <td>${e.poule + 1}${e.poule === G.pouleIdx ? ' ★' : ''}</td>
-          <td>${e.t.v + (e.t.vp || 0) + (e.t.dp || 0) + (e.t.n || 0) + e.t.d}</td>
-          <td><b>${e.t.pts}</b></td><td>${e.t.bp - e.t.bc}</td>
+          <td><b>${e.t.pts}</b></td>
         </tr>`).join('')}
       </tbody></table>
     </details>` : '';
