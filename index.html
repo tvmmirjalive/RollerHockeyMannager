@@ -1651,6 +1651,38 @@ function meilleurDisponible(divIdx, region, utilises, dejaLa, pidCible) {
 }
 
 // Calendrier aller-retour (méthode du cercle)
+// Installe G.poules / G.calendriers, et fait pointer G.teams et G.schedule sur la poule
+// du joueur. `equipeJoueur` est le tableau déjà construit pour lui : on le RÉUTILISE tel
+// quel, sans le recréer, sinon son effectif, son staff et ses finances seraient perdus.
+function installerPoules(divIdx, equipeJoueur) {
+  if (DIVISIONS_MULTIPOULES.indexOf(divIdx) < 0) {
+    G.poules = [equipeJoueur];
+    G.pouleIdx = 0;
+  } else {
+    const { poules, idxJoueur } = construirePoules(divIdx);
+    poules[idxJoueur] = equipeJoueur;      // la poule du joueur est la sienne, pas une copie
+    G.poules = poules;
+    G.pouleIdx = idxJoueur;
+  }
+  G.calendriers = G.poules.map((p) => buildSchedule(p.length));
+  G.teams = G.poules[G.pouleIdx];
+  G.schedule = G.calendriers[G.pouleIdx];
+}
+
+// Rétablit les références après un chargement : JSON les a perdues.
+function relierPoules() {
+  if (!G.poules || !G.poules.length) {           // sauvegarde d'avant les poules multiples
+    G.poules = [G.teams];
+    G.pouleIdx = 0;
+    G.calendriers = [G.schedule];
+    return;
+  }
+  if (G.pouleIdx === undefined || !G.poules[G.pouleIdx]) G.pouleIdx = 0;
+  G.teams = G.poules[G.pouleIdx];
+  if (!G.calendriers || !G.calendriers.length) G.calendriers = G.poules.map((p) => buildSchedule(p.length));
+  G.schedule = G.calendriers[G.pouleIdx];
+}
+
 function buildSchedule(n) {
   // Effectif impair : on complète avec une équipe fantôme et on retire les rencontres qui
   // la concernent. L'équipe qui « l'affronte » est simplement au repos ce jour-là, comme
@@ -1677,6 +1709,42 @@ function buildSchedule(n) {
   // matchs retour : inversés
   const retour = rounds.map(rd => rd.map(m => ({ home: m.away, away: m.home, score: null })));
   return [...rounds, ...retour];
+}
+
+// Les divisions dont on simule TOUTES les poules. Le Régional et la Pré-Nationale sont
+// gérés par les ligues, sans croisement national : les simuler en entier coûterait
+// 122 et 104 équipes pour rien.
+const DIVISIONS_MULTIPOULES = [2, 3, 4, 5]; // N3, N2, N1, Élite
+
+function poulesDeLaDivision(divIdx) {
+  const ids = [];
+  for (let i = 0; i < CLUBS_POULES.length; i++) if (CLUBS_POULES[i][0] === divIdx) ids.push(i);
+  return ids;
+}
+
+// Construit toutes les poules de la division, celle du joueur comprise, et renvoie
+// l'indice de cette dernière. Les équipes de l'association incarnée sont exclues partout,
+// comme dans chargerPoules().
+function construirePoules(divIdx) {
+  const a = assoIncarnee();
+  const pidJoueur = pouleDeSecteur(divIdx, a ? a[3] : '', a ? a[2] : '');
+  const ids = DIVISIONS_MULTIPOULES.indexOf(divIdx) >= 0 ? poulesDeLaDivision(divIdx) : [pidJoueur];
+  const poules = [];
+  let idxJoueur = 0;
+  let idGlobal = 0;
+  ids.forEach((pid) => {
+    if (pid === pidJoueur) idxJoueur = poules.length;
+    const defs = [];
+    for (const t of CLUBS_EQUIPES) {
+      if (t[3] !== pid) continue;
+      if (CLUB_ASSO !== null && t[5] === CLUB_ASSO) continue;
+      defs.push({ name: t[0], short: t[1], force: t[4], assoId: t[5] });
+    }
+    const equipes = defs.map((d) => makeTeam(d, idGlobal++, DIVISIONS[divIdx].qual));
+    simulateAITransferWindow(equipes);
+    poules.push(equipes);
+  });
+  return { poules, idxJoueur };
 }
 
 function buildDivisionTeams(divIdx) {
@@ -1861,9 +1929,14 @@ function backToMenu() {
 // Résumé d'un emplacement, ou null s'il est vide ou illisible.
 function resumeSlot(s) {
   const saved = loadLocalRaw(s);
-  if (!saved || !saved.G || !saved.G.teams) return null;
+  if (!saved || !saved.G) return null;
   try {
-    const me = saved.G.teams.find(t => t.human);
+    // `teams` n'est pas sérialisé : c'est une référence vers G.poules[G.pouleIdx].
+    // On va donc chercher la poule du joueur, avec repli sur `teams` pour les
+    // sauvegardes antérieures aux poules multiples.
+    const poule = (saved.G.poules && saved.G.poules[saved.G.pouleIdx || 0]) || saved.G.teams;
+    if (!poule) return null;
+    const me = poule.find(t => t.human);
     const divLabel = (DIVISIONS[saved.G.divIdx] || {}).label || '—';
     const when = saved.savedAt
       ? new Date(saved.savedAt).toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' }) : null;
@@ -2190,7 +2263,17 @@ function saveLocal() {
   if (typeof G === 'undefined' || !G) return false;
   let json;
   try {
-    json = JSON.stringify({ G, nextPlayerId, savedAt: Date.now() });
+    // `teams` et `schedule` ne sont PAS sérialisés : ce sont des références vers
+    // G.poules[G.pouleIdx] et G.calendriers[G.pouleIdx]. Les écrire dupliquerait la poule
+    // du joueur, et au rechargement les deux copies divergeraient en silence — une
+    // victoire enregistrée dans l'une n'apparaîtrait pas dans l'autre.
+    const refTeams = G.teams, refSchedule = G.schedule;
+    delete G.teams; delete G.schedule;
+    try {
+      json = JSON.stringify({ G, nextPlayerId, savedAt: Date.now() });
+    } finally {
+      G.teams = refTeams; G.schedule = refSchedule;  // rétablies quoi qu'il arrive
+    }
   } catch (e) { return false; }
   cachedSaveJson = json;
   let ok = false;
@@ -2293,6 +2376,8 @@ function newGame() {
   nextPlayerId = 1;
   const divIdx = 0; // départ en Régional, plancher de la pyramide
   const teams = buildDivisionTeams(divIdx);
+  // Poules de la division : celle du joueur reste `teams`, les autres sont simulées en
+  // parallèle. Voir installerPoules() pour le lien entre G.teams et G.poules.
   G = {
     season: 1,
     day: 0, // index de la prochaine journée à jouer
@@ -2329,6 +2414,7 @@ function newGame() {
       ticketPrice: 6, marketing: 0, sponsors: []
     }
   };
+  installerPoules(divIdx, teams);
   G.market = fillMarket();
   G.scoutPool = buildScoutPool();
   G.teamChoice = lastTeamChoice; // mémorise le club incarné, pour rejouer le choix au rechargement
@@ -2832,6 +2918,20 @@ function playDay() {
     m.score = [res.gH, res.gA];
     m.ot = !!res.wentOT; // nécessaire au départage : une victoire en prolongation ne vaut que 2 points
     if (home.human || away.human) myResult = { m, res, home, away };
+  });
+
+  // Les autres poules de la division jouent leur journée en même temps. Sans ça, le
+  // classement national serait figé et les croisements de phase finale n'auraient aucun
+  // sens : on affronterait des équipes qui n'ont jamais joué.
+  (G.poules || []).forEach((poule, k) => {
+    if (k === G.pouleIdx) return;
+    const cal = (G.calendriers || [])[k];
+    if (!cal || G.day >= cal.length) return;
+    cal[G.day].forEach(m => {
+      const res = simulateMatch(poule[m.home], poule[m.away]);
+      m.score = [res.gH, res.gA];
+      m.ot = !!res.wentOT;
+    });
   });
 
   // fatigue : l'usure dépend du nombre de lignes utilisées (rotation) et de l'intervalle de changement
@@ -3485,8 +3585,7 @@ function endSeason() {
   simulateAITransferWindow(others);
   me.id = 0; me.pts = me.v = me.vp = me.dp = me.n = me.d = me.bp = me.bc = 0;
   others.forEach((t, i) => { t.id = i + 1; });
-  G.teams = [me, ...others];
-  G.schedule = buildSchedule(G.teams.length);
+  installerPoules(G.divIdx, [me, ...others]);
   G.day = 0;
   G.season++;
   G.lastReport = null;
@@ -3539,6 +3638,16 @@ function pointsEntre(equipe, adversaires) {
     else if (mes < siens && m.ot) pts += 1;
   }));
   return pts;
+}
+
+// Classement national : toutes les poules de la division, triées ensemble. Sert à
+// l'affichage et, plus tard, aux croisements de phase finale — la FFRS établit bien un
+// classement final unique par division (art. 4.6, 3.7, 2.9).
+function classementNational() {
+  const toutes = [];
+  (G.poules || [G.teams]).forEach((p, k) => p.forEach(t => toutes.push({ t, poule: k })));
+  return toutes.sort((a, b) =>
+    b.t.pts - a.t.pts || (b.t.bp - b.t.bc) - (a.t.bp - a.t.bc) || b.t.bp - a.t.bp);
 }
 
 function sortedTeams() {
@@ -5669,6 +5778,7 @@ document.getElementById('btnSave').addEventListener('click', () => {
 // ---------------- Chargement d'une sauvegarde (fichier ou stockage local) ----------------
 function hydrateSave(data) {
   G = data.G; nextPlayerId = data.nextPlayerId || 10000;
+  relierPoules();   // avant tout le reste : myTeam() lit G.teams
   if (!G.coaches) G.coaches = { tir: 0, def: 0, vit: 0, gar: 0 };
   if (!G.lastTraining) G.lastTraining = [];
   if (!G.staff) G.staff = { attaque: null, defense: null, physique: null, gardiens: null, discipline: null, specialistes: null, recruteur: null, medecin: null };
