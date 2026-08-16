@@ -1138,8 +1138,9 @@
 
     <div class="card">
       <b>🏆 Coupe de France</b>
-      <p class="note">Comme en vrai, la Coupe de France n'existe qu'à partir de la <b>Nationale 3</b> — pas de coupe en
-      Régional ni en Pré-Nationale, seul le championnat compte à ces niveaux.</p>
+      <p class="note">Toutes les divisions y participent, du <b>Régional</b> à l'Élite : dès ta première saison
+      tu peux tomber sur un gros. Et comme en vrai, quand deux clubs de niveaux différents se rencontrent,
+      c'est le <b>plus petit qui reçoit</b>.</p>
     </div>
 
     <div class="card">
@@ -1535,7 +1536,7 @@ function makeTeam(def, idx, qualBand) {
   return {
     id: idx, name: def.name, short: def.short, human: !!def.human,
     players,
-    pts: 0, v: 0, n: 0, d: 0, bp: 0, bc: 0, forme5: []
+    pts: 0, v: 0, vp: 0, dp: 0, n: 0, d: 0, bp: 0, bc: 0, forme5: []
   };
 }
 
@@ -2269,7 +2270,7 @@ function simulateMatch(home, away) {
   const stH = specialTeamsFactor(home), stA = specialTeamsFactor(away);
   lH = lH * (1 + 0.030 * ppMinVsAway * stH.pp) * (1 - 0.012 * ppMinVsHome * stH.pk);
   lA = lA * (1 + 0.030 * ppMinVsHome * stA.pp) * (1 - 0.012 * ppMinVsAway * stA.pk);
-  const gH = poisson(lH), gA = poisson(lA);
+  let gH = poisson(lH), gA = poisson(lA); // `let` : la prolongation ajoute un but
 
   // buteurs
   const scorers = [];
@@ -2294,12 +2295,33 @@ function simulateMatch(home, away) {
   trackGamePlayed(home); trackGamePlayed(away);
 
   // maj classement
-  home.bp += gH; home.bc += gA; away.bp += gA; away.bc += gH;
-  if (gH > gA) { home.pts += 3; home.v++; away.d++; noterForme(home, 'v'); noterForme(away, 'd'); }
-  else if (gH < gA) { away.pts += 3; away.v++; home.d++; noterForme(away, 'v'); noterForme(home, 'd'); }
-  else { home.pts++; away.pts++; home.n++; away.n++; noterForme(home, 'n'); noterForme(away, 'n'); }
+  home.bp += gH; home.bc += gA; away.bp += gA; away.bc += gH; // score du temps réglementaire ; le but de prolongation est ajouté plus bas
+  // Format éliminatoire (Règlement sportif FFRS 5.4.3) : pas de match nul. À égalité,
+  // prolongation en mort subite de 5 min, puis tirs de pénalité. On tranche ici selon la
+  // force offensive respective, comme le fait déjà simulatePlayoffMatch — le détail des
+  // tirs au but n'apporterait rien à un match simulé.
+  let wentOT = false;
+  if (gH === gA) {
+    wentOT = true;
+    if (Math.random() < sh.atk / (sh.atk + sa.atk)) gH++; else gA++;
+    home.bp += (gH > gA) ? 1 : 0; home.bc += (gA > gH) ? 1 : 0;
+    away.bp += (gA > gH) ? 1 : 0; away.bc += (gH > gA) ? 1 : 0;
+  }
 
-  return { gH, gA, scorers, penalties };
+  // Barème art. 11.3.1.3 : 3-0 dans le temps réglementaire, 2-1 après prolongation.
+  const vainqueur = gH > gA ? home : away;
+  const perdant   = gH > gA ? away : home;
+  if (wentOT) {
+    vainqueur.pts += 2; vainqueur.vp = (vainqueur.vp || 0) + 1;
+    perdant.pts   += 1; perdant.dp   = (perdant.dp   || 0) + 1;
+    noterForme(vainqueur, 'v'); noterForme(perdant, 'n'); // pastille neutre : ni franche victoire, ni défaite sèche
+  } else {
+    vainqueur.pts += 3; vainqueur.v++;
+    perdant.d++;
+    noterForme(vainqueur, 'v'); noterForme(perdant, 'd');
+  }
+
+  return { gH, gA, scorers, penalties, wentOT };
 }
 
 // Cinq derniers résultats par équipe, remis à zéro à chaque nouvelle saison en même
@@ -2499,6 +2521,7 @@ function playDay() {
     const home = G.teams[m.home], away = G.teams[m.away];
     const res = simulateMatch(home, away);
     m.score = [res.gH, res.gA];
+    m.ot = !!res.wentOT; // nécessaire au départage : une victoire en prolongation ne vaut que 2 points
     if (home.human || away.human) myResult = { m, res, home, away };
   });
 
@@ -2981,7 +3004,7 @@ function endSeason() {
   const newDiv = DIVISIONS[G.divIdx];
   const others = newDiv.teams.filter(t => !t.human).slice(0, newDiv.teams.length - 1).map((def, idx) => makeTeam(def, idx + 1, newDiv.qual));
   simulateAITransferWindow(others);
-  me.id = 0; me.pts = me.v = me.n = me.d = me.bp = me.bc = 0;
+  me.id = 0; me.pts = me.v = me.vp = me.dp = me.n = me.d = me.bp = me.bc = 0;
   others.forEach((t, i) => { t.id = i + 1; });
   G.teams = [me, ...others];
   G.schedule = buildSchedule(G.teams.length);
@@ -3017,9 +3040,49 @@ function endSeason() {
   checkUnlockNotifications();
 }
 
+// Points marqués par `equipe` dans ses seules rencontres contre `adversaires`.
+// Art. 11.3.2.1 B : à égalité de points, on départage d'abord sur les confrontations
+// directes — pas sur la différence de buts générale, comme le faisait le jeu.
+function pointsEntre(equipe, adversaires) {
+  const ids = new Set(adversaires.map(t => t.id));
+  let pts = 0;
+  (G.schedule || []).forEach(journee => journee.forEach(m => {
+    if (!m.score) return;
+    const dom = G.teams[m.home], ext = G.teams[m.away];
+    if (!dom || !ext) return;
+    const moiDom = dom === equipe, moiExt = ext === equipe;
+    if (!moiDom && !moiExt) return;
+    const autre = moiDom ? ext : dom;
+    if (!ids.has(autre.id)) return;
+    const mes = moiDom ? m.score[0] : m.score[1];
+    const siens = moiDom ? m.score[1] : m.score[0];
+    if (mes > siens) pts += m.ot ? 2 : 3;
+    else if (mes < siens && m.ot) pts += 1;
+  }));
+  return pts;
+}
+
 function sortedTeams() {
-  return [...G.teams].sort((a, b) =>
+  const base = [...G.teams].sort((a, b) =>
     b.pts - a.pts || (b.bp - b.bc) - (a.bp - a.bc) || b.bp - a.bp);
+  // On ne réordonne que l'intérieur des groupes à égalité de points : le reste du
+  // classement est déjà juste, et un tri global sur les confrontations directes n'aurait
+  // pas de sens entre équipes qui ne sont pas à égalité.
+  const sortie = [];
+  let i = 0;
+  while (i < base.length) {
+    let j = i;
+    while (j + 1 < base.length && base[j + 1].pts === base[i].pts) j++;
+    const groupe = base.slice(i, j + 1);
+    if (groupe.length > 1) {
+      groupe.sort((a, b) =>
+        pointsEntre(b, groupe) - pointsEntre(a, groupe) ||
+        (b.bp - b.bc) - (a.bp - a.bc) || b.bp - a.bp);
+    }
+    sortie.push(...groupe);
+    i = j + 1;
+  }
+  return sortie;
 }
 
 // ---------------- Staff technique / coaching ----------------
@@ -3449,7 +3512,8 @@ function checkUnlockNotifications() {
 
   // nouveau tour de Coupe de France débloqué
   if (G.cup && G.cup.season === G.season && !cupIsDone()) {
-    const unlockedNow = CUP_ROUND_UNLOCK_DAYS.filter(d => G.day >= d).length - 1;
+    const unlockedNow = Array.from({ length: cupNbTours() },
+      (_, i) => cupRoundUnlockDay(i)).filter(d => G.day >= d).length - 1;
     if (unlockedNow > G.cupKnownUnlockedRound) {
       G.cupKnownUnlockedRound = unlockedNow;
       G.tabNotify.coupe = true;
@@ -4247,7 +4311,7 @@ function renderClassement() {
   const detail = classe.map((t, i) => `
     <tr class="${t.human ? 'me' : ''}">
       <td>${i + 1}</td><td>${t.name}</td>
-      <td>${t.v + t.n + t.d}</td><td>${t.v}</td><td>${t.n}</td><td>${t.d}</td>
+      <td>${t.v + (t.vp || 0) + (t.dp || 0) + (t.n || 0) + t.d}</td><td>${t.v}</td><td>${t.vp || 0}</td><td>${t.dp || 0}</td><td>${t.d}</td>
       <td>${t.bp}</td><td>${t.bc}</td><td>${t.bp - t.bc}</td><td><b>${t.pts}</b></td>
     </tr>`).join('');
 
@@ -4321,7 +4385,7 @@ function renderClassement() {
     <button class="chip-info" onclick="this.classList.toggle('open');this.nextElementSibling.classList.toggle('show')">ⓘ Détail chiffré et règles des playoffs</button>
     <div class="regle">
       <table style="margin-bottom:10px">
-        <tr><th>#</th><th>Équipe</th><th>J</th><th>V</th><th>N</th><th>D</th><th>BP</th><th>BC</th><th>Diff</th><th>Pts</th></tr>
+        <tr><th>#</th><th>Équipe</th><th>J</th><th>V</th><th>VP</th><th>DP</th><th>D</th><th>BP</th><th>BC</th><th>Diff</th><th>Pts</th></tr>
         ${detail}
       </table>
       Les 8 premiers disputent les playoffs : quarts, demi-finales puis finale, chaque tour au
@@ -4662,9 +4726,32 @@ function showReport() {
 // d'un coup : ça évite de pouvoir tout jouer d'une traite et donne un vrai rythme de saison.
 // Le calendrier est calé pour que la coupe soit toujours terminée bien avant les demi-finales
 // des playoffs (elle-même garantie de finir avant le lancement des playoffs, en sécurité).
-const CUP_ROUND_UNLOCK_DAYS = [2, 6, 10, 14, 17, 20];
+// Les dates sont calculées, plus écrites en dur. Une liste figée [2, 6, 10, 14, 17, 20]
+// convenait tant que la Coupe démarrait en N3, où la saison fait 26 journées. Ouverte au
+// Régional, dont la saison n'en fait que 14 (2×(n−1) pour 8 équipes), elle plaçait deux
+// tours après la fin du championnat — ils n'auraient jamais été jouables.
+// On étale donc les tours de la journée 2 à ~85 % de la saison, ce qui garde l'intention
+// d'origine : la Coupe finit avant les playoffs.
+function cupNbEngages() {
+  return DIVISIONS.reduce((s, div, di) => s + (di === G.divIdx
+    ? G.teams.length
+    : div.teams.filter(d => !d.human).length), 0);
+}
+function cupNbTours() {
+  const n = cupNbEngages();
+  if (n < 2) return 1;
+  return Math.ceil(Math.log2(n)); // = log2 du tableau, tour préliminaire compris
+}
 function cupRoundUnlockDay(roundIdx) {
-  return CUP_ROUND_UNLOCK_DAYS[roundIdx] ?? CUP_ROUND_UNLOCK_DAYS[CUP_ROUND_UNLOCK_DAYS.length - 1];
+  const saison = (G && G.schedule) ? G.schedule.length : 26;
+  const tours = cupNbTours();
+  const debut = 2;
+  // Au moins un jour par tour, et au plus 85 % de la saison : sur une saison courte le
+  // rythme se resserre au lieu de déborder.
+  const fin = Math.max(debut + tours - 1, Math.floor(saison * 0.85));
+  if (tours <= 1) return debut;
+  const jour = debut + Math.round(roundIdx * (fin - debut) / (tours - 1));
+  return Math.min(jour, saison - 1);
 }
 
 function cupTeam(id) { return G.cup.teamsById[id]; }
@@ -4683,17 +4770,18 @@ function cupRoundLabelFor(nTeams) {
   return 'Tour préliminaire';
 }
 
-// La Coupe de France engage TOUTES les équipes des divisions NATIONALES (N3, N2, N1, Élite).
-// Le Régional et la Pré-Nationale n'ont pas de Coupe de France, comme en vrai.
-const CUP_MIN_DIV_IDX = 2; // index de N3 dans DIVISIONS
-// Seule ta division est réellement simulée en saison ; les 3 autres sont générées pour l'occasion.
-// Avec 56 équipes, le tableau est calé sur 64 places : les 8 meilleures têtes de série sont
-// exemptées du tour préliminaire (comme un vrai tableau à élimination directe).
+// La Coupe de France engage TOUTES les équipes, de la Régionale à l'Élite.
+// Art. 7.1 B du Règlement particulier FFRS : « ouverte à tout club engagé dans une
+// compétition nationale ou régionale de catégorie senior mixte, à l'exception des clubs
+// issus des ligues d'Outre-mer ». La restriction précédente à la N3 était une erreur :
+// elle privait le joueur de la Coupe pendant toute sa montée.
+const CUP_MIN_DIV_IDX = 0; // plus aucune division exclue
+// Seule ta division est réellement simulée en saison ; les 5 autres sont générées pour l'occasion.
+// Avec 74 équipes, le tableau se cale sur 128 places : les 54 meilleures têtes de série sont
+// exemptées du tour préliminaire. C'est conforme à l'art. 7.2 C, qui prévoit explicitement que
+// « certaines équipes peuvent être directement qualifiées pour le tour suivant, dans le but de
+// retrouver le plus tôt possible un nombre de participants adéquat ».
 function startCup() {
-  if (G.divIdx < CUP_MIN_DIV_IDX) {
-    toast(`La Coupe de France démarre en Nationale 3 : le ${DIVISIONS[G.divIdx].label} n'y participe pas.`, 'info');
-    return;
-  }
   if (G.day < cupRoundUnlockDay(0)) {
     toast(`Tirage au sort de la Coupe disponible à partir de la journée ${cupRoundUnlockDay(0) + 1}.`, 'info');
     return;
@@ -4703,7 +4791,6 @@ function startCup() {
   const add = (t) => { t.cupId = nid; teamsById[nid] = t; nid++; };
 
   const divBlocks = DIVISIONS.map((div, di) => {
-    if (di < CUP_MIN_DIV_IDX) return null; // Régional et Pré-Nationale : pas de Coupe de France
     let teams;
     if (di === G.divIdx) {
       teams = sortedTeams(); // ta division : vrai classement de la saison en cours
@@ -4738,7 +4825,7 @@ function startCup() {
     champion: null, humanOut: false, season: G.season
   };
   const mySeed = allTeams.findIndex(t => t.human) + 1;
-  pushInbox('🏆 Coupe de France', `Tirage au sort effectué ! ${allTeams.length} équipes engagées, de la N3 à l'Élite. Ton équipe est tête de série n°${mySeed}${byes.includes(myTeam().cupId) ? ' — exemptée du tour préliminaire.' : '.'}`, 'cup');
+  pushInbox('🏆 Coupe de France', `Tirage au sort effectué ! ${allTeams.length} équipes engagées, du Régional à l'Élite. Ton équipe est tête de série n°${mySeed}${byes.includes(myTeam().cupId) ? ' — exemptée du tour préliminaire.' : '.'}`, 'cup');
   renderAll();
 }
 
@@ -4794,7 +4881,6 @@ function cupAutoResolveRest() {
 // Indique si une action de coupe est due AVANT de pouvoir jouer la prochaine journée de championnat :
 // tirage au sort à faire, ou tour actuel débloqué mais pas encore entièrement résolu.
 function cupHasPendingAction() {
-  if (G.divIdx < CUP_MIN_DIV_IDX) return false; // pas de Coupe de France en Régional / Pré-Nationale
   if (!G.cup || G.cup.season !== G.season) {
     return G.day >= cupRoundUnlockDay(0);
   }
@@ -4866,15 +4952,6 @@ function advanceCup() { advanceCupStep(); }
 function renderCoupe() {
   const box = document.getElementById('tab-coupe');
   if (!box) return;
-  if (G.divIdx < CUP_MIN_DIV_IDX) {
-    box.innerHTML = `
-      ${bandeau('coupe', `Saison ${seasonLabel(G.season)}`, 'Coupe de France',
-                DIVISIONS[G.divIdx].label)}
-      <p class="note">La Coupe de France n'existe qu'à partir de la <b>Nationale 3</b>. Le ${DIVISIONS[G.divIdx].label},
-      comme en vrai, n'a pas de compétition de coupe — seul le championnat compte à ce niveau.
-      Monte en Nationale 3 pour y participer !</p>`;
-    return;
-  }
   if (!G.cup || G.cup.season !== G.season) {
     const unlockDay0 = cupRoundUnlockDay(0);
     const locked = G.day < unlockDay0;
@@ -5097,6 +5174,10 @@ function hydrateSave(data) {
   }));
   G.teams.forEach(t => t.players.forEach(p => { if (p.agr === undefined) p.agr = irnd(30, 90); }));
   if (G.divIdx === undefined) G.divIdx = 0;
+  // Sauvegardes d'avant le barème FFRS : leurs équipes n'ont ni vp ni dp. Les nuls (`n`)
+  // déjà acquis sont conservés — une saison commencée sous l'ancien barème se termine
+  // sans perdre de points, elle se poursuit simplement sous le nouveau.
+  (G.teams || []).forEach(t => { if (t.vp === undefined) t.vp = 0; if (t.dp === undefined) t.dp = 0; });
   if (!G.club) G.club = { stade: 1, confort: 1, buvette: 1, centre: 1, pole: 0, loges: 0, ticketPrice: 6, marketing: 0, sponsors: [] };
   if (G.club.pole === undefined) G.club.pole = 0;
   // migration sponsor unique -> tableau cumulatif
