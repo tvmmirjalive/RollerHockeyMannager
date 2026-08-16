@@ -369,6 +369,8 @@
   .menu-btn-label { display: block; font-weight: 700; }
   .menu-btn-detail { display: block; font-size: 11.5px; color: var(--muted); margin-top: 3px; }
   /* La corbeille d'un emplacement : discrète, et assez grande pour le doigt (44 pt). */
+  /* Emplacement abîmé : signalé sans dramatiser, et jamais effacé d'office. */
+  .menu-btn-abime { border-color: var(--rouge); }
   .menu-slot-del { position: absolute; right: 8px; top: 50%; transform: translateY(-50%);
                    min-width: 44px; min-height: 44px; display: flex; align-items: center;
                    justify-content: center; opacity: .55; touch-action: manipulation; }
@@ -1951,7 +1953,9 @@ function backToMenu() {
 
 // Résumé d'un emplacement, ou null s'il est vide ou illisible.
 function resumeSlot(s) {
-  const saved = loadLocalRaw(s);
+  const lu = lireSauvegarde(s);
+  if (lu.etat === 'illisible') return { illisible: true, erreur: lu.erreur, octets: lu.octets };
+  const saved = lu.data;
   if (!saved || !saved.G) return null;
   try {
     // `teams` n'est pas sérialisé : c'est une référence vers G.poules[G.pouleIdx].
@@ -1970,15 +1974,21 @@ function resumeSlot(s) {
 
 function choisirSlot(s) {
   setSlot(s);
-  if (resumeSlot(s)) continueGame(); else openTeamSelect();
+  const r = resumeSlot(s);
+  // Un emplacement abîmé passe aussi par continueGame() : c'est lui qui explique le
+  // problème. Démarrer une partie par-dessus écraserait la sauvegarde sans un mot.
+  if (r) continueGame(); else openTeamSelect();
 }
 
 async function effacerSlot(s, ev) {
   if (ev) ev.stopPropagation();
   const r = resumeSlot(s);
   if (!r) return;
+  const quoi = r.illisible
+    ? `la sauvegarde illisible de l'emplacement ${s} (${r.octets} octets)`
+    : `la partie de ${r.nom} (${r.divLabel}, saison ${r.saison})`;
   if (!(await ask({ title: 'Effacer cet emplacement', ico: '🗑️', danger: true, okLabel: 'Effacer',
-    text: `Effacer définitivement la partie de ${r.nom} (${r.divLabel}, saison ${r.saison}) ?` }))) return;
+    text: `Effacer définitivement ${quoi} ?` }))) return;
   clearLocal(s);
   refreshMenu();
   toast('Emplacement effacé.', 'info');
@@ -1996,16 +2006,21 @@ function refreshMenu() {
     slots.innerHTML = '';
     for (let s = 1; s <= NB_SLOTS; s++) {
       const r = resumeSlot(s);
+      const abime = r && r.illisible;
       const b = document.createElement('button');
-      b.className = 'menu-btn' + (r ? ' menu-btn-primary' : '');
+      b.className = 'menu-btn' + (r && !abime ? ' menu-btn-primary' : '') + (abime ? ' menu-btn-abime' : '');
       b.onclick = () => choisirSlot(s);
       const label = document.createElement('span');
       label.className = 'menu-btn-label';
-      label.textContent = r ? `▶ ${r.nom}` : `⚡ Emplacement ${s} — libre`;
+      label.textContent = abime ? `⚠️ Emplacement ${s} — sauvegarde illisible`
+        : r ? `▶ ${r.nom}` : `⚡ Emplacement ${s} — libre`;
       const detail = document.createElement('span');
       detail.className = 'menu-btn-detail';
-      detail.textContent = r
-        ? `${r.divLabel} · saison ${r.saison}, journée ${r.journee}${r.when ? ' — ' + r.when : ''}`
+      // Une sauvegarde abîmée n'est pas effacée d'office : elle reste là, signalée, et
+      // c'est au joueur de décider — il peut vouloir la récupérer autrement.
+      detail.textContent = abime
+        ? `${r.octets} octets illisibles — clique pour en savoir plus, ou efface-la`
+        : r ? `${r.divLabel} · saison ${r.saison}, journée ${r.journee}${r.when ? ' — ' + r.when : ''}`
         : 'Démarrer une nouvelle partie ici';
       b.appendChild(label); b.appendChild(detail);
       if (r) {
@@ -2033,10 +2048,21 @@ function refreshMenu() {
 }
 
 function continueGame() {
-  const saved = loadLocalRaw();
-  if (!saved) { toast("Aucune partie sauvegardée trouvée.", 'warn'); refreshMenu(); return; }
+  const lu = lireSauvegarde();
+  if (lu.etat === 'vide') { toast("Aucune partie sauvegardée à cet emplacement.", 'warn'); refreshMenu(); return; }
+  if (lu.etat === 'illisible') {
+    // Le diagnostic vient tôt : c'est ce qu'on copie pour signaler le problème. La
+    // réassurance — rien n'est effacé — vient après, une fois le fait établi.
+    notifyError("Sauvegarde illisible",
+      `L'emplacement ${SLOT} contient une sauvegarde qui n'a pas pu être relue.\n\n`
+      + `Détail technique : ${lu.erreur} (${lu.octets} octets)\n\n`
+      + `Elle est corrompue, ou issue d'une version trop ancienne. Elle n'a pas été `
+      + `effacée : tu peux l'effacer depuis le menu, ou jouer sur un autre emplacement.`);
+    refreshMenu();
+    return;
+  }
   try {
-    hydrateSave(saved);
+    hydrateSave(lu.data);
   } catch (e) {
     console.error(e);
     notifyError("Sauvegarde illisible",
@@ -2309,13 +2335,29 @@ function saveLocal() {
   return ok;
 }
 
-function loadLocalRaw(slot) {
+// Trois états, là où l'ancienne version en confondait deux : une sauvegarde ABSENTE et
+// une sauvegarde CORROMPUE renvoyaient toutes deux `null`, et le jeu annonçait « aucune
+// partie » à un joueur dont la partie existait mais était abîmée.
+function lireSauvegarde(slot) {
   const s = slot || SLOT;
   let raw = null;
   try { raw = localStorage.getItem(saveKey(s)); } catch (e) {}
   if (!raw) raw = cachedSaves[s] || null;
-  if (!raw) return null;
-  try { return JSON.parse(raw); } catch (e) { return null; }
+  if (!raw) return { etat: 'vide' };
+  try {
+    const data = JSON.parse(raw);
+    if (!data || !data.G) return { etat: 'illisible', erreur: 'structure inattendue', octets: raw.length };
+    return { etat: 'ok', data };
+  } catch (e) {
+    return { etat: 'illisible', erreur: e.message, octets: raw.length };
+  }
+}
+
+// Conservée pour les appelants qui ne veulent que la donnée. Une sauvegarde illisible y
+// reste indiscernable d'une absence : c'est voulu, ces appelants n'ont pas à s'en soucier.
+function loadLocalRaw(slot) {
+  const r = lireSauvegarde(slot);
+  return r.etat === 'ok' ? r.data : null;
 }
 
 function clearLocal(slot) {
