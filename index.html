@@ -5508,43 +5508,63 @@ function startCup() {
   let nid = 0;
   const add = (t) => { t.cupId = nid; teamsById[nid] = t; nid++; };
 
-  const divBlocks = DIVISIONS.map((div, di) => {
-    let teams;
-    if (di === G.divIdx) {
-      teams = sortedTeams(); // ta division : vrai classement de la saison en cours
-      teams.forEach(t => { t.cupDiv = di; });
-    } else {
-      // on exclut la définition de l'équipe humaine : sa présence dans la liste statique d'une division
-      // qui n'est plus la tienne créerait un second exemplaire fantôme (human:true) de ton club, qui
-      // brouille la détection de ton propre match et bloque la coupe.
-      teams = div.teams.filter(def => !def.human).map(def => makeTeam(def, -1, div.qual));
-      teams.forEach(t => { t.cupOrigin = div.label; t.cupDiv = di; });
-      teams.sort((a, b) => teamSeedScore(b) - teamSeedScore(a));
-    }
-    return { prestige: div.prestige, teams };
-  }).filter(Boolean);
-  divBlocks.sort((a, b) => b.prestige - a.prestige); // Élite d'abord, N3 en dernier
+  // Une entrée par ASSOCIATION (art. 7.1 B), à son niveau le plus élevé (art. 7.2 D,
+  // note), hors Outre-mer. L'équipe du joueur est la sienne — jamais une copie, sinon
+  // son propre match deviendrait indétectable.
+  const OUTRE_MER = ['La Réunion', 'Guadeloupe', 'Martinique', 'Guyane', 'Mayotte'];
   const allTeams = [];
-  divBlocks.forEach(b => allTeams.push(...b.teams));
-  allTeams.forEach(add); // cupId 0..N-1 dans l'ordre du tirage (0 = meilleure tête de série)
+  const moi = myTeam();
+  CLUBS_ASSOS.forEach((a, ai) => {
+    if (!a[5]) return;                              // non jouable : composante d'entente
+    if (OUTRE_MER.indexOf(a[3]) >= 0) return;       // art. 7.1 B
+    if (ai === CLUB_ASSO) {                         // le joueur, à sa division du moment
+      moi.cupDiv = G.divIdx; moi.cupOrigin = DIVISIONS[G.divIdx].label;
+      allTeams.push(moi);
+      return;
+    }
+    const div = a[4];                               // niveau le plus élevé du club
+    // Meilleure équipe de l'association, celle qui la représente en Coupe.
+    let best = null;
+    for (const t of CLUBS_EQUIPES) {
+      if (t[5] !== ai) continue;
+      if (!best || t[2] > best[2] || (t[2] === best[2] && t[4] > best[4])) best = t;
+    }
+    if (!best) return;
+    const eq = makeTeam({ name: a[0], short: sigleDe(a[0]), force: best[4] }, -1, DIVISIONS[div].qual);
+    eq.cupDiv = div;
+    eq.cupOrigin = DIVISIONS[div].label;
+    allTeams.push(eq);
+  });
+  // Ordre de tirage : les meilleurs niveaux d'abord, puis la force. Le rang sert aux
+  // exemptions, comme des têtes de série.
+  allTeams.sort((x, y) => (y.cupDiv - x.cupDiv) || (teamSeedScore(y) - teamSeedScore(x)));
+  allTeams.forEach(add);
 
-  const seeds = allTeams.map(t => t.cupId);
-  const nextPow2 = Math.pow(2, Math.ceil(Math.log2(seeds.length)));
-  const nByes = nextPow2 - seeds.length;
-  const byes = seeds.slice(0, nByes);
-  const playIn = seeds.slice(nByes);
-  const round0 = [];
-  const label0 = playIn.length > 0 ? cupRoundLabelFor(seeds.length) : null;
-  for (let i = 0; i < playIn.length / 2; i++) {
-    round0.push({ home: playIn[i], away: playIn[playIn.length - 1 - i], res: null, winner: null, label: label0 });
-  }
+  // Entrée échelonnée (art. 7.2 D) : on note à quel effectif restant chaque niveau entre.
+  // Élite aux 1/16ᵉ (32 équipes), N1 aux 1/32ᵉ (64), N2 aux 1/64ᵉ (128), le reste au départ.
+  const SEUIL_ENTREE = { 5: 32, 4: 64, 3: 128 };
+  const entrants = {};      // effectif de départ du tour -> [cupId]
+  const auDepart = [];
+  allTeams.forEach(t => {
+    const seuil = SEUIL_ENTREE[t.cupDiv];
+    if (seuil) (entrants[seuil] = entrants[seuil] || []).push(t.cupId);
+    else auDepart.push(t.cupId);
+  });
+  const round0 = cupComposerTour(auDepart);
 
   G.cup = {
-    teamsById, byes, rounds: [round0], roundIdx: 0,
+    teamsById, byes: round0.exempts, entrants, rounds: [round0.matchs], roundIdx: 0,
     champion: null, humanOut: false, season: G.season
   };
   const mySeed = allTeams.findIndex(t => t.human) + 1;
-  pushInbox('🏆 Coupe de France', `Tirage au sort effectué ! ${allTeams.length} équipes engagées, du Régional à l'Élite. Ton équipe est tête de série n°${mySeed}${byes.includes(myTeam().cupId) ? ' — exemptée du tour préliminaire.' : '.'}`, 'cup');
+  const jEntreAu = SEUIL_ENTREE[G.divIdx];
+  pushInbox('🏆 Coupe de France',
+    `Tirage au sort effectué : <b>${allTeams.length} clubs engagés</b>, du Régional à l'Élite —
+     un par association, comme le veut le règlement.
+     ${jEntreAu
+       ? `Ton niveau te fait entrer plus tard, quand il ne restera que ${jEntreAu} équipes.`
+       : `Tu entres dès le premier tour${G.cup.byes.includes(myTeam().cupId) ? ', et tu en es exempté' : ''}.`}
+     Tête de série n°${mySeed}.`, 'cup');
   renderAll();
 }
 
@@ -5568,21 +5588,60 @@ function inverserPourLePetit(m) {
   return false;                               // quarts et au-delà : le tirage fait foi
 }
 
+function equipeDuChampionnat(t) {
+  return (G.poules || []).some(p => p.indexOf(t) >= 0);
+}
+
 function runCupMatch(m) {
   if (inverserPourLePetit(m)) { const t = m.home; m.home = m.away; m.away = t; }
   const home = cupTeam(m.home), away = cupTeam(m.away);
   const res = simulatePlayoffMatch(home, away); // pas de nul possible, cohérent avec une coupe à élimination directe
   m.res = res;
   m.winner = res.gH > res.gA ? m.home : m.away;
+  // Élagage de l'éliminé : son effectif ne resservira plus, son nom si.
+  const perdant = cupTeam(m.winner === m.home ? m.away : m.home);
+  if (perdant && !perdant.human && !equipeDuChampionnat(perdant)) perdant.players = [];
   return { home, away, res };
+}
+
+// Compose un tour à partir d'une liste d'engagés : avec n engagés et p la plus grande
+// puissance de 2 qui tienne dans n, on joue (n − p) rencontres et on exempte (2p − n)
+// équipes — le tour suivant en compte exactement p. C'est ce que prévoit l'art. 7.2 C,
+// « retrouver le plus tôt possible un nombre de participants adéquat ». Les exemptions
+// vont aux mieux classés : la liste arrive triée par niveau puis par force.
+function cupComposerTour(ids) {
+  if (ids.length <= 1) return { matchs: [], exempts: ids };
+  const p = Math.pow(2, Math.floor(Math.log2(ids.length)));
+  // Si l'effectif est DÉJÀ une puissance de 2, viser p ne ferait jouer personne : on vise
+  // alors la moitié, et tout le monde joue. Sans ça la Coupe se figeait dès qu'un tour
+  // tombait juste — 128 engagés donnaient 0 match et 128 exemptés.
+  const cible = (p === ids.length) ? p / 2 : p;
+  const nMatchs = ids.length - cible;
+  const nExempts = ids.length - 2 * nMatchs;
+  const exempts = ids.slice(0, nExempts);
+  const joueurs = ids.slice(nExempts);
+  const label = cupRoundLabelFor(cible * 2);
+  const matchs = [];
+  for (let i = 0; i < nMatchs; i++) {
+    matchs.push({ home: joueurs[i], away: joueurs[joueurs.length - 1 - i],
+                  res: null, winner: null, label });
+  }
+  return { matchs, exempts };
 }
 
 function cupBuildNextRound() {
   const cup = G.cup;
   const round = cupCurrentRound();
   const winners = round.map(m => m.winner);
-  // au sortir du tour préliminaire, les têtes de série exemptées rejoignent les vainqueurs
-  const nextTeams = cup.roundIdx === 0 ? [...cup.byes, ...winners] : winners;
+  // Les exemptés du tour rejoignent les vainqueurs, puis les entrants du niveau supérieur
+  // font leur apparition selon l'effectif atteint (art. 7.2 D).
+  let nextTeams = [...(cup.byes || []), ...winners];
+  const seuil = nextTeams.length;
+  const arrivants = (cup.entrants || {})[seuil];
+  if (arrivants && arrivants.length) {
+    nextTeams = [...arrivants, ...nextTeams];   // les entrants sont les mieux classés
+    delete cup.entrants[seuil];                 // ils n'entrent qu'une fois
+  }
 
   if (nextTeams.length <= 1) {
     cup.champion = nextTeams[0];
@@ -5594,12 +5653,9 @@ function cupBuildNextRound() {
       : `${champ.name} (${champ.cupOrigin || DIVISIONS[G.divIdx].label}) remporte la Coupe de France cette saison.`, 'cup');
     return;
   }
-  const label = cupRoundLabelFor(nextTeams.length);
-  const matches = [];
-  for (let i = 0; i < nextTeams.length / 2; i++) {
-    matches.push({ home: nextTeams[i], away: nextTeams[nextTeams.length - 1 - i], res: null, winner: null, label });
-  }
-  cup.rounds.push(matches);
+  const compose = cupComposerTour(nextTeams);
+  cup.byes = compose.exempts;
+  cup.rounds.push(compose.matchs);
   cup.roundIdx++;
 }
 function allCupTeamsCount() { return Object.keys(G.cup.teamsById).length; }
