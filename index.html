@@ -2496,6 +2496,37 @@ function upgradeCost(kind) {
 // Les niveaux élevés d'infrastructure exigent d'avoir gravi la pyramide — un stade de standing
 // Élite ne se construit pas depuis le Régional, même à budget illimité. En revanche, de petits
 // travaux (niveaux 1-2) restent possibles dès le Régional et la Pré-Nationale, comme en vrai.
+
+// ==================== Classes d'équipement (Équipements FFRS, art. 2.2.7.2) ====================
+// La salle conditionne la division : un club qui gagne sa poule sans installation classée
+// ne monte pas. Les seuils sont calés pour rester atteignables — voir le plafond de
+// construction par division dans infraLevelDivRequirement(), qui interdit de bâtir trop
+// haut trop tôt. Exiger davantage créerait un blocage définitif.
+const CLASSES_EQUIPEMENT = [
+  { classe: 'E', stade: 1 }, // Régional
+  { classe: 'E', stade: 2 }, // Pré-Nationale
+  { classe: 'D', stade: 3 }, // N3
+  { classe: 'C', stade: 5 }, // N2
+  { classe: 'B', stade: 7 }, // N1
+  { classe: 'A', stade: 9 }  // Élite
+];
+
+function classeRequise(divIdx) {
+  return CLASSES_EQUIPEMENT[Math.max(0, Math.min(divIdx, CLASSES_EQUIPEMENT.length - 1))];
+}
+
+// Classe effectivement obtenue par l'installation actuelle : la plus haute dont le stade
+// atteint le seuil. Sert à l'affichage, pas au contrôle.
+function classeActuelle() {
+  let c = CLASSES_EQUIPEMENT[0].classe;
+  for (const e of CLASSES_EQUIPEMENT) if (G.club.stade >= e.stade) c = e.classe;
+  return c;
+}
+
+function stadeSuffisantPour(divIdx) {
+  return G.club.stade >= classeRequise(divIdx).stade;
+}
+
 function infraLevelDivRequirement(nextLevel) {
   if (nextLevel <= 2) return 0;  // 1-2 : petits travaux, dès le Régional
   if (nextLevel <= 4) return 1;  // 3-4 : Pré-Nationale
@@ -3015,9 +3046,21 @@ function endSeason() {
   }
 
   // la montée se joue désormais aux playoffs (les 2 finalistes montent) ; à défaut (ancienne sauvegarde), top 2 du classement
-  const promote = rank === 0 || (po ? iAmFinalist : rank < 2);
+  let promote = rank === 0 || (po ? iAmFinalist : rank < 2); // `let` : une salle non classée peut l'annuler
   let moveMsg = "";
   let wasPromoted = false, wasRelegated = false;
+  // Art. 2.2.7.2 : sans installation classée pour la division visée, la montée est
+  // refusée. Le club reste où il est — comme un club réel dont la salle n'est pas
+  // qualifiée, qui doit faire les travaux avant de pouvoir accéder.
+  let montreeRefusee = null;
+  if (promote && G.divIdx < DIVISIONS.length - 1 && !stadeSuffisantPour(G.divIdx + 1)) {
+    const req = classeRequise(G.divIdx + 1);
+    montreeRefusee = `<div class="modal-flash bad"><b>⚠️ Montée refusée — installation non classée</b>
+      Sportivement, la montée en ${escHtml(DIVISIONS[G.divIdx + 1].label)} était acquise. Mais cette
+      division exige une salle de <b>classe ${req.classe}</b>, soit un stade de niveau ${req.stade} :
+      le tien est au niveau ${G.club.stade}. Fais les travaux, et la place sera à toi.</div>`;
+    promote = false;
+  }
   if (promote && G.divIdx < DIVISIONS.length - 1) {
     const oldDivIdx = G.divIdx;
     G.divIdx++;
@@ -3049,7 +3092,7 @@ function endSeason() {
   else if (wasRelegated) jouerJingle('defaite');
   notify({
     title: `Fin de saison ${seasonLabel(G.season)}`, ico: '📅',
-    html: `${trophyMsg}${moveMsg}
+    html: `${trophyMsg}${montreeRefusee || ''}${moveMsg}
       <div class="modal-sub">Bilan de la saison régulière</div>
       <div class="modal-stat"><span>Division</span><span>${escHtml(div.label)}</span></div>
       <div class="modal-stat"><span>Classement</span><span>${rank + 1}<sup>e</sup> sur ${n}</span></div>
@@ -4747,6 +4790,20 @@ function renderClub() {
       </div>
     </div>`;
   };
+  // Bandeau de classement de l'installation : le joueur doit savoir AVANT la fin de saison
+  // ce que sa salle lui autorise, sinon un refus de montée serait vécu comme arbitraire.
+  const clAct = classeActuelle();
+  const divSuiv = G.divIdx + 1;
+  const reqSuiv = divSuiv < DIVISIONS.length ? classeRequise(divSuiv) : null;
+  const classeCard = `<div class="card">
+    <b>🏟️ Classement de l'installation — classe ${clAct}</b>
+    <p class="note">Le règlement fédéral (art. 2.2.7.2) attache chaque division à une classe de salle.
+    ${reqSuiv ? (stadeSuffisantPour(divSuiv)
+      ? `Ton stade de niveau ${c.stade} est classé <b>${clAct}</b> : il autorise déjà la montée en ${escHtml(DIVISIONS[divSuiv].label)}.`
+      : `Monter en ${escHtml(DIVISIONS[divSuiv].label)} exige la <b>classe ${reqSuiv.classe}</b>, soit un stade de niveau ${reqSuiv.stade}. Le tien est au niveau ${c.stade} : sans travaux, la montée sera refusée.`)
+      : `Tu es au sommet : la classe A est exigée pour l'Élite et pour toute finale nationale.`}</p>
+  </div>`;
+
   const logeCost = 4000 + c.loges * 800;
   const nextLoge = c.loges + 1;
   const logeReqDiv = c.loges < 15 ? logeDivRequirement(nextLoge) : null;
@@ -4786,6 +4843,7 @@ function renderClub() {
   document.getElementById('tab-club').innerHTML = `
     ${bandeau('club', myTeam().name, 'Le club',
               `Capacité ${stadiumCapacity()} places · ${MAX_UPGRADES_PER_SEASON - G.upgradesThisSeason} chantier(s) disponible(s)`)}
+    ${classeCard}
     <p class="note">Capacité actuelle : <b style="color:var(--tan)">${stadiumCapacity().toLocaleString('fr-FR')}</b> places.
     Chantiers disponibles cette saison : <b style="color:${G.upgradesThisSeason >= MAX_UPGRADES_PER_SEASON ? 'var(--rouge)' : 'var(--vert)'}">${MAX_UPGRADES_PER_SEASON - G.upgradesThisSeason}/${MAX_UPGRADES_PER_SEASON}</b>
     (améliorations infrastructure + loges VIP confondues — les travaux prennent du temps, impossible de tout refaire en une saison).</p>
