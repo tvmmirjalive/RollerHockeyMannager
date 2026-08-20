@@ -371,6 +371,13 @@
   /* La corbeille d'un emplacement : discrète, et assez grande pour le doigt (44 pt). */
   /* Emplacement abîmé : signalé sans dramatiser, et jamais effacé d'office. */
   .menu-btn-abime { border-color: var(--rouge); }
+  /* Corps de modale qui avance au tap : le curseur et la consigne disent que c'est cliquable,
+     sans quoi le geste resterait à deviner. */
+  .modal-tapable { cursor: pointer; }
+  .modal-tapable::after { content: "Touche l'écran pour continuer"; display: block;
+    margin-top: 10px; font-size: 11px; opacity: .55; text-align: center; }
+  .modal-lettre { line-height: 1.45; }
+  .modal-lettre img.portrait-thumb { vertical-align: middle; margin-right: 6px; }
   .menu-slot-del { position: absolute; right: 8px; top: 50%; transform: translateY(-50%);
                    min-width: 44px; min-height: 44px; display: flex; align-items: center;
                    justify-content: center; opacity: .55; touch-action: manipulation; }
@@ -1390,6 +1397,36 @@ function pick(arr) { return arr[irnd(0, arr.length - 1)]; }
 function euros(n) { return n.toLocaleString('fr-FR') + " €"; }
 
 // ---------------- Boîte de réception ----------------
+// Présente les lettres non lues une par une. Appelée depuis `showReport()`, c'est-à-dire
+// après un match — le seul moment qui soit à la fois une pause et le moment où le courrier
+// arrive vraiment. Voir 4-outils/patch-messages-popup.py pour le raisonnement complet.
+async function presenterNouveauxMessages() {
+  if (typeof G === 'undefined' || !G || !G.inbox) return;
+  if (reglages().popupMessages === false) return;
+  // `pushInbox` empile en tête : on remet dans l'ordre d'arrivée pour lire son courrier
+  // comme on l'a reçu, du plus ancien au plus récent.
+  const nouveaux = G.inbox.filter(m => !m.read).slice().reverse();
+  if (!nouveaux.length) return;
+  for (let i = 0; i < nouveaux.length; i++) {
+    const m = nouveaux[i];
+    const reste = nouveaux.length - i - 1;
+    const actions = [];
+    // « Tout passer » n'apparaît qu'à partir de deux lettres restantes : sur la dernière il
+    // ne passerait rien, et un bouton qui ne fait rien est pire qu'un bouton absent.
+    if (reste >= 1) actions.push({ label: 'Tout passer', value: 'passer' });
+    actions.push({ label: reste ? `Suivant · ${reste} en attente` : 'Fermer', value: 'suivant', cls: 'buy' });
+    const choix = await showModal({
+      title: m.title, ico: '✉️', tapPourSuivant: true,
+      html: `<div class="modal-lettre">${m.body}</div>
+             <p class="modal-note">Saison ${m.season} · journée ${m.day}</p>`,
+      actions: actions
+    });
+    m.read = true;
+    if (choix === 'passer') { nouveaux.slice(i + 1).forEach(x => x.read = true); break; }
+  }
+  applyNavNotifications();
+}
+
 function pushInbox(title, body, type) {
   if (!G.inbox) G.inbox = [];
   G.inbox.unshift({ id: Date.now() + Math.random(), season: G.season, day: G.day + 1, title, body, type: type || 'info', read: false });
@@ -2185,6 +2222,8 @@ function modalIsOpen() {
   return !!(ov && ov.classList.contains('show'));
 }
 
+let modalTapHandler = null;
+
 function showModal(opts) {
   const ov = document.getElementById('modalOverlay');
   if (!ov || !document.getElementById('modalBox')) {
@@ -2238,6 +2277,19 @@ function modalPump() {
     foot.appendChild(b);
   });
 
+  // Tap pour avancer : toute la surface du corps avance d'un cran, au lieu d'exiger qu'on
+  // vise un bouton. Le pied de modale est exclu d'office puisqu'on écoute `body` et non la
+  // boîte entière — un clic sur « Tout passer » ne doit pas valoir « Suivant ».
+  if (modalTapHandler) { body.removeEventListener('click', modalTapHandler); modalTapHandler = null; }
+  if (o.tapPourSuivant) {
+    const valeur = acts[acts.length - 1].value; // l'action principale est toujours la dernière
+    modalTapHandler = () => closeModal(valeur);
+    body.addEventListener('click', modalTapHandler);
+    body.classList.add('modal-tapable');
+  } else {
+    body.classList.remove('modal-tapable');
+  }
+
   document.getElementById('modalOverlay').classList.add('show');
   body.scrollTop = 0;
   const last = foot.lastElementChild;
@@ -2245,6 +2297,13 @@ function modalPump() {
 }
 
 function closeModal(value) {
+  // Le corps de la modale n'est pas recréé entre deux passes : sans ce retrait, les
+  // écouteurs de tap s'empileraient et une seule touche en fermerait plusieurs.
+  if (modalTapHandler) {
+    const b = document.getElementById('modalBody');
+    if (b) b.removeEventListener('click', modalTapHandler);
+    modalTapHandler = null;
+  }
   const cur = modalCurrent;
   modalCurrent = null;
   if (cur) cur.resolve(value);
@@ -4391,6 +4450,7 @@ const NAV_DEFAUT_ACTIFS = ['effectif', 'entrainement', 'classement', 'club'];
 function reglagesDefaut() {
   return {
     audio: { actif: true, volume: 0.6 },
+    popupMessages: true,
     navOrdre: NAV_DEFAUT_ORDRE.slice(),
     navActifs: NAV_DEFAUT_ACTIFS.slice()
   };
@@ -4409,6 +4469,8 @@ function normaliserReglages(s) {
   return {
     audio: { actif: a.actif !== false,
              volume: typeof a.volume === 'number' ? Math.min(1, Math.max(0, a.volume)) : 0.6 },
+    // Absent des sauvegardes d'avant cette version : on active, c'est le comportement neuf.
+    popupMessages: s.popupMessages !== false,
     navOrdre: ordre,
     navActifs: actifs
   };
@@ -5544,7 +5606,9 @@ function renderClub() {
 
 function showReport() {
   const box = document.getElementById('matchReport');
-  if (!G.lastReport) { box.style.display = 'none'; return; }
+  // Journée sans match pour le club — fréquent en poule impaire, où une équipe est exempte
+  // à chaque journée. Pas de rapport à afficher, mais le courrier est bien arrivé.
+  if (!G.lastReport) { box.style.display = 'none'; presenterNouveauxMessages(); return; }
   const { m, res, home, away } = G.lastReport;
   const isPlayoff = !!G.lastReport.playoff;
   const goals = res.scorers.map(s =>
@@ -5576,6 +5640,10 @@ function showReport() {
     ${injuries}
     ${finTag}`;
   box.style.display = 'block';
+  // Le courrier se présente maintenant : le rapport est affiché, le joueur ne fait rien
+  // d'autre. `showReport()` est l'entonnoir des deux chemins d'une journée jouée — avec
+  // match (visionneuse fermée) ou sans — donc ces deux crochets couvrent tout.
+  presenterNouveauxMessages();
 }
 
 // ---------------- Coupe de France ----------------
