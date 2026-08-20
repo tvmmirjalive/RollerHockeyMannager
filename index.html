@@ -2553,6 +2553,45 @@ function teamStrength(team) {
 }
 
 // ---------------- Simulation ----------------
+
+// Échelle d'écart de force, en points d'overall. Un écart de 12 points multiplie les buts
+// attendus par e ≈ 2,72 ; un écart de 4 points par 1,4. Calibrée par simulation : voir
+// 4-outils/patch-force-resultat.py, qui garde le tableau des valeurs essayées.
+const ECHELLE_FORCE = 9;
+// Calée sur la moyenne OBSERVÉE, pas sur la moyenne nominale. Trois effets poussent le
+// résultat au-dessus de la base : l'inégalité de Jensen (la moyenne d'une exponentielle
+// dépasse l'exponentielle de la moyenne), les facteurs tactiques appliqués à `atk`/`def`
+// juste avant, et les multiplicateurs de supériorité numérique appliqués juste après.
+// À 2,6 le jeu produisait 3,50 buts par équipe et par match contre 2,78 auparavant : les
+// scores changeaient d'allure, ce qui n'est pas le but de ce correctif.
+const BUTS_BASE = 2.05;
+const AVANTAGE_DOMICILE = 0.35;
+
+// `atk` et `def` ne sont PAS sur la même échelle : mesuré sur 12 saisons, l'attaque moyenne
+// vaut 39,09 et la défense 37,96, parce que `teamStrength()` mêle la défense au gardien
+// (0,65 / 0,35) et que le gardien pèse moins. La forme en rapport neutralisait ce décalage ;
+// la différence l'amplifierait à chaque match — +10 % de buts partout, soit +23 % sur un
+// score. On le retranche pour qu'une rencontre vraiment équilibrée donne bien BUTS_BASE.
+const ECART_NEUTRE = 1.13;
+
+// Buts attendus d'une attaque contre une défense.
+//
+// La forme précédente — `4.6 * atk / (atk + def)` — écrasait les écarts : numérateur et
+// dénominateur grandissaient ensemble, si bien que toute une division tenait entre 2,61 et
+// 2,77 buts attendus. La force de l'effectif ne pesait quasiment rien sur le classement
+// (corrélation 0,15). On raisonne désormais sur l'ÉCART et non sur le rapport.
+function butsAttendus(atk, def, domicile) {
+  const lambda = BUTS_BASE * Math.exp((atk - def - ECART_NEUTRE) / ECHELLE_FORCE)
+                 + (domicile ? AVANTAGE_DOMICILE : 0);
+  return clampV(lambda, domicile ? 0.4 : 0.3, 8);
+}
+
+// Mort subite : le plus fort doit être favori, pas quasi à pile ou face. Même échelle que
+// ci-dessus — à 4 points d'écart, il l'emporte 58 fois sur 100 au lieu de 52.
+function chanceProlongation(atkPour, atkContre) {
+  return 1 / (1 + Math.exp(-(atkPour - atkContre) / ECHELLE_FORCE));
+}
+
 function poisson(lambda) {
   const L = Math.exp(-lambda);
   let k = 0, p = 1;
@@ -2666,8 +2705,8 @@ function simulateMatch(home, away) {
   const ppMinVsHome = pensH.filter(p => p.shorthand).reduce((s, p) => s + p.dur, 0);
   const ppMinVsAway = pensA.filter(p => p.shorthand).reduce((s, p) => s + p.dur, 0);
 
-  let lH = clampV(4.6 * (sh.atk / (sh.atk + sa.def)) + 0.35, 0.4, 8); // avantage domicile
-  let lA = clampV(4.6 * (sa.atk / (sa.atk + sh.def)), 0.3, 8);
+  let lH = butsAttendus(sh.atk, sa.def, true); // avantage domicile inclus
+  let lA = butsAttendus(sa.atk, sh.def, false);
   const stH = specialTeamsFactor(home), stA = specialTeamsFactor(away);
   lH = lH * (1 + 0.030 * ppMinVsAway * stH.pp) * (1 - 0.012 * ppMinVsHome * stH.pk);
   lA = lA * (1 + 0.030 * ppMinVsHome * stA.pp) * (1 - 0.012 * ppMinVsAway * stA.pk);
@@ -2704,7 +2743,7 @@ function simulateMatch(home, away) {
   let wentOT = false;
   if (gH === gA) {
     wentOT = true;
-    if (Math.random() < sh.atk / (sh.atk + sa.atk)) gH++; else gA++;
+    if (Math.random() < chanceProlongation(sh.atk, sa.atk)) gH++; else gA++;
     home.bp += (gH > gA) ? 1 : 0; home.bc += (gA > gH) ? 1 : 0;
     away.bp += (gA > gH) ? 1 : 0; away.bc += (gH > gA) ? 1 : 0;
   }
@@ -3111,8 +3150,8 @@ function simulatePlayoffMatch(home, away) {
   const penalties = [...pensH, ...pensA].sort((a, b) => a.minute - b.minute);
   const ppMinVsHome = pensH.filter(p => p.shorthand).reduce((s, p) => s + p.dur, 0);
   const ppMinVsAway = pensA.filter(p => p.shorthand).reduce((s, p) => s + p.dur, 0);
-  let lH = clampV(4.6 * (sh.atk / (sh.atk + sa.def)) + 0.35, 0.4, 8);
-  let lA = clampV(4.6 * (sa.atk / (sa.atk + sh.def)), 0.3, 8);
+  let lH = butsAttendus(sh.atk, sa.def, true);
+  let lA = butsAttendus(sa.atk, sh.def, false);
   const stH2 = specialTeamsFactor(home), stA2 = specialTeamsFactor(away);
   lH = lH * (1 + 0.030 * ppMinVsAway * stH2.pp) * (1 - 0.012 * ppMinVsHome * stH2.pk);
   lA = lA * (1 + 0.030 * ppMinVsHome * stA2.pp) * (1 - 0.012 * ppMinVsAway * stA2.pk);
@@ -3120,7 +3159,7 @@ function simulatePlayoffMatch(home, away) {
   let wentOT = false;
   if (gH === gA) { // pas de match nul possible en playoff : prolongation but en or simplifiée
     wentOT = true;
-    if (Math.random() < sh.atk / (sh.atk + sa.atk)) gH++; else gA++;
+    if (Math.random() < chanceProlongation(sh.atk, sa.atk)) gH++; else gA++;
   }
   const scorers = [];
   function addScorers(team, goals, side) {
