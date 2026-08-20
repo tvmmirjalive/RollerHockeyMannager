@@ -1452,9 +1452,16 @@ function makePlayer(pos, quality) {
     careerGoals: 0,
     careerGames: 0
   };
-  // Potentiel caché : plafond de progression. Les jeunes ont plus de marge, quelques pépites rares vont très haut.
+  // Potentiel caché : plafond de progression. Les jeunes ont plus de marge, quelques pépites
+  // rares vont très haut.
+  //
+  // La borne basse est désormais positive à tout âge. Avant, un joueur de plus de 24 ans
+  // pouvait naître avec un potentiel INFÉRIEUR à sa force : il était figé à vie, sans que
+  // rien ne l'indique. 31 % des statistiques de l'effectif de départ étaient dans ce cas, et
+  // l'effectif entier n'avait que 4 points de marge — moins que l'écart entre deux divisions.
+  // Un vétéran progresse peu (+1 à +7), mais il progresse : l'entraînement a toujours prise.
   const curr = Math.round((p.tir + p.def + p.vit) / 3);
-  const room = age < 20 ? irnd(10, 32) : age < 24 ? irnd(4, 20) : age < 29 ? irnd(-3, 8) : irnd(-10, 2);
+  const room = age < 20 ? irnd(14, 34) : age < 24 ? irnd(8, 24) : age < 29 ? irnd(4, 14) : irnd(1, 7);
   p.potentiel = Math.round(clampV(curr + room, 38, 97));
   p.salaire = playerSalary(p);
   return p;
@@ -2783,7 +2790,13 @@ function upgradeCost(kind) {
   const lvl = G.club[kind];
   // niveau 2 accessible dès la 1re saison en N3, niveaux hauts réservés aux clubs installés
   const base = { stade: 2600, confort: 1600, buvette: 1200, centre: 2400, pole: 3000 }[kind];
-  return Math.round(base * (lvl + 1) * (lvl + 1) / 100) * 100;
+  // Exposant 1,5 et non 2. La courbe était quadratique quand les revenus, eux, sont à peu
+  // près linéaires : le centre d'entraînement niveau 10 revenait à 924 000 € cumulés, soit
+  // quatre-vingt-douze saisons d'épargne en N3. Les paliers hauts n'étaient pas difficiles,
+  // ils étaient hors de portée — et un bâtiment qu'on ne construira jamais n'est pas un
+  // objectif, c'est un décor. Maxer une infrastructure vaut désormais ~5 saisons de recettes
+  // Élite : long, mais c'est un but, pas un mur.
+  return Math.round(base * Math.pow(lvl + 1, 1.5) / 100) * 100;
 }
 // Les niveaux élevés d'infrastructure exigent d'avoir gravi la pyramide — un stade de standing
 // Élite ne se construit pas depuis le Régional, même à budget illimité. En revanche, de petits
@@ -3357,6 +3370,34 @@ function detailTravauxStade(divCible) {
          <b>${restants}/${MAX_UPGRADES_PER_SEASON}</b>.`}`;
 }
 
+// L'étude d'équilibrage a montré qu'un club pouvait stagner dix saisons sans jamais
+// comprendre pourquoi : son effectif était sous la bande de sa division, et rien ne le lui
+// disait. Le classement ne le dit pas — on peut finir 5e avec un effectif condamné. Cette
+// alerte nomme l'écart, et nomme le marché, qui est le seul levier immédiat : atteindre la
+// bande N3 coûte ~33 000 € de transferts, une somme qu'un club a en caisse bien avant de
+// pouvoir s'offrir le moindre bâtiment.
+function alerterDirectionEffectif() {
+  const me = myTeam();
+  if (!me || !me.players.length) return;
+  const force = Math.round(me.players.reduce((s, p) => s + overall(p), 0) / me.players.length);
+  const bande = DIVISIONS[G.divIdx].qual;
+  const milieu = Math.round((bande[0] + bande[1]) / 2);
+  const ecart = force - milieu;
+  if (ecart >= -2) return; // à niveau, ou au-dessus : rien à signaler
+  const grave = ecart <= -6;
+  pushInbox(grave ? '🚨 La direction s\'inquiète de l\'effectif' : '📉 La direction sur l\'effectif',
+    `Un mot sur le groupe avant d'attaquer la saison. La moyenne de l'effectif est à
+     <b>${force}</b>, quand la ${escHtml(DIVISIONS[G.divIdx].label)} tourne autour de
+     <b>${milieu}</b> : <b>${Math.abs(ecart)} points de retard</b>.
+     ${grave
+       ? `À cet écart, l'entraînement seul ne rattrapera pas la saison — il fait gagner
+          quelques points par an, pas dix. Le <b>marché des transferts</b> est le seul levier
+          immédiat : quelques recrues bien choisies valent mieux qu'une saison de séances.`
+       : `L'entraînement peut combler ça sur une saison ou deux si le staff est bon.
+          Un renfort ou deux sur le marché accélérerait les choses.`}`,
+    'contrat');
+}
+
 // Alerte de début de saison : informative, sans urgence.
 function alerterDirectionDebutSaison() {
   const suiv = G.divIdx + 1;
@@ -3415,6 +3456,7 @@ function assignBoardObjective() {
   G.boardObjective = objective;
   pushInbox('📋 Objectif de la direction', `Pour cette saison en ${DIVISIONS[G.divIdx].label}, la direction fixe l'objectif : ${objective.label}.`, 'board');
   alerterDirectionDebutSaison();
+  alerterDirectionEffectif();
 }
 
 function evaluateBoardObjective(rank, iAmChampion, n) {
@@ -3644,7 +3686,10 @@ function endSeason() {
       + (poleLvl >= 6 && Math.random() < (poleLvl - 5) * 0.08 ? 1 : 0);
     for (let i = 0; i < nProspects; i++) {
       const pos = ['G', 'D', 'D', 'A', 'A'][irnd(0, 4)];
-      const baseQuality = clampV(34 + poleLvl * 3.4, 34, 78); // niveau 1 ≈ 37, niveau 10 ≈ 68
+      // Avant : 34 + niveau × 3,4, soit 37 au niveau 1 et 45 au niveau 3 — en dessous de
+      // l'effectif que ces jeunes rejoignaient. Le pôle creusait le retard qu'il devait
+      // combler. Désormais un pôle niveau 3 sort des joueurs au niveau de la N3.
+      const baseQuality = clampV(40 + poleLvl * 3.8, 40, 82); // niveau 1 ≈ 44, niveau 10 ≈ 78
       const prospect = makePlayer(pos, baseQuality);
       prospect.age = irnd(16, 18); // toujours un jeune tout juste sorti du pôle
       // un espoir formé au club a une marge de progression supérieure à un joueur recruté ailleurs,
@@ -3828,8 +3873,12 @@ let nextCoachId = 1;
 function makeCoach() {
   // le niveau des coachs sur le marché suit la division : N3 attire des coachs modestes, l'Élite des pointures
   const div = G ? G.divIdx : 0;
-  const lo = 52 + div * 6;   // N3:52  N2:58  N1:64  Elite:70
-  const hi = 68 + div * 8;   // N3:68  N2:76  N1:84  Elite:92
+  // divIdx 0 = Régional, et non N3 : l'ancien commentaire était décalé de deux divisions.
+  // Les bornes sont plafonnées à 95, la note maximale du barème — `trainCoach()` refuse déjà
+  // de former au-delà en annonçant « plafond de compétence », alors que le marché tirait
+  // jusqu'à 108 en Élite. Les deux n'étaient pas d'accord.
+  const lo = Math.min(95, 52 + div * 6);   // Régional:52  N3:64  Élite:82
+  const hi = Math.min(95, 68 + div * 8);   // Régional:68  N3:84  Élite:95
   const femme = Math.random() < PART_ENTRAINEUSES;
   const prenom = pick(femme ? PRENOMS_COACH_F : PRENOMS_COACH_H);
   return { id: nextCoachId++, sexe: femme ? 'F' : 'H',
@@ -3926,7 +3975,12 @@ function applyTraining(mode) {
       const playF = mode === 'session' ? (p.starter ? 0.9 : 1.4) : (p.starter ? 1.3 : 1);
       const sessionF = mode === 'session' ? 0.75 : 1; // séance bonus, un peu moins efficace qu'un vrai match
       const centreF = 1 + (G.club.centre - 1) * 0.18;
-      const prob = ((coach.note - 50) / 40) * 0.11 * ageF * playF * centreF * sessionF;
+      // Le seuil était à 50 : un coach noté 50 ou moins n'avait STRICTEMENT aucun effet, tout
+      // en étant payé — et le marché en propose dès le Régional (minimum 52). Le plancher
+      // descend à 42, si bien qu'un coach modeste fait peu mais fait quelque chose. Le
+      // coefficient passe de 0,11 à 0,13 : au maximum du jeu on gagne ~7 points de force par
+      // saison, soit enfin l'écart entre deux divisions. Voir 3-documents/etude-equilibrage.md.
+      const prob = ((coach.note - 42) / 40) * 0.13 * ageF * playF * centreF * sessionF;
       if (role === 'discipline') {
         if (mode === 'session') return; // la discipline se travaille surtout en match
         if (p.agr <= 40) return;
