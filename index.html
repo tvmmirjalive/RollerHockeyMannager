@@ -1934,6 +1934,21 @@ async function lancerTutoriel() {
   G.tuto.etape = etapes.length;
 }
 
+// Reprend le tutoriel d'une partie chargée qui ne l'avait pas terminé. `G.tuto.etape` était
+// déjà écrit dans la sauvegarde depuis la v83 ; il ne servait à rien tant que rien ne le
+// relisait au chargement.
+//
+// L'introduction, elle, ne reprend pas au milieu : refaire défiler quatorze cartes serait
+// pénible. Interrompue, elle est considérée comme vue, et on enchaîne sur le tutoriel guidé
+// — c'est lui qui porte l'essentiel.
+function reprendreTutoriel() {
+  if (typeof G === 'undefined' || !G) return;
+  if (!G.tuto || G.tuto.termine) return;
+  tutorielCoupe = false;
+  G.introFaite = true;
+  lancerTutoriel();
+}
+
 // Coupe court à l'introduction et au tutoriel. Écrite pour les suites de tests, qui
 // démarrent toutes une partie neuve et se heurteraient sinon à une modale bloquante.
 // Vide aussi la file : sans ça la carte affichée resterait à l'écran alors que la boucle
@@ -2659,6 +2674,7 @@ function continueGame() {
   }
   try {
     hydrateSave(lu.data);
+    reprendreTutoriel();
   } catch (e) {
     console.error(e);
     notifyError("Sauvegarde illisible",
@@ -3097,6 +3113,13 @@ function newGame() {
       ticketPrice: 6, marketing: 0, sponsors: []
     }
   };
+  // Écrits explicitement, et non laissés indéfinis : c'est ce qui permet à `hydrateSave()`
+  // de distinguer une partie neuve d'une sauvegarde d'avant la v83. Sans ça,
+  // l'autosauvegarde partait pendant l'introduction, et le rechargement suivant — banal sur
+  // Android, où le WebView est relancé dès que le système reprend la mémoire — marquait le
+  // tutoriel comme terminé alors qu'il n'avait jamais été vu.
+  G.introFaite = false;
+  G.tuto = { etape: 0, termine: false };
   installerPoules(divIdx, teams);
   G.market = fillMarket();
   G.scoutPool = buildScoutPool();
@@ -6711,8 +6734,12 @@ function hydrateSave(data) {
   if (!G.loanedOut) G.loanedOut = [];
   if (!G.tabNotify) G.tabNotify = {};
   G.settings = normaliserReglages(G.settings);   // sauvegardes d'avant cette version
-  // Les parties d'avant cette version n'ont pas de tutoriel : on ne va pas leur en imposer
-  // un au milieu de leur saison. Elles le reçoivent déjà terminé.
+  // Repli réservé aux sauvegardes qui n'ont JAMAIS connu ces champs — celles d'avant la
+  // v83. On ne leur impose pas un tutoriel de début au milieu de leur saison.
+  //
+  // Depuis, `newGame()` écrit les deux champs dès la création : une partie neuve interrompue
+  // par un rechargement n'est donc plus confondue avec une vieille sauvegarde. C'était le
+  // défaut qui faisait disparaître le tutoriel sur Android.
   if (!G.tuto) G.tuto = { etape: 0, termine: true };
   if (G.introFaite === undefined) G.introFaite = true;
   if (!G.knownUnlockedRoles) G.knownUnlockedRoles = Object.keys(ROLES).filter(r => roleUnlocked(r));
