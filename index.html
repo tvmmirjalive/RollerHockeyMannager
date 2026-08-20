@@ -376,8 +376,12 @@
   /* Introduction : carte de joueur. Dimensionnée pour 390 px, elle respire au-delà.
      La grille s'auto-ajuste (3 colonnes sur téléphone, jusqu'à 6 sur bureau) plutôt que
      d'être fixée par média-query — moins de code, et aucun débordement possible. */
-  .intro-joueur, .intro-accueil { animation: ij-entree .18s ease-out; }
-  @keyframes ij-entree { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+  /* Glissement latéral plutôt que vertical : on enchaîne quatorze cartes, le geste doit
+     évoquer qu'on feuillette. `overflow: hidden` sur le corps empêche la carte de déborder
+     pendant qu'elle entre — c'était l'origine du clignotement au changement de joueur. */
+  #modalBody { overflow-x: hidden; }
+  .intro-joueur, .intro-accueil { animation: ij-entree .22s cubic-bezier(.22,.61,.36,1); }
+  @keyframes ij-entree { from { opacity: 0; transform: translateX(-22px); } to { opacity: 1; transform: none; } }
   .ij-tete { display: flex; gap: 12px; align-items: center; margin-bottom: 12px; }
   /* `height` et non `aspect-ratio` + `max-height` : ce couple rétrécit la LARGEUR. */
   .ij-portrait { height: 84px; width: 84px; object-fit: cover; border-radius: 10px; flex: 0 0 auto; }
@@ -400,9 +404,11 @@
   #tutoVoile { display: none; position: fixed; inset: 0; z-index: 250; }
   #tutoVoile.on { display: block; }
   /* Le trou n'est qu'un effet : une ombre ne capte pas les clics, c'est le voile qui relaie. */
+  /* 0,58 et non 0,78 : à 0,78 la page derrière devenait illisible, alors que tout l'intérêt
+     est de regarder l'écran dont on parle. Et aucune transition : le cadre est repositionné
+     image par image, une inertie CSS le ferait traîner derrière sa cible. */
   #tutoTrou { display: none; position: fixed; z-index: 251; pointer-events: none;
-    border-radius: 12px; box-shadow: 0 0 0 9999px rgba(4,6,10,.78); border: 2px solid var(--vert);
-    transition: all .16s ease-out; }
+    border-radius: 12px; box-shadow: 0 0 0 9999px rgba(4,6,10,.58); border: 2px solid var(--vert); }
   #tutoTrou.on { display: block; }
   #tutoBulle { display: none; position: fixed; z-index: 252; left: 50%; width: min(92vw, 420px);
     background: var(--fond2, #141920); border: 1px solid #2c313a; border-radius: 14px;
@@ -1644,8 +1650,10 @@ async function presenterResumeSaison(infos, bilan) {
 // ==================== Tutoriel guidé ====================
 // Voir 4-outils/patch-tutoriel-guide.py pour le raisonnement complet.
 
-let tutoResolve = null;   // résout l'étape courante
-let tutoZone = null;      // rectangle du trou, en coordonnées écran
+let tutoResolve = null;    // résout l'étape courante
+let tutoZone = null;       // rectangle du trou, en coordonnées écran
+let tutoLibres = [];       // éléments qui traversent le voile en plus de la cible
+let tutoRaf = null;        // suivi image par image du cadre
 
 function tutoElements() {
   let voile = document.getElementById('tutoVoile');
@@ -1657,15 +1665,24 @@ function tutoElements() {
   // Le voile avale tout, SAUF le trou dont il relaie le clic : une ombre portée ne capte
   // pas les événements, c'est donc au voile de faire le travail.
   voile.addEventListener('click', e => {
-    if (!tutoZone) return;
-    const dedans = e.clientX >= tutoZone.left && e.clientX <= tutoZone.right
-                && e.clientY >= tutoZone.top && e.clientY <= tutoZone.bottom;
-    if (dedans && tutoZone.el) tutoZone.el.click();
+    // La cible mise en avant, PLUS les éléments déclarés libres par l'étape. Guider ne doit
+    // pas enfermer : le tutoriel montre le coach le moins cher, mais laisse prendre un autre.
+    const candidats = [];
+    if (tutoZone && tutoZone.el) candidats.push(tutoZone.el);
+    tutoLibres.forEach(el => { if (el && el !== (tutoZone && tutoZone.el)) candidats.push(el); });
+    for (const el of candidats) {
+      const r = el.getBoundingClientRect();
+      if (!r.width || !r.height) continue;
+      if (e.clientX >= r.left - 6 && e.clientX <= r.right + 6
+       && e.clientY >= r.top - 6 && e.clientY <= r.bottom + 6) { el.click(); return; }
+    }
   });
   return { voile, trou, bulle };
 }
 
 function fermerProjecteur() {
+  if (tutoRaf) { cancelAnimationFrame(tutoRaf); tutoRaf = null; }
+  tutoLibres = [];
   const e = document.getElementById('tutoVoile');
   if (e) { e.classList.remove('on'); document.getElementById('tutoTrou').classList.remove('on');
            document.getElementById('tutoBulle').classList.remove('on'); }
@@ -1673,8 +1690,49 @@ function fermerProjecteur() {
 }
 
 // Place le trou et la bulle. `el` peut être nul : la bulle se centre alors, sans trou.
-function placerProjecteur(el, titre, texte, boutonLabel) {
+// Amène la cible dans l'écran. Appelée UNE FOIS par étape, jamais depuis la boucle de
+// suivi : défiler change le rectangle, ce qui redéclencherait un défilement sans fin.
+function amenerDansLEcran(el) {
+  if (!el || !el.getBoundingClientRect) return;
+  const r = el.getBoundingClientRect();
+  if (!r.width && !r.height) return;
+  const garde = 90; // on évite les bords, où la bulle viendrait se coller
+  if (r.top >= garde && r.bottom <= window.innerHeight - garde) return;
+  try { el.scrollIntoView({ block: 'center', inline: 'nearest' }); } catch (e) { el.scrollIntoView(); }
+}
+
+// Contenu de la bulle. Une fois par étape : la reconstruire à chaque image détacherait ses
+// boutons du DOM en permanence, et un bouton qu'on ne peut pas viser ne sert à rien.
+function construireBulle(titre, texte, boutonLabel) {
+  const { bulle } = tutoElements();
+  const bouton = boutonLabel
+    ? `<button class="btn buy" id="tutoOk">${escHtml(boutonLabel)}</button>` : '';
+  bulle.innerHTML = `<div class="tuto-titre">${escHtml(titre)}</div>
+    <div class="tuto-texte">${texte}</div>
+    <div class="tuto-pied">${bouton}<button class="btn" id="tutoPasser">Passer le tutoriel</button></div>`;
+  bulle.classList.add('on');
+  const ok = document.getElementById('tutoOk');
+  if (ok) ok.addEventListener('click', () => { if (tutoResolve) tutoResolve('ok'); });
+  document.getElementById('tutoPasser').addEventListener('click', () => { if (tutoResolve) tutoResolve('passer'); });
+}
+
+// La visionneuse de match est à z-index 50, le voile à 250 : le voile la recouvrait et
+// rendait « Passer ⏭ » inatteignable — le joueur restait coincé devant son match. Le
+// projecteur s'efface donc tant qu'elle est ouverte, et revient quand elle se ferme.
+function visionneuseOuverte() {
+  const mv = document.getElementById('matchViewer');
+  if (!mv) return false;
+  try { return getComputedStyle(mv).display !== 'none'; } catch (e) { return mv.style.display === 'flex'; }
+}
+
+// Position du trou et de la bulle. Appelée à chaque image : elle ne touche QUE des styles.
+function positionnerProjecteur(el) {
   const { voile, trou, bulle } = tutoElements();
+  if (visionneuseOuverte()) {
+    voile.classList.remove('on'); trou.classList.remove('on'); bulle.classList.remove('on');
+    tutoZone = null;
+    return;
+  }
   voile.classList.add('on');
   const marge = 6;
   if (el && el.getBoundingClientRect) {
@@ -1687,59 +1745,106 @@ function placerProjecteur(el, titre, texte, boutonLabel) {
     } else { trou.classList.remove('on'); tutoZone = null; }
   } else { trou.classList.remove('on'); tutoZone = null; }
 
-  const bouton = boutonLabel
-    ? `<button class="btn buy" id="tutoOk">${escHtml(boutonLabel)}</button>` : '';
-  bulle.innerHTML = `<div class="tuto-titre">${escHtml(titre)}</div>
-    <div class="tuto-texte">${texte}</div>
-    <div class="tuto-pied">${bouton}<button class="btn" id="tutoPasser">Passer le tutoriel</button></div>`;
-  bulle.classList.add('on');
-
   // Au-dessus de la cible si elle est en bas d'écran, en dessous sinon : la bulle ne doit
   // jamais recouvrir ce qu'elle demande de toucher — la barre de navigation est en bas.
-  bulle.style.top = ''; bulle.style.bottom = '';
-  if (tutoZone && tutoZone.top > window.innerHeight * 0.5) {
-    bulle.style.bottom = (window.innerHeight - tutoZone.top + 12) + 'px';
-  } else if (tutoZone) {
-    bulle.style.top = (tutoZone.bottom + 12) + 'px';
-  } else {
-    bulle.style.top = '50%'; bulle.style.transform = 'translate(-50%,-50%)';
-  }
-  if (tutoZone) bulle.style.transform = 'translateX(-50%)';
+  // Puis on borne dans l'écran : sans ça, une cible près d'un bord la pousse dehors.
+  bulle.style.top = ''; bulle.style.bottom = ''; bulle.style.transform = 'translateX(-50%)';
+  const h = bulle.offsetHeight || 160;
+  let haut;
+  if (!tutoZone) haut = Math.max(8, (window.innerHeight - h) / 2);
+  else if (tutoZone.top > window.innerHeight * 0.5) haut = tutoZone.top - 12 - h;
+  else haut = tutoZone.bottom + 12;
+  bulle.style.top = Math.round(Math.min(Math.max(8, haut), Math.max(8, window.innerHeight - h - 8))) + 'px';
+}
 
-  const ok = document.getElementById('tutoOk');
-  if (ok) ok.addEventListener('click', () => { if (tutoResolve) tutoResolve('ok'); });
-  document.getElementById('tutoPasser').addEventListener('click', () => { if (tutoResolve) tutoResolve('passer'); });
+// Conservée : c'est le point d'entrée utilisé par la boucle de suivi et par le redimensionnement.
+function placerProjecteur(el, titre, texte, boutonLabel, refaire) {
+  if (refaire) construireBulle(titre, texte, boutonLabel);
+  positionnerProjecteur(el);
 }
 
 // Une étape : on place le projecteur, puis on attend soit la condition d'état, soit le
 // bouton de la bulle. La condition l'emporte — elle survit aux rendus qui refont le DOM.
-function etapeTuto(cibleFn, titre, texte, condition, boutonLabel) {
+function etapeTuto(cibleFn, titre, texte, condition, boutonLabel, libreSel) {
   return new Promise(resolve => {
     // Une condition DÉJÀ vraie à l'entrée validerait l'étape avant même que le joueur ait
     // lu la bulle — c'est ce qui arrivait à « touche Effectif », le jeu s'ouvrant sur cet
     // écran. Dans ce cas on bascule en étape à bouton : on explique, et on continue.
     let dejaVrai = false;
     if (condition) { try { dejaVrai = !!condition(); } catch (e) {} }
-    const modeBouton = !condition || dejaVrai;
+    // Cible introuvable : l'étape ne peut pas être accomplie par un clic. C'est le cas de
+    // « Plus » sur grand écran, où les onze écrans tiennent dans la barre et où le bouton
+    // n'existe tout simplement pas. Sans ce repli, le tutoriel s'arrêtait là.
+    let cibleAbsente = false;
+    if (condition && cibleFn) { try { cibleAbsente = !cibleFn(); } catch (e) { cibleAbsente = true; } }
+    const modeBouton = !condition || dejaVrai || cibleAbsente;
     let fini = false;
     const terminer = v => { if (fini) return; fini = true; clearInterval(minuteur);
-      window.removeEventListener('resize', replacer); tutoResolve = null; resolve(v); };
+      if (tutoRaf) { cancelAnimationFrame(tutoRaf); tutoRaf = null; }
+      window.removeEventListener('resize', replacer);
+      window.removeEventListener('scroll', replacer, true);
+      // Le voile se referme à la fin de CHAQUE étape. Sans ça il restait affiché entre deux
+      // étapes, boucle de suivi arrêtée : après le clic sur « Jouer la journée », il
+      // recouvrait la visionneuse de match et rendait « Passer ⏭ » inatteignable. L'étape
+      // suivante le rouvre dans la foulée — le trou n'a pas le temps d'être repeint.
+      fermerProjecteur();
+      tutoResolve = null; resolve(v); };
     tutoResolve = terminer;
-    const cible = () => { try { return cibleFn ? cibleFn() : null; } catch (e) { return null; } };
-    const replacer = () => placerProjecteur(cible(), titre, texte, modeBouton ? (boutonLabel || 'Continuer') : null);
-    replacer();
+    const cible = () => {
+      // Les éléments « libres » sont recalculés à chaque placement : le rendu du jeu
+      // remplace le DOM, les anciens n'existeraient plus.
+      tutoLibres = libreSel ? Array.prototype.slice.call(document.querySelectorAll(libreSel)) : [];
+      try { return cibleFn ? cibleFn() : null; } catch (e) { return null; }
+    };
+    const contenu = refaire => placerProjecteur(cible(), typeof titre === 'function' ? titre() : titre,
+      typeof texte === 'function' ? texte() : texte, modeBouton ? (boutonLabel || 'Continuer') : null, refaire);
+    const replacer = () => contenu(false);   // repositionne seulement
+    amenerDansLEcran(cible());               // une seule fois, à l'entrée de l'étape
+    contenu(true);                           // construit la bulle
+    // Le cadre suit sa cible image par image. Le replacement toutes les 250 ms le faisait
+    // traîner visiblement derrière la fenêtre qu'on redimensionne.
+    let mvAvant = null;
+    const suivre = () => {
+      if (fini) return;
+      // Réagir à l'ouverture ET à la fermeture de la visionneuse, sinon le projecteur
+      // resterait effacé après le match, ou masquerait le bouton « Passer » pendant.
+      const mv = visionneuseOuverte();
+      if (mv !== mvAvant) { mvAvant = mv; replacer(); }
+      else if (!mv && tutoZone && tutoZone.el) {
+        const r = tutoZone.el.getBoundingClientRect();
+        if (r.width && r.height && (Math.abs(r.left - 6 - tutoZone.left) > 0.5
+            || Math.abs(r.top - 6 - tutoZone.top) > 0.5)) replacer();
+      }
+      tutoRaf = requestAnimationFrame(suivre);
+    };
+    tutoRaf = requestAnimationFrame(suivre);
     const minuteur = setInterval(() => {
       if (tutorielCoupe) { terminer('passer'); return; }
       if (!modeBouton) { try { if (condition()) { terminer('ok'); return; } } catch (e) {} }
       replacer(); // la cible bouge : le rendu du jeu remplace le DOM à chaque renderAll()
     }, 250);
     window.addEventListener('resize', replacer);
+    window.addEventListener('scroll', replacer, true);
   });
 }
 
 // Bouton d'un écran, où qu'il se trouve : dans la barre du bas, ou dans le tiroir « Plus »
 // quand la largeur ne permet pas de tout afficher. Viser la barre en dur échouerait en
 // 390 px, où elle ne tient que quatre entrées.
+// Bouton d'embauche le moins cher parmi ceux qui sont accessibles. Le marché est présenté
+// dans l'ordre de génération, pas par prix : viser le premier revenait à imposer un coach à
+// 4 700 € avec 5 000 € en caisse.
+function coachLeMoinsCher() {
+  const boutons = Array.prototype.slice.call(
+    document.querySelectorAll('#tab-entrainement button[data-hire]:not([disabled])'));
+  if (!boutons.length) return null;
+  const prix = b => {
+    const m = (b.textContent || '').replace(/\s/g, '').match(/(\d[\d]*)/g);
+    return m ? parseInt(m[m.length - 1], 10) : Number.MAX_SAFE_INTEGER;
+  };
+  return boutons.reduce((a, b) => prix(b) <= prix(a) ? b : a);
+}
+
 function tutoCibleEcran(tab) {
   const b = document.querySelector('#mainNav button[data-nav="' + tab + '"]');
   if (b) return b;
@@ -1761,21 +1866,41 @@ function tutoEtapes() {
     { titre: 'L\'entraînement', cible: () => tutoCibleEcran('entrainement'),
       condition: () => ongletCourant === 'entrainement',
       texte: `Touche <b>Entraînement</b>. C'est ici que ton effectif progresse — ou stagne, si tu n'as personne pour l'encadrer.` },
-    { titre: 'Ton premier coach', cible: () => document.querySelector('#tab-entrainement button[data-hire]'),
+    // On met en avant le MOINS CHER, pas le premier de la liste : le marché n'est pas trié
+    // par prix, et le premier coûtait 4 700 € sur 5 000 € de budget. `libre` laisse malgré
+    // tout cliquer n'importe quel bouton d'embauche — guider n'est pas enfermer.
+    { titre: 'Ton premier coach', cible: () => coachLeMoinsCher(),
+      libre: '#tab-entrainement button[data-hire]',
       condition: () => Object.values(G.staff).some(Boolean),
-      texte: `Embauche un coach. Sans staff, <b>aucune progression</b> : la séance est même refusée. Les moins chers valent quelques centaines d'euros, tu en as 5 000.` },
+      texte: `Embauche un coach. Sans staff, <b>aucune progression</b> : la séance est même refusée. Je te montre le moins cher, mais tu peux en choisir un autre.` },
     { titre: 'La première séance', cible: () => document.querySelector('#tab-entrainement button[onclick*="runTrainingSession"]'),
       condition: () => G.trainingAvailable === false,
       texte: `Lance la séance. Une par semaine, entre deux journées — ce sont surtout les joueurs <b>laissés au repos</b> qui en profitent, ils arrivent frais.` },
+    // Les étapes de navigation se contentent d'envoyer sur l'écran ; l'explication vient
+    // APRÈS l'arrivée, sur une seconde étape. Avant, on lisait le texte depuis l'écran
+    // précédent et la bulle suivante recouvrait aussitôt la page qu'on venait d'ouvrir :
+    // on ne voyait jamais ce dont on parlait.
     { titre: 'Le classement', cible: () => tutoCibleEcran('classement'),
       condition: () => ongletCourant === 'classement',
-      texte: `Touche <b>Classement</b>. Barème FFRS : <b>3</b> points la victoire, <b>2</b> après prolongation, <b>1</b> la défaite en prolongation, <b>0</b> sinon.` },
+      texte: `Touche <b>Classement</b>.` },
+    { titre: 'Lire le classement', bouton: 'Compris',
+      cible: () => document.querySelector('#tab-classement table') || document.querySelector('#tab-classement .card'),
+      texte: `Barème FFRS : <b>3</b> points la victoire, <b>2</b> une victoire en prolongation, <b>1</b> une défaite en prolongation, <b>0</b> une défaite. À égalité, c'est la différence de buts qui départage.` },
     { titre: 'Le club', cible: () => tutoCibleEcran('club'),
       condition: () => ongletCourant === 'club',
-      texte: `Touche <b>Club</b>. Stade, confort, buvette, centre d'entraînement, sponsors. Attention : <b>monter de division exige une salle classée</b> — sans les travaux, tu restes bloqué même en gagnant.` },
-    { titre: 'Tout le reste', cible: () => document.querySelector('#mainNav button[data-nav="__plus"]'),
-      condition: () => document.getElementById('drawer').classList.contains('show'),
-      texte: `Touche <b>Plus</b> : transferts, calendrier, Coupe de France, messages, historique, aide et options y sont rangés.` },
+      texte: `Touche <b>Club</b>.` },
+    { titre: 'Construire son club', bouton: 'Compris',
+      cible: () => document.querySelector('#tab-club .card'),
+      texte: `Stade, confort, buvette, centre d'entraînement, sponsors. Attention : <b>monter de division exige une salle classée</b> — sans les travaux, la montée est refusée même en gagnant. Deux chantiers par saison, pas plus.` },
+    // Sur grand écran les onze écrans tiennent dans la barre et le bouton « Plus » n'existe
+    // pas. L'étape s'adapte au lieu d'attendre un tiroir qui ne s'ouvrira jamais.
+    { titre: 'Tout le reste',
+      cible: () => document.querySelector('#mainNav button[data-nav="__plus"]') || document.getElementById('mainNav'),
+      condition: () => !document.querySelector('#mainNav button[data-nav="__plus"]')
+                       || document.getElementById('drawer').classList.contains('show'),
+      texte: () => document.querySelector('#mainNav button[data-nav="__plus"]')
+        ? `Touche <b>Plus</b> : transferts, calendrier, Coupe de France, messages, historique, aide et options y sont rangés.`
+        : `Ton écran est large : tous les écrans tiennent dans la barre — transferts, calendrier, Coupe de France, messages, historique, aide et options. Sur téléphone, les derniers passent dans un tiroir « Plus ».` },
     { titre: 'À l\'eau', cible: () => document.getElementById('btnPlay'),
       condition: () => G.day >= 1,
       texte: `Ferme le tiroir et touche <b>Jouer la journée</b>. Tu peux regarder le match se dérouler, ou passer directement au résultat.` },
@@ -1797,12 +1922,11 @@ async function lancerTutoriel() {
     const e = etapes[i];
     // Dernière étape : on laisse retomber le match et le courrier avant de conclure.
     if (e.attendreCalme) {
-      const calme = () => !document.querySelector('#modalOverlay.show')
-        && (document.getElementById('matchViewer') || {}).style?.display === 'none';
+      const calme = () => !document.querySelector('#modalOverlay.show') && !visionneuseOuverte();
       let tours = 0;
       while (!calme() && tours++ < 400 && !tutorielCoupe) await new Promise(r => setTimeout(r, 250));
     }
-    const r = await etapeTuto(e.cible, e.titre, e.texte, e.condition, e.bouton);
+    const r = await etapeTuto(e.cible, e.titre, e.texte, e.condition, e.bouton, e.libre);
     if (r === 'passer') break;
   }
   fermerProjecteur();
