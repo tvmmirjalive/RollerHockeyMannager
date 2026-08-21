@@ -3863,10 +3863,47 @@ function nbQualifies(divIdx, taillePoule) {
 // le tableau se remplit PAR RANG : tous les 1ᵉʳˢ d'abord, puis tous les 2ᵉˢ, etc. Le
 // champion de chaque poule est ainsi toujours du tableau, et les places restantes vont aux
 // meilleurs suivants. Huit places, ce que la machine à états sait tenir.
+// Divisions jouant leurs phases finales en plateaux : N3 (art. 4.5.1 B). La N2 suivra
+// (art. 3.6.1 B) ; la N1 et l'Élite jouent des séries aller-retour et n'ont rien à voir ici.
+const DIVISIONS_PLATEAU = { 2: { plateauxQuarts: 8, passeQuarts: 2, passeDemies: 1, montees: 4 } };
+
+function formatPhaseFinale(divIdx) {
+  const def = DIVISIONS_PLATEAU[divIdx];
+  if (!def) return null;
+  // Le format fédéral suppose les huit poules réellement simulées. Une partie ancienne ou
+  // une configuration inattendue retombe sur les séries plutôt que de bloquer la saison.
+  if (!G.poules || G.poules.length !== def.plateauxQuarts) return null;
+  return def;
+}
+
+// Qualifiés avec leur poule et leur rang — nécessaires à la composition des plateaux
+// (art. 4.5.2 A), qui apparie un 1ᵉʳ, un 2ᵉ, un 3ᵉ et un 4ᵉ venus de poules différentes.
+function qualifiesAvecRang(divIdx) {
+  const poules = (G.poules && G.poules.length) ? G.poules : [G.teams];
+  const tri = (a, b) => b.pts - a.pts || (b.bp - b.bc) - (a.bp - a.bc) || b.bp - a.bp;
+  const out = [];
+  poules.forEach((p, iPoule) => {
+    [...p].sort(tri).slice(0, nbQualifies(divIdx, p.length))
+      .forEach((t, rang) => out.push({ t: t, poule: iPoule, rang: rang }));
+  });
+  return out;
+}
+
 function qualifiesDivision(divIdx) {
   const poules = (G.poules && G.poules.length) ? G.poules : [G.teams];
   const tri = (a, b) => b.pts - a.pts || (b.bp - b.bc) - (a.bp - a.bc) || b.bp - a.bp;
   const parPoule = poules.map(p => [...p].sort(tri).slice(0, nbQualifies(divIdx, p.length)));
+  // Format fédéral : les quatre premiers de chaque poule sont qualifiés (art. 4.4 G), soit
+  // trente-deux clubs. Le plafond de huit ci-dessous est celui de l'ancien tableau à séries.
+  //
+  // On rend des ÉQUIPES dans les deux cas. Faire porter deux formes différentes à la même
+  // fonction avait déjà cassé `seedRank[t.id]` en silence — la composition des plateaux, qui
+  // a besoin de la poule et du rang, passe par `qualifiesAvecRang()`.
+  if (formatPhaseFinale(divIdx)) {
+    const tous = [];
+    parPoule.forEach(q => q.forEach(t => tous.push(t)));
+    return tous;
+  }
   const out = [];
   const profondeur = Math.max(...parPoule.map(q => q.length), 0);
   for (let rang = 0; rang < profondeur && out.length < 8; rang++) {
@@ -3967,6 +4004,16 @@ function classerPlateau(pl) {
   return out;
 }
 
+// Remet toutes les équipes de la division au même niveau de forme avant les phases
+// finales. Les blessés en cours restent blessés : une coupure repose, elle ne soigne pas.
+function remettreEnForme() {
+  const poules = (G.poules && G.poules.length) ? G.poules : [G.teams];
+  poules.forEach(pou => pou.forEach(t => {
+    if (!t || !t.players) return;
+    t.players.forEach(p => { if (!p.injured) p.forme = irnd(88, 100); });
+  }));
+}
+
 function startPlayoffs() {
   // garantie : la Coupe de France doit toujours être terminée avant les playoffs (donc bien avant les demies)
   if (G.cup && G.cup.season === G.season && !cupIsDone()) {
@@ -3976,11 +4023,59 @@ function startPlayoffs() {
   // La barre des playoffs s'adapte à la poule : les poules réelles vont de 4 à 11 équipes,
   // et un Top 8 figé sortait du tableau (seeds[7] indéfini) dans toute poule de moins de
   // 8 — la saison ne pouvait alors pas se terminer.
+  // Coupure entre la qualification et les phases finales : tout le monde repart au même
+  // niveau de forme. Sans cela, la poule du joueur — la seule dont l'usure est calculée —
+  // affronterait sept poules restées fraîches. Voir 4-outils/patch-n3-federal.py.
+  remettreEnForme();
   const seeds = qualifiesDivision(G.divIdx);
   const nQual = seeds.length;
   const seedRank = {};
   seeds.forEach((t, i) => { seedRank[t.id] = i; });
-  let stage, quarts = null, demis = null, finale = null;
+  // Composition des plateaux de quart, art. 4.5.2 A : la série i réunit le 1ᵉʳ d'une poule,
+// le 2ᵉ de la suivante, le 3ᵉ de celle d'après et le 4ᵉ de la troisième — avec un décalage
+// d'une place à chaque série, à l'intérieur de sa conférence.
+// Conférence A : poules 0 à 3. Conférence B : poules 4 à 7.
+function composerPlateauxQuarts(qualifies) {
+  const parPouleRang = {};
+  qualifies.forEach(q => { parPouleRang[q.poule + ':' + q.rang] = q.t; });
+  const plateaux = [];
+  [0, 4].forEach(base => {           // les deux conférences
+    for (let s = 0; s < 4; s++) {
+      const ids = [];
+      for (let rang = 0; rang < 4; rang++) {
+        const poule = base + ((s + rang) % 4);
+        const eq = parPouleRang[poule + ':' + rang];
+        if (eq) ids.push(eq.id);
+      }
+      const conf = base === 0 ? 'A' : 'B';
+      plateaux.push(makePlateau(ids, `Quart de finale ${plateaux.length + 1} — conférence ${conf}`));
+    }
+  });
+  return plateaux;
+}
+
+let stage, quarts = null, demis = null, finale = null;
+  const defPlateau = formatPhaseFinale(G.divIdx);
+  if (defPlateau) {
+    // Format fédéral : on ne construit aucune série, seulement des plateaux.
+    const plateaux = composerPlateauxQuarts(qualifiesAvecRang(G.divIdx));
+    G.playoff = { format: 'plateau', stage: 'quarts', plateaux: plateaux, def: defPlateau,
+                  seedRank: seedRank, quarts: null, demis: null, finale: null,
+                  champion: null, finalists: [], promus: [], humanOut: false, nQual: seeds.length };
+    G.playoff.humanOut = !plateaux.some(pl => pl.ids.indexOf(myTeam().id) >= 0);
+    renderAll();
+    jouerMusique('playoffs');
+    notify({
+      title: "Place aux phases finales", ico: '🏒',
+      html: `<p class="modal-note">Saison régulière terminée. Les <b>quatre premiers de chaque poule</b>
+        sont qualifiés (art. 4.4 G) — <b>${seeds.length} clubs</b>, répartis en huit plateaux de quatre.</p>
+        <p class="modal-note">Dans un plateau, chaque équipe rencontre les trois autres. Les
+        <b>deux premières</b> passent en demi-finale ; le match nul y est possible (format standard).</p>
+        <p class="modal-note">Les <b>quatre</b> clubs qui sortiront des demi-finales montent en
+        ${escHtml(DIVISIONS[G.divIdx + 1] ? DIVISIONS[G.divIdx + 1].label : 'division supérieure')}.</p>`
+    });
+    return;
+  }
   if (nQual === 8) {
     // bracket classique : 1v8, 4v5, 3v6, 2v7
     quarts = [[0, 7], [3, 4], [2, 5], [1, 6]]
@@ -4029,6 +4124,82 @@ function runSeriesGame(series) {
   if (series.winsHome === 2) series.winner = series.home;
   else if (series.winsAway === 2) series.winner = series.away;
   return { home: host, away: guest, res, game };
+}
+
+// Plateau où figure le club du joueur, s'il en reste un.
+function monPlateau() {
+  const po = G.playoff;
+  if (!po || !po.plateaux) return null;
+  const moi = myTeam().id;
+  return po.plateaux.find(pl => pl.ids.indexOf(moi) >= 0) || null;
+}
+
+// Fait avancer un tour de plateaux d'un cran : une rencontre du joueur, le reste d'un bloc.
+function avancerPlateaux() {
+  const po = G.playoff;
+  const mien = monPlateau();
+  if (mien && !mien.fait) {
+    // Une rencontre à la fois pour le club du joueur, afin qu'il la voie.
+    const moi = myTeam().id;
+    let joue = null;
+    for (const autre of mien.ids) {
+      if (autre === moi) continue;
+      if (pl_duelJoue(mien, moi, autre)) continue;
+      const chezMoi = mien.ids.indexOf(moi) < mien.ids.indexOf(autre);
+      const a = playoffTeam(moi), b = playoffTeam(autre);
+      const r = simulerRencontrePlateau(chezMoi ? a : b, chezMoi ? b : a);
+      const ga = chezMoi ? r.ga : r.gb, gb = chezMoi ? r.gb : r.ga;
+      enregistrerRencontrePlateau(mien, moi, autre, ga, gb);
+      joue = { adverse: autre, ga: ga, gb: gb };
+      break;
+    }
+    if (joue) {
+      const cl = classerPlateau(mien);
+      const rang = cl.indexOf(moi) + 1;
+      G.lastReport = { m: { home: moi, away: joue.adverse, score: [joue.ga, joue.gb] },
+        res: { gH: joue.ga, gA: joue.gb, scorers: [], penalties: [], wentOT: false },
+        home: playoffTeam(moi), away: playoffTeam(joue.adverse), playoff: true,
+        title: `${mien.label} — ${playoffTeam(moi).name} ${joue.ga}–${joue.gb} ${playoffTeam(joue.adverse).name} · ${rang}ᵉ du plateau` };
+      if (mien.ids.every(x => x === moi || pl_duelJoue(mien, moi, x))) resolvePlateau(mien, playoffTeam);
+      renderAll(); showReport();
+      return;
+    }
+  }
+  // Plus rien à jouer pour le joueur : on résout tout le tour et on enchaîne.
+  po.plateaux.forEach(pl => { if (!pl.fait) resolvePlateau(pl, playoffTeam); });
+  buildNextRoundPlateau();
+  renderAll();
+}
+
+function pl_duelJoue(pl, a, b) { return !!pl.duels[clePlateauDuel(a, b)]; }
+
+// Tour suivant. Les quarts qualifient les DEUX premiers (art. 4.5.2 D), les demies le
+// PREMIER seulement (art. 4.5.3 D) — la différence est dans le règlement, pas une erreur.
+function buildNextRoundPlateau() {
+  const po = G.playoff, def = po.def;
+  if (po.stage === 'quarts') {
+    const qualifies = [];
+    po.plateaux.forEach(pl => classerPlateau(pl).slice(0, def.passeQuarts).forEach(id => qualifies.push(id)));
+    po.plateaux = [];
+    for (let i = 0; i < qualifies.length; i += 4) {
+      po.plateaux.push(makePlateau(qualifies.slice(i, i + 4), `Demi-finale ${po.plateaux.length + 1}`));
+    }
+    po.stage = 'demis';
+  } else if (po.stage === 'demis') {
+    const finalistes = [];
+    po.plateaux.forEach(pl => classerPlateau(pl).slice(0, def.passeDemies).forEach(id => finalistes.push(id)));
+    // Art. 4.7 A : ces quatre-là occupent les quatre premières places du classement final,
+    // donc ils montent — quel que soit l'ordre que donneront les matchs de titre.
+    po.promus = finalistes.slice(0, def.montees);
+    po.plateaux = [makePlateau(finalistes, 'Tournoi final')];
+    po.stage = 'finale';
+  } else if (po.stage === 'finale') {
+    const cl = classerPlateau(po.plateaux[0]);
+    po.champion = cl[0];
+    po.finalists = cl.slice(0, 2);
+    po.stage = 'done';
+  }
+  po.humanOut = po.stage === 'done' || !monPlateau();
 }
 
 function currentRound() {
@@ -4081,6 +4252,24 @@ function autoResolveRestOfPlayoffs() {
 
 function advancePlayoffs() {
   const po = G.playoff;
+  if (po.format === 'plateau') {
+    if (po.stage === 'done') return;
+    if (po.humanOut) {
+      // Club éliminé : on déroule tout le reste d'un coup, comme pour les séries.
+      let garde = 0;
+      while (po.stage !== 'done' && garde++ < 10) {
+        po.plateaux.forEach(pl => { if (!pl.fait) resolvePlateau(pl, playoffTeam); });
+        buildNextRoundPlateau();
+      }
+      G.lastReport = null;
+      const boite = document.getElementById('matchReport');
+      if (boite) boite.style.display = 'none';
+      renderAll();
+      return;
+    }
+    avancerPlateaux();
+    return;
+  }
 
   // équipe déjà éliminée : on ne rejoue plus match par match, tout se résout d'un coup
   if (po.humanOut) {
@@ -4335,7 +4524,13 @@ function endSeason() {
   }
 
   // la montée se joue aux playoffs ; en N1 le finaliste doit en plus gagner son barrage
-  let promote = rank === 0 || (po ? iAmFinalist : rank < 2); // `let` : une salle non classée peut l'annuler
+  // Format fédéral : monte qui figure parmi les promus désignés par les demi-finales
+  // (art. 4.7 A). Le champion de la saison régulière ne monte plus d'office — le règlement
+  // ne le prévoit pas en N3, il faut sortir des plateaux.
+  const promusPlateau = (po && G.playoff && G.playoff.format === 'plateau') ? (G.playoff.promus || []) : null;
+  let promote = promusPlateau
+    ? promusPlateau.indexOf(myTeam().id) >= 0
+    : rank === 0 || (po ? iAmFinalist : rank < 2); // `let` : une salle non classée peut l'annuler
   if (G.divIdx === IDX_N1 && barrageGagne !== null) promote = barrageGagne || iAmChampion;
   let moveMsg = "";
   let wasPromoted = false, wasRelegated = false;
