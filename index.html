@@ -431,6 +431,13 @@
      une quinzième colonne, que le tableau ne pourrait pas tenir en 390 px. */
   /* Sous la valeur, en retrait : c'est une information de second plan au moment de choisir,
      mais elle doit rester lisible sans survol — ni Android ni iOS n'en affichent. */
+  /* Ligne et partenaire : deux mentions discrètes sur la carte. Jamais de chiffre
+     d'affinité — le potentiel s'affiche bien en étoiles depuis l'origine. */
+  .card-ligne { position: absolute; top: 6px; right: 6px; font-size: 10px; font-weight: 800;
+    padding: 1px 5px; border-radius: 999px; background: rgba(255,255,255,.14); }
+  .card-duo { font-size: 10px; margin-top: 2px; white-space: nowrap; overflow: hidden;
+    text-overflow: ellipsis; }
+  .duo-plus { color: var(--vert); } .duo-moins { color: var(--rouge); opacity: .8; }
   .tr-salaire { display: block; font-size: 11px; opacity: .6; white-space: nowrap; }
   .tr-apport { font-size: 11px; font-weight: 700; padding: 1px 5px; border-radius: 999px;
     white-space: nowrap; vertical-align: middle; }
@@ -3304,8 +3311,11 @@ function autoLineup(team) {
   const avail = p => !p.injured;
   const gks = team.players.filter(p => p.pos === 'G' && avail(p)).sort((a, b) => effOv(b) - effOv(a));
   const field = team.players.filter(p => p.pos !== 'G' && avail(p)).sort((a, b) => effOv(b) - effOv(a));
-  if (gks[0]) gks[0].starter = true;
-  field.slice(0, 8).forEach(p => p.starter = true);
+  team.players.forEach(p => { p.ligne = 0; });
+  if (gks[0]) { gks[0].starter = true; gks[0].ligne = 1; }
+  // Deux lignes par défaut : les quatre meilleurs en première, les quatre suivants en
+  // seconde. Le joueur qui veut une troisième ligne, ou un autre équilibre, la compose.
+  field.slice(0, 8).forEach((p, i) => { p.starter = true; p.ligne = i < PAR_LIGNE ? 1 : 2; });
 }
 function effOv(p) {
   const brut = overall(p) - (p.consigne === 'prudent' ? MALUS_CONSIGNE : 0);
@@ -3333,6 +3343,86 @@ function basculerConsigne(id) {
 // roller in line. Le plafond était à huit : demander douze en alignait huit, en silence.
 const MAX_JOUEURS_CHAMP = 12;
 
+// ==================== Lignes nominatives et affinités ====================
+// Voir 4-outils/patch-lignes-affinites.py.
+
+const LIGNES_MAX = 3;
+const PAR_LIGNE = 4;
+const AFFINITE_MIN = -3, AFFINITE_MAX = 3;
+const COHESION_EFFET = 0.04;   // ±4 % au plus sur la force d'une ligne
+
+// Ligne d'un joueur. `starter` fait autorité : plusieurs endroits du jeu l'écrivent
+// directement — `playDay()` le passe à false quand un joueur se blesse — sans connaître les
+// lignes. Sans cette règle, un blessé restait fantomatiquement assigné à sa ligne.
+//
+// Repli pour les parties d'avant cette version : un titulaire sans `ligne` est réputé en
+// ligne 1, ce qui reproduit exactement l'ancien comportement.
+function ligneDe(p) {
+  if (!p.starter) return 0;
+  return (p.ligne !== undefined && p.ligne > 0) ? p.ligne : 1;
+}
+
+function joueursDeLigne(team, n) {
+  return team.players.filter(p => p.pos !== 'G' && ligneDe(p) === n && !p.injured);
+}
+
+// Clé d'une paire, indépendante de l'ordre : l'affinité se lit dans les deux sens.
+function cleAffinite(a, b) { return a < b ? a + '~' + b : b + '~' + a; }
+
+function affiniteEntre(a, b) {
+  if (!G.affinites) return 0;
+  return G.affinites[cleAffinite(a, b)] || 0;
+}
+
+function majAffinite(a, b, delta) {
+  if (!G.affinites) G.affinites = {};
+  const cle = cleAffinite(a, b);
+  const v = clampV((G.affinites[cle] || 0) + delta, AFFINITE_MIN, AFFINITE_MAX);
+  if (v === 0) delete G.affinites[cle]; else G.affinites[cle] = v;
+  return v;
+}
+
+// Cohésion moyenne des lignes alignées, ramenée entre −1 et 1.
+function cohesionEquipe(team) {
+  if (!team.human || !G.affinites) return 0;
+  let somme = 0, paires = 0;
+  for (let n = 1; n <= LIGNES_MAX; n++) {
+    const l = joueursDeLigne(team, n);
+    for (let i = 0; i < l.length; i++) {
+      for (let k = i + 1; k < l.length; k++) { somme += affiniteEntre(l[i].id, l[k].id); paires++; }
+    }
+  }
+  return paires ? clampV(somme / paires / AFFINITE_MAX, -1, 1) : 0;
+}
+
+// Après un match : jouer ensemble rapproche, une déroute crispe. Un cran tous les quatre
+// matchs environ, pour qu'une affinité se construise sur une saison et non sur un soir.
+function majAffinitesApresMatch(team, ecart) {
+  if (!team.human) return;
+  const delta = ecart <= -4 ? -1 : (Math.random() < 0.25 ? 1 : 0);
+  if (!delta) return;
+  for (let n = 1; n <= LIGNES_MAX; n++) {
+    const l = joueursDeLigne(team, n);
+    for (let i = 0; i < l.length; i++) {
+      for (let k = i + 1; k < l.length; k++) majAffinite(l[i].id, l[k].id, delta);
+    }
+  }
+}
+
+// Le partenaire avec qui ça marche le mieux — ou le moins bien. Affiché en toutes lettres,
+// jamais en chiffre, comme le potentiel s'affiche en étoiles.
+function partenaireMarquant(team, p) {
+  if (!G.affinites || !team.human) return null;
+  let best = null;
+  team.players.forEach(q => {
+    if (q.id === p.id) return;
+    const v = affiniteEntre(p.id, q.id);
+    if (v === 0) return;
+    if (!best || Math.abs(v) > Math.abs(best.v)) best = { q, v };
+  });
+  return best;
+}
+
 function lineupOf(team) {
   let gk = team.players.filter(p => p.pos === 'G' && p.starter && !p.injured)[0];
   let field = team.players.filter(p => p.pos !== 'G' && p.starter && !p.injured);
@@ -3349,7 +3439,10 @@ function teamStrength(team) {
   const atk = field.reduce((s, p) => s + effOv(p) * (p.pos === 'A' ? 1.15 : 0.9), 0) / n;
   const dfd = field.reduce((s, p) => s + effOv(p) * (p.pos === 'D' ? 1.15 : 0.9), 0) / n;
   const gkV = gk ? effOv(gk) : 40;
-  return { atk, def: dfd * 0.65 + gkV * 0.35 };
+  // Cohésion : ±4 % au plus. Un trio qui se connaît compense un écart de niveau ; deux
+  // joueurs qui ne se supportent plus valent moins que la somme de leurs qualités.
+  const coh = 1 + cohesionEquipe(team) * COHESION_EFFET;
+  return { atk: atk * coh, def: (dfd * 0.65 + gkV * 0.35) * coh };
 }
 
 // ---------------- Simulation ----------------
@@ -3869,7 +3962,9 @@ function playDay() {
     if (t.players.some(p => p.pos === 'G' && p.starter)) {
       playingIds.add(t.players.find(p => p.pos === 'G' && p.starter).id);
     }
-    const numLines = Math.max(1, Math.ceil(field.length / 4));
+    // Nombre de lignes réellement constituées, et non déduit du seul effectif aligné : un
+    // joueur seul en troisième ligne ne fait pas une ligne complète, mais il tourne quand même.
+    const numLines = Math.max(1, Math.ceil(field.length / PAR_LIGNE));
     const intervalMult = clampV(G.lineChangeInterval / 2, 0.7, 1.4);
     const wear = (9 / numLines) * intervalMult;
     t.players.forEach(p => {
@@ -3953,6 +4048,12 @@ function playDay() {
     });
   }
 
+  if (myResult) {
+    const me2 = myTeam();
+    const jeSuisHote = myResult.home === me2;
+    majAffinitesApresMatch(me2, (jeSuisHote ? myResult.res.gH - myResult.res.gA
+                                            : myResult.res.gA - myResult.res.gH));
+  }
   G.day++;
   // L'article part avant l'affichage : il rejoint ainsi le courrier présenté après le match.
   if (myResult) articleDePresse(myResult);
@@ -5574,15 +5675,27 @@ function toggleStarter(playerId) {
   const p = me.players.find(x => x.id === playerId);
   if (!p) return;
   if (p.injured) { toast(`${p.nom} est blessé — ${p.injuryWeeks} journée(s) avant son retour.`, 'warn'); return; }
-  if (p.starter) { p.starter = false; }
-  else {
-    const gks = me.players.filter(x => x.pos === 'G' && x.starter).length;
-    const field = me.players.filter(x => x.pos !== 'G' && x.starter).length;
-    if (p.pos === 'G' && gks >= 1) { toast("Un seul gardien titulaire : il ne tourne pas.", 'warn'); return; }
-    if (p.pos !== 'G' && field >= MAX_JOUEURS_CHAMP) {
-      toast(`${MAX_JOUEURS_CHAMP} joueurs de champ maximum en rotation (3 lignes de 4).`, 'warn'); return; }
-    p.starter = true;
+  // Le gardien reste un simple titulaire : il ne tourne pas.
+  if (p.pos === 'G') {
+    if (p.starter) { p.starter = false; p.ligne = 0; }
+    else {
+      if (me.players.filter(x => x.pos === 'G' && x.starter).length >= 1) {
+        toast("Un seul gardien titulaire : il ne tourne pas.", 'warn'); return; }
+      p.starter = true; p.ligne = 1;
+    }
+    renderEffectif();
+    return;
   }
+  // Un joueur de champ tourne de ligne en ligne : 0 → 1 → 2 → 3 → 0. On saute les lignes
+  // déjà complètes plutôt que de refuser le clic — quatre par ligne, c'est la règle.
+  let n = ligneDe(p);
+  for (let essais = 0; essais < LIGNES_MAX + 1; essais++) {
+    n = (n + 1) % (LIGNES_MAX + 1);
+    if (n === 0) break;
+    if (joueursDeLigne(me, n).filter(x => x.id !== p.id).length < PAR_LIGNE) break;
+  }
+  p.ligne = n;
+  p.starter = n > 0;
   renderEffectif();
 }
 
@@ -6346,6 +6459,12 @@ function playerRow(p, opts = {}) {
 
 function playerCard(p) {
   const ov = overall(p);
+  const laLigne = ligneDe(p);
+  const duo = (typeof partenaireMarquant === 'function') ? partenaireMarquant(myTeam(), p) : null;
+  const mentionDuo = duo
+    ? `<div class="card-duo ${duo.v > 0 ? 'duo-plus' : 'duo-moins'}">${duo.v > 0 ? '↔' : '✕'} ${escHtml(duo.q.nom.split(' ').pop())}</div>`
+    : '';
+  const badgeLigne = laLigne ? `<span class="card-ligne">L${laLigne}</span>` : '';
   const f = p.forme;
   const moral = p.moral ?? 70;
   const moralColor = moral >= 75 ? 'var(--vert)' : moral >= 50 ? 'var(--tan)' : 'var(--rouge)';
@@ -6368,8 +6487,10 @@ function playerCard(p) {
   return `<div class="player-card ${p.starter ? 'selected' : ''}" onclick="toggleStarter(${p.id});renderEffectif();">
     <span class="card-pos" style="background:${posColor}">${p.pos}</span>
     <span class="card-check">✓</span>
+    ${badgeLigne}
     <img src="${portraitFor(p.id)}" class="card-portrait" alt="">
     <div class="card-name">${p.nom}</div>
+    ${mentionDuo}
     <div class="card-overall-label">Général</div>
     <div class="card-overall">${ov}</div>
     <div class="card-stats">${statLine}</div>
