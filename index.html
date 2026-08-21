@@ -2308,8 +2308,30 @@ function installerPoules(divIdx, equipeJoueur) {
     G.pouleIdx = idxJoueur;
   }
   G.calendriers = G.poules.map((p) => buildSchedule(p.length));
+  ouvrirSurUnMatchDuJoueur(G.calendriers[G.pouleIdx], G.poules[G.pouleIdx]);
   G.teams = G.poules[G.pouleIdx];
   G.schedule = G.calendriers[G.pouleIdx];
+}
+
+// Le club du joueur ne doit pas être au repos à la première journée : dans une poule
+// impaire — 7 clubs en Hauts-de-France sud, par exemple — il l'était une fois sur sept, et
+// le tutoriel se terminait alors sans qu'aucun match ne soit joué.
+//
+// On se contente de RÉORDONNER les journées, sans en modifier une seule. Un tournoi toutes
+// rondes reste valide quel que soit l'ordre de ses journées : chacune est un appariement
+// complet et indépendant. Le club se reposera une autre semaine, avec le même nombre de
+// matchs contre les mêmes adversaires.
+function ouvrirSurUnMatchDuJoueur(calendrier, equipes) {
+  if (!calendrier || !calendrier.length || !equipes) return;
+  const iJoueur = equipes.findIndex(t => t && t.human);
+  if (iJoueur < 0) return;
+  const joue = journee => journee.some(m => m.home === iJoueur || m.away === iJoueur);
+  if (joue(calendrier[0])) return;                       // rien à faire
+  const cible = calendrier.findIndex(joue);
+  if (cible <= 0) return;                                // introuvable : on n'invente rien
+  const tmp = calendrier[0];
+  calendrier[0] = calendrier[cible];
+  calendrier[cible] = tmp;
 }
 
 // Rétablit les références après un chargement : JSON les a perdues.
