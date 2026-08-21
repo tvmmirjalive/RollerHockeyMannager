@@ -1990,7 +1990,13 @@ async function presenterNouveauxMessages() {
     // « Tout passer » n'apparaît qu'à partir de deux lettres restantes : sur la dernière il
     // ne passerait rien, et un bouton qui ne fait rien est pire qu'un bouton absent.
     if (reste >= 1) actions.push({ label: 'Tout passer', value: 'passer' });
-    actions.push({ label: reste ? `Suivant · ${reste} en attente` : 'Fermer', value: 'suivant', cls: 'buy' });
+    // Un article de presse attend une réponse : ses boutons remplacent le « Suivant ».
+    // Se taire reste possible — « Tout passer » — et n'a aucun effet.
+    if (m.reponses && m.reponse === undefined) {
+      m.reponses.forEach((r, k) => actions.push({ label: r.label, value: 'rep' + k, cls: k ? 'buy' : '' }));
+    } else {
+      actions.push({ label: reste ? `Suivant · ${reste} en attente` : 'Fermer', value: 'suivant', cls: 'buy' });
+    }
     const choix = await showModal({
       title: m.title, ico: '✉️', tapPourSuivant: true,
       html: `<div class="modal-lettre">${m.body}</div>
@@ -1998,6 +2004,9 @@ async function presenterNouveauxMessages() {
       actions: actions
     });
     m.read = true;
+    if (typeof choix === 'string' && choix.indexOf('rep') === 0 && m.reponses) {
+      repondreAlaPresse(m, parseInt(choix.slice(3), 10));
+    }
     if (choix === 'passer') { nouveaux.slice(i + 1).forEach(x => x.read = true); break; }
   }
   applyNavNotifications();
@@ -2016,6 +2025,33 @@ const PRESSE_ACCROCHES = {
   elogieux: ['Démonstration', 'La manière et le résultat', 'Un récital', 'Le rouleau compresseur'],
   neutre:   ['Une victoire qui compte', 'L\'essentiel est assuré', 'Sans forcer'],
   severe:   ['Soirée à oublier', 'La chute', 'Rien n\'a fonctionné', 'Le réveil sera difficile']
+};
+
+// Deux réponses par ton, et jamais une bonne. Protéger le vestiaire coûte du crédit auprès
+// de la direction ; lui donner raison coûte au vestiaire. C'est le premier arbitrage du jeu
+// qui ne se règle pas avec de l'argent.
+//
+// Les valeurs sont volontairement petites : l'amplitude utile du moral mesurée n'est que de
+// 2,5 %. Elles seront à remesurer quand le vestiaire lui aura rendu sa variance (phase 3).
+const PRESSE_REPONSES = {
+  elogieux: [
+    { label: 'Rester mesuré', moral: 0, conf: 2,
+      dit: "« Une victoire, rien de plus. On se remet au travail dès demain. »" },
+    { label: 'Féliciter le groupe', moral: 3, conf: 0,
+      dit: "« Ils ont été énormes. Ce soir, c'est pour eux. »" }
+  ],
+  neutre: [
+    { label: 'Rester concentré', moral: 0, conf: 1,
+      dit: "« On prend les points et on avance. Rien n'est fait. »" },
+    { label: 'Saluer le caractère', moral: 2, conf: 0,
+      dit: "« Ils ne se sont pas affolés. C'est ce que je retiens. »" }
+  ],
+  severe: [
+    { label: 'Défendre mes joueurs', moral: 3, conf: -2,
+      dit: "« Personne ne s'est caché. Le groupe n'est pas en cause. »" },
+    { label: 'Assumer publiquement', moral: -1, conf: 3,
+      dit: "« C'est indigne de ce club. À commencer par moi. »" }
+  ]
 };
 
 function presseTonDuMatch(mien, adverse, ecart) {
@@ -2073,7 +2109,25 @@ function articleDePresse(rapport) {
     G.boardConfidence = Math.round(clampV((G.boardConfidence ?? 60) + (d > 0 ? 1 : -1), 0, 100));
   }
   pushInbox(`📰 ${accroche}`, `<i>${escHtml(journal)}</i> — ${corps}`, 'presse');
+  // Les réponses voyagent avec la lettre : `presenterNouveauxMessages()` en fera ses boutons.
+  G.inbox[0].reponses = PRESSE_REPONSES[ton] || PRESSE_REPONSES.neutre;
   return { ton, accroche, journal };
+}
+
+// Applique la réponse du coach et la conserve dans la lettre : en relisant sa boîte, le
+// joueur retrouve ce qu'il a dit. Une réponse déjà donnée ne se rejoue pas.
+function repondreAlaPresse(message, index) {
+  if (!message || !message.reponses || message.reponse !== undefined) return null;
+  const r = message.reponses[index];
+  if (!r) return null;
+  message.reponse = index;
+  const me = myTeam();
+  if (me && r.moral) {
+    me.players.forEach(p => { p.moral = Math.round(clampV((p.moral || 70) + r.moral, 15, 99)); });
+  }
+  if (r.conf) G.boardConfidence = Math.round(clampV((G.boardConfidence ?? 60) + r.conf, 0, 100));
+  message.body += `<p class="modal-note">Ta réponse : ${escHtml(r.dit)}</p>`;
+  return r;
 }
 
 function pushInbox(title, body, type) {
