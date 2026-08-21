@@ -4043,6 +4043,77 @@ function remettreEnForme() {
   }));
 }
 
+// ==================== Accession Pré-Nationale → Nationale 3 ====================
+// Voir 4-outils/patch-accession-n3.py pour les articles cités.
+
+const ACCESSION_PLACES = 8;        // art. 9.3 C : huit places pour toute la France
+const ACCESSION_TOURNOIS = 4;      // « 2, 4 ou 8 tournois » — quatre de six, ici
+const ACCESSION_PAR_TOURNOI = 6;
+
+// Art. 9.3 B : deux clubs pour une ligue de huit équipes ou plus, un seul en dessous.
+function ticketsDeLigue(taillePoule) { return taillePoule >= 8 ? 2 : 1; }
+
+// Le club décroche-t-il un ticket ? Il faut finir dans les quatre premiers ET être dans le
+// quota que sa ligue peut envoyer. Une poule bretonne de cinq n'emmène qu'un club ; une
+// francilienne de neuf en emmène deux.
+function aLeTicketDAccession(rang, taillePoule) {
+  return rang >= 1 && rang <= 4 && rang <= ticketsDeLigue(taillePoule);
+}
+
+// Un adversaire du tournoi, au niveau attendu d'un qualifié de Pré-Nationale : le haut de
+// la bande de sa division, puisque ce sont des premiers de ligue.
+function adversaireAccession(i) {
+  const bande = DIVISIONS[1].qual;
+  const niveau = rnd(bande[1] - 4, bande[1] + 4);
+  const eq = makeTeam({ name: `Vainqueur de ligue ${i}`, short: 'VL' + i, force: niveau }, 900 + i, bande);
+  eq.tactic = { style: 'equilibre', pressing: 'moyen' };
+  autoLineup(eq);
+  return eq;
+}
+
+// Le tournoi d'accession. `rangPoule` sert à placer le club : un premier de ligue entre
+// dans un tournoi plus relevé qu'un deuxième, comme la répartition fédérale le prévoit.
+// Rend le détail plutôt qu'un simple booléen : le joueur a droit à savoir de combien il
+// lui a manqué.
+function jouerAccessionN3(rangPoule) {
+  const me = myTeam();
+  const participants = [];
+  for (let i = 1; i <= ACCESSION_TOURNOIS * ACCESSION_PAR_TOURNOI - 1; i++) participants.push(adversaireAccession(i));
+
+  // Le club rejoint l'un des tournois ; les autres sont résolus pour établir le classement
+  // national. Art. 9.3 C : les tournois n'ont pas à désigner un vainqueur, seulement à
+  // ordonner — d'où le classement de plateau plutôt qu'une élimination directe.
+  const tousLesTournois = [];
+  const pool = [me].concat(participants);
+  const parTournoi = Math.ceil(pool.length / ACCESSION_TOURNOIS);
+  const parId = {};
+  pool.forEach(t => { parId[t.id] = t; });
+  for (let k = 0; k < ACCESSION_TOURNOIS; k++) {
+    const lot = pool.slice(k * parTournoi, (k + 1) * parTournoi);
+    if (!lot.length) continue;
+    const pl = makePlateau(lot.map(t => t.id), `Tournoi d'accession ${k + 1}`);
+    resolvePlateau(pl, id => parId[id]);
+    tousLesTournois.push(pl);
+  }
+
+  // Les places nationales se répartissent entre les tournois, par rang : tous les premiers,
+  // puis tous les deuxièmes, jusqu'à huit.
+  const qualifies = [];
+  const classements = tousLesTournois.map(pl => classerPlateau(pl));
+  const profondeur = Math.max.apply(null, classements.map(c => c.length).concat([0]));
+  for (let rang = 0; rang < profondeur && qualifies.length < ACCESSION_PLACES; rang++) {
+    classements.forEach(c => { if (c[rang] !== undefined && qualifies.length < ACCESSION_PLACES) qualifies.push(c[rang]); });
+  }
+  const rang = qualifies.indexOf(me.id) + 1;
+  return {
+    places: ACCESSION_PLACES,
+    participants: pool,
+    tours: tousLesTournois.length,
+    rang: rang > 0 ? rang : null,
+    monte: qualifies.indexOf(me.id) >= 0
+  };
+}
+
 function startPlayoffs() {
   // garantie : la Coupe de France doit toujours être terminée avant les playoffs (donc bien avant les demies)
   if (G.cup && G.cup.season === G.season && !cupIsDone()) {
@@ -4568,7 +4639,14 @@ function endSeason() {
   // (art. 4.7 A). Le champion de la saison régulière ne monte plus d'office — le règlement
   // ne le prévoit pas en N3, il faut sortir des plateaux.
   const promusPlateau = (po && G.playoff && G.playoff.format === 'plateau') ? (G.playoff.promus || []) : null;
-  let promote = promusPlateau
+  // Pré-Nationale : la montée ne s'obtient plus en gagnant sa poule. Il faut un ticket de
+  // ligue (art. 9.3 B) puis sortir du tournoi national à huit places (art. 9.3 C).
+  let accession = null;
+  if (G.divIdx === 1) {
+    accession = aLeTicketDAccession(rank + 1, n) ? jouerAccessionN3(rank + 1) : { monte: false, rang: null };
+  }
+  let promote = accession ? accession.monte
+    : promusPlateau
     ? promusPlateau.indexOf(myTeam().id) >= 0
     : rank === 0 || (po ? iAmFinalist : rank < 2); // `let` : une salle non classée peut l'annuler
   if (G.divIdx === IDX_N1 && barrageGagne !== null) promote = barrageGagne || iAmChampion;
@@ -4625,6 +4703,22 @@ function endSeason() {
 
   if (wasPromoted || iAmChampion) jouerJingle('montee');
   else if (wasRelegated) jouerJingle('defaite');
+  // On explique l'accession : sans cela, finir premier sans monter serait incompréhensible.
+  if (accession) {
+    const tickets = ticketsDeLigue(n);
+    pushInbox(accession.monte ? '🎟️ Accession décrochée' : '🎟️ Phase d\'accession',
+      accession.rang === null && !aLeTicketDAccession(rank + 1, n)
+        ? `${rank + 1}<sup>e</sup> de la poule : pas de ticket pour la phase d'accession. `
+          + `Notre ligue n'y envoie que <b>${tickets}</b> club${tickets > 1 ? 's' : ''}, `
+          + `pris parmi les quatre premiers (art. 9.3 B). Il faut finir plus haut.`
+        : accession.monte
+          ? `Tournoi d'accession remporté : <b>${accession.rang}<sup>e</sup></b> sur les `
+            + `${ACCESSION_PLACES} places nationales. Direction la Nationale 3.`
+          : `Tournoi d'accession disputé, mais la place nous échappe : seules `
+            + `<b>${ACCESSION_PLACES} places</b> sont en jeu pour toute la France (art. 9.3 C). `
+            + `Gagner sa poule ne suffit pas — il faut sortir du tournoi.`,
+      'board');
+  }
   presenterResumeSaison({ rank: rank, n: n, basePrize: basePrize }, {
     title: `Fin de saison ${seasonLabel(G.season)}`, ico: '📅',
     html: `${trophyMsg}${barrageMsg || ''}${playdownMsg || ''}${montreeRefusee || ''}${moveMsg}
