@@ -3202,6 +3202,10 @@ function basculerConsigne(id) {
   flushSave();
 }
 
+// Douze joueurs de champ au maximum, soit trois lignes de quatre — la formule courante du
+// roller in line. Le plafond était à huit : demander douze en alignait huit, en silence.
+const MAX_JOUEURS_CHAMP = 12;
+
 function lineupOf(team) {
   let gk = team.players.filter(p => p.pos === 'G' && p.starter && !p.injured)[0];
   let field = team.players.filter(p => p.pos !== 'G' && p.starter && !p.injured);
@@ -3209,7 +3213,7 @@ function lineupOf(team) {
     gk = team.players.filter(p => p.pos === 'G' && p.starter && !p.injured)[0];
     field = team.players.filter(p => p.pos !== 'G' && p.starter && !p.injured);
   }
-  return { gk, field: field.slice(0, 8) };
+  return { gk, field: field.slice(0, MAX_JOUEURS_CHAMP) };
 }
 
 function teamStrength(team) {
@@ -3801,11 +3805,23 @@ function playDay() {
     const draw = myResult.res.gH === myResult.res.gA;
     G.budget += iWon ? 800 : draw ? 300 : 100;
     const me = myTeam();
+    // Niveau du plus faible joueur aligné : la référence à laquelle un remplaçant se compare.
+    // « Je vaux mieux que celui qui joue à ma place » est le ressort de la frustration.
+    const alignes = me.players.filter(x => x.starter && !x.injured && x.pos !== 'G');
+    const seuilBanc = alignes.length
+      ? Math.min.apply(null, alignes.map(x => overall(x)))
+      : 0;
     me.players.forEach(p => {
       let d = 0;
-      if (p.starter) d += iWon ? 4 : iLost ? -3 : 1;
-      else d += iWon ? 1 : iLost ? 2 : 0; // un remplaçant est moins affecté par une défaite, un peu frustré même en cas de victoire sans lui
-      if (!p.starter && !p.injured) d -= 1; // frustration de ne pas jouer
+      if (p.starter) {
+        d += iWon ? 4 : iLost ? -3 : 1;
+      } else if (!p.injured) {
+        // La défaite ne console plus le remplaçant : il gagnait +1 quand l'équipe perdait.
+        d += iWon ? 1 : iLost ? -1 : 0;
+        // Et la frustration suit son niveau, pas son seul statut. Un quatrième gardien ne se
+        // plaint pas ; un titulaire naturel laissé sur le banc, si.
+        d -= clampV(1 + (overall(p) - seuilBanc) / 4, 1, 6);
+      }
       p.moral = Math.round(clampV((p.moral || 70) + d, 15, 99));
     });
   }
@@ -5434,7 +5450,8 @@ function toggleStarter(playerId) {
     const gks = me.players.filter(x => x.pos === 'G' && x.starter).length;
     const field = me.players.filter(x => x.pos !== 'G' && x.starter).length;
     if (p.pos === 'G' && gks >= 1) { toast("Un seul gardien titulaire : il ne tourne pas.", 'warn'); return; }
-    if (p.pos !== 'G' && field >= 8) { toast("8 joueurs de champ maximum en rotation (2 lignes de 4).", 'warn'); return; }
+    if (p.pos !== 'G' && field >= MAX_JOUEURS_CHAMP) {
+      toast(`${MAX_JOUEURS_CHAMP} joueurs de champ maximum en rotation (3 lignes de 4).`, 'warn'); return; }
     p.starter = true;
   }
   renderEffectif();
@@ -6255,7 +6272,10 @@ function renderEffectif() {
     ${bandeau('effectif', DIVISIONS[G.divIdx].label, 'Effectif',
               `${me.name} · ${me.players.length} joueurs`)}
     <p class="note">Composition : <b>1 gardien</b> (ne tourne pas) + <b>${nField} joueur(s) de champ</b> en rotation (●) —
-    de 4 (une ligne) à 8 (deux lignes). Plus de lignes = moins de fatigue par joueur mais un effectif plus large à gérer.
+    de <b>4</b> (une ligne) à <b>${MAX_JOUEURS_CHAMP}</b> (trois lignes).
+    Une ligne : tes quatre meilleurs sur la piste, mais ils s'épuisent — <b>9 points de forme
+    par journée</b>. Deux lignes : <b>4,5</b>. Trois lignes : <b>3</b>, et tout le monde joue —
+    au prix d'un niveau moyen plus bas, et d'un vestiaire nettement plus calme.
     <button class="btn" onclick="autoLineup(myTeam());renderEffectif()">Compo auto</button></p>
     <p class="note">Intervalle de changement de ligne :
       <select onchange="setLineInterval(this.value)">
