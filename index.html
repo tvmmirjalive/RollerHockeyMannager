@@ -2013,7 +2013,9 @@ async function presenterNouveauxMessages() {
     m.read = true;
     if (typeof choix === 'string' && choix.indexOf('rep') === 0 && m.reponses) {
       const k = parseInt(choix.slice(3), 10);
-      if (m.vestiaire) repondreAuVestiaire(m, k); else repondreAlaPresse(m, k);
+      if (m.vestiaire) repondreAuVestiaire(m, k);
+      else if (m.brouille) reglerBrouille(m, k);
+      else repondreAlaPresse(m, k);
     }
     if (choix === 'passer') { nouveaux.slice(i + 1).forEach(x => x.read = true); break; }
   }
@@ -2250,6 +2252,150 @@ function reglerEngagements() {
     delete p.engagement;
   });
   return soldes;
+}
+
+// ==================== Les événements internes ====================
+// Voir 4-outils/patch-evenements-club.py.
+
+const EVENEMENT_ECART = 6;   // journées minimum entre deux événements
+
+// Deux joueurs d'une même ligne, pris au hasard — c'est là que les frictions naissent.
+function duoDuneLigne(team) {
+  for (let n = 1; n <= LIGNES_MAX; n++) {
+    const l = joueursDeLigne(team, n);
+    if (l.length >= 2) {
+      const a = pick(l);
+      const b = pick(l.filter(x => x.id !== a.id));
+      if (a && b) return [a, b];
+    }
+  }
+  return null;
+}
+
+const EVENEMENTS_CLUB = [
+  {
+    cle: 'accrochage',
+    possible: ctx => ctx.ecart <= -3 && duoDuneLigne(ctx.team),
+    creer: ctx => {
+      const [a, b] = duoDuneLigne(ctx.team);
+      majAffinite(a.id, b.id, -2);
+      [a, b].forEach(p => { p.moral = Math.round(clampV((p.moral ?? 70) - 5, 15, 99)); });
+      return { titre: `🔥 Accrochage au vestiaire`,
+        corps: `${escHtml(a.nom)} et ${escHtml(b.nom)} en sont venus aux mots après la
+                rencontre. Ils jouent sur la même ligne, et ça se voit désormais.`,
+        duo: [a.id, b.id] };
+    }
+  },
+  {
+    cle: 'parrainage',
+    possible: ctx => ctx.team.players.some(p => p.age <= 20) && ctx.team.players.some(p => p.age >= 30),
+    creer: ctx => {
+      const jeune = pick(ctx.team.players.filter(p => p.age <= 20));
+      const ancien = pick(ctx.team.players.filter(p => p.age >= 30));
+      majAffinite(jeune.id, ancien.id, 2);
+      const cap = jeune.potentiel || 97;
+      const stat = jeune.pos === 'G' ? 'gar' : pick(['tir', 'def', 'vit']);
+      jeune[stat] = Math.round(clampV(jeune[stat] + 1, 30, cap));
+      jeune.moral = Math.round(clampV((jeune.moral ?? 70) + 6, 15, 99));
+      return { titre: `🧭 ${escHtml(ancien.nom)} prend ${escHtml(jeune.nom)} sous son aile`,
+        corps: `L'ancien a passé la semaine à travailler avec le jeune. Ça se verra sur la
+                piste, et ça se voit déjà au vestiaire.` };
+    }
+  },
+  {
+    cle: 'jalousie',
+    possible: ctx => ctx.team.players.some(p => !p.starter && !p.injured && p.pos !== 'G'),
+    creer: ctx => {
+      const banc = ctx.team.players.filter(p => !p.starter && !p.injured && p.pos !== 'G')
+        .sort((a, b) => overall(b) - overall(a));
+      const frustre = banc[0];
+      const rivaux = ctx.team.players.filter(p => p.starter && p.pos === frustre.pos);
+      if (!rivaux.length) return null;
+      const rival = rivaux.sort((a, b) => overall(a) - overall(b))[0];
+      majAffinite(frustre.id, rival.id, -1);
+      frustre.moral = Math.round(clampV((frustre.moral ?? 70) - 6, 15, 99));
+      return { titre: `😤 ${escHtml(frustre.nom)} supporte mal la concurrence`,
+        corps: `Il estime valoir mieux que ${escHtml(rival.nom)}, qui joue à sa place.
+                L'ambiance entre eux s'en ressent.`,
+        duo: [frustre.id, rival.id] };
+    }
+  },
+  {
+    cle: 'soiree',
+    possible: ctx => ctx.ecart >= 2,
+    creer: ctx => {
+      const champ = ctx.team.players.filter(p => p.pos !== 'G');
+      for (let i = 0; i < champ.length; i++) {
+        for (let k = i + 1; k < champ.length; k++) {
+          if (Math.random() < 0.3) majAffinite(champ[i].id, champ[k].id, 1);
+        }
+      }
+      ctx.team.players.forEach(p => { p.moral = Math.round(clampV((p.moral ?? 70) + 3, 15, 99)); });
+      return { titre: `🎉 Soirée du club`,
+        corps: `Tout le monde était là, joueurs, bénévoles et dirigeants. Ce sont ces
+                soirées-là qui font tenir un groupe sur une saison.` };
+    }
+  }
+];
+
+// Un événement, ou rien. Au plus un toutes les six journées, et jamais le même deux fois
+// de suite — un club où il se passe quelque chose chaque semaine n'est plus un club.
+function evenementDuClub(ecart) {
+  if (typeof G === 'undefined' || !G) return null;
+  const team = myTeam();
+  if (!team) return null;
+  if (G.evenementJournee !== undefined && G.day - G.evenementJournee < EVENEMENT_ECART) return null;
+  const ctx = { team: team, ecart: ecart };
+  const possibles = EVENEMENTS_CLUB.filter(e => e.cle !== G.evenementDernier && e.possible(ctx));
+  if (!possibles.length) return null;
+  const choisi = pick(possibles);
+  const fait = choisi.creer(ctx);
+  if (!fait) return null;
+  G.evenementJournee = G.day;
+  G.evenementDernier = choisi.cle;
+  pushInbox(fait.titre, fait.corps, 'club');
+  // Une brouille appelle une décision : séparer les deux joueurs, ou tenir bon.
+  if (fait.duo) {
+    G.inbox[0].brouille = fait.duo;
+    G.inbox[0].reponses = [
+      { label: 'Les séparer de ligne', moral: 0, dit: "« Ils ne joueront plus ensemble. »" },
+      { label: 'Les laisser régler ça', moral: 0, dit: "« Ce sont des adultes. Qu'ils se parlent. »" }
+    ];
+  }
+  G.tabNotify.effectif = true;
+  return { cle: choisi.cle, titre: fait.titre };
+}
+
+// Séparer coûte : on casse aussi les ententes que le joueur déplacé avait dans sa ligne.
+function reglerBrouille(message, index) {
+  if (!message || !message.brouille || message.reponse !== undefined) return null;
+  message.reponse = index;
+  const me = myTeam();
+  const [idA, idB] = message.brouille;
+  const a = me && me.players.find(x => x.id === idA);
+  if (index === 0 && a) {
+    const ancienne = ligneDe(a);
+    let cible = 0;
+    for (let n = 1; n <= LIGNES_MAX; n++) {
+      if (n === ancienne) continue;
+      if (joueursDeLigne(me, n).length < PAR_LIGNE) { cible = n; break; }
+    }
+    if (cible) {
+      // Les ententes nouées dans l'ancienne ligne se distendent : changer de ligne n'est
+      // jamais gratuit, c'est tout l'intérêt de la décision.
+      joueursDeLigne(me, ancienne).forEach(q => {
+        if (q.id !== a.id && affiniteEntre(a.id, q.id) > 0) majAffinite(a.id, q.id, -1);
+      });
+      a.ligne = cible;
+      message.body += `<p class="modal-note">Ta réponse : ${escHtml(message.reponses[0].dit)} ` +
+        `${escHtml(a.nom)} passe en ligne ${cible}.</p>`;
+    } else {
+      message.body += `<p class="modal-note">Aucune ligne ne peut l'accueillir. Il reste où il est.</p>`;
+    }
+  } else {
+    message.body += `<p class="modal-note">Ta réponse : ${escHtml(message.reponses[1].dit)}</p>`;
+  }
+  return true;
 }
 
 function pushInbox(title, body, type) {
@@ -4172,6 +4318,8 @@ function playDay() {
   if (myResult) {
     reglerEngagements();
     contagionVestiaire(myTeam());
+    const hote = myResult.home === myTeam();
+    evenementDuClub(hote ? myResult.res.gH - myResult.res.gA : myResult.res.gA - myResult.res.gH);
   }
   G.day++;
   // L'article part avant l'affichage : il rejoint ainsi le courrier présenté après le match.
