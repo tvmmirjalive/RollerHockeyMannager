@@ -2003,6 +2003,79 @@ async function presenterNouveauxMessages() {
   applyNavNotifications();
 }
 
+// ==================== La presse locale ====================
+// Voir 4-outils/patch-presse-locale.py. Phase 1 : l'article paraît, il porte un ton, et ce
+// ton pèse un peu. Les réponses du coach viendront avec la phase 2.
+
+const PRESSE_JOURNAUX = ['Le Courrier du Sport', 'La Gazette régionale', 'L\'Écho des patinoires',
+                         'Le Républicain', 'Sport Hebdo'];
+
+// Fragments plutôt que textes figés : quinze articles écrits en dur tourneraient en rond
+// au bout de deux saisons.
+const PRESSE_ACCROCHES = {
+  elogieux: ['Démonstration', 'La manière et le résultat', 'Un récital', 'Le rouleau compresseur'],
+  neutre:   ['Une victoire qui compte', 'L\'essentiel est assuré', 'Sans forcer'],
+  severe:   ['Soirée à oublier', 'La chute', 'Rien n\'a fonctionné', 'Le réveil sera difficile']
+};
+
+function presseTonDuMatch(mien, adverse, ecart) {
+  if (ecart >= 4) return 'elogieux';
+  if (ecart <= -4) return 'severe';
+  return 'neutre';
+}
+
+// Un article, ou rien. Au plus un par journée, jamais deux journées de suite.
+function articleDePresse(rapport) {
+  if (!rapport || !G) return null;
+  const me = myTeam();
+  if (!me) return null;
+  const jeSuisHote = rapport.home === me;
+  const mien = jeSuisHote ? rapport.res.gH : rapport.res.gA;
+  const sien = jeSuisHote ? rapport.res.gA : rapport.res.gH;
+  const adverse = jeSuisHote ? rapport.away : rapport.home;
+  const ecart = mien - sien;
+
+  // Un triplé, s'il y en a un chez nous.
+  const compte = {};
+  (rapport.res.scorers || []).forEach(s => {
+    if (s.team !== me.short) return;
+    compte[s.nom] = (compte[s.nom] || 0) + 1;
+  });
+  const triple = Object.keys(compte).find(n => compte[n] >= 3);
+
+  // Le classement de l'adversaire, pour repérer l'exploit ou la contre-performance.
+  const cl = sortedTeams();
+  const rangAdverse = cl.indexOf(adverse) + 1;
+  const exploit = ecart > 0 && rangAdverse === 1;
+  const contreperf = ecart < 0 && rangAdverse === cl.length;
+
+  if (Math.abs(ecart) < 4 && !triple && !exploit && !contreperf) return null;
+  if (G.presseJournee === G.day) return null;          // un seul article par journée
+  if (G.presseJournee === G.day - 1) return null;      // jamais deux journées de suite
+  G.presseJournee = G.day;
+
+  const ton = exploit ? 'elogieux' : contreperf ? 'severe' : presseTonDuMatch(mien, adverse, ecart);
+  const accroche = pick(PRESSE_ACCROCHES[ton]);
+  const journal = pick(PRESSE_JOURNAUX);
+
+  let corps = `${escHtml(me.name)} ${mien}–${sien} ${escHtml(adverse.name)}.`;
+  if (exploit) corps += ` Personne n'attendait ce résultat face au leader.`;
+  else if (contreperf) corps += ` Une défaite contre la lanterne rouge, difficile à expliquer.`;
+  else if (ecart >= 4) corps += ` L'écart dit tout de la maîtrise affichée.`;
+  else if (ecart <= -4) corps += ` Le score est sévère, mais il n'est pas volé.`;
+  if (triple) corps += ` <b>${escHtml(triple)}</b> s'offre un triplé.`;
+
+  // L'effet reste volontairement faible : l'amplitude utile du moral n'est aujourd'hui que
+  // de 2,5 %, et un coup de pouce plus fort serait du bruit plutôt qu'une mécanique.
+  const d = ton === 'elogieux' ? 2 : ton === 'severe' ? -2 : 0;
+  if (d) {
+    me.players.forEach(p => { p.moral = Math.round(clampV((p.moral || 70) + d, 15, 99)); });
+    G.boardConfidence = Math.round(clampV((G.boardConfidence ?? 60) + (d > 0 ? 1 : -1), 0, 100));
+  }
+  pushInbox(`📰 ${accroche}`, `<i>${escHtml(journal)}</i> — ${corps}`, 'presse');
+  return { ton, accroche, journal };
+}
+
 function pushInbox(title, body, type) {
   if (!G.inbox) G.inbox = [];
   G.inbox.unshift({ id: Date.now() + Math.random(), season: G.season, day: G.day + 1, title, body, type: type || 'info', read: false });
@@ -3827,6 +3900,8 @@ function playDay() {
   }
 
   G.day++;
+  // L'article part avant l'affichage : il rejoint ainsi le courrier présenté après le match.
+  if (myResult) articleDePresse(myResult);
   G.lastReport = myResult;
   G.lastFinance = finance;
   G.lastInjuries = injuryLog;
