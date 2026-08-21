@@ -429,6 +429,9 @@
   .rs-evo { display: block; font-size: 11px; font-weight: 600; opacity: .95; }
   /* Pastille d'apport. Compacte : elle se loge à côté de la note générale plutôt que dans
      une quinzième colonne, que le tableau ne pourrait pas tenir en 390 px. */
+  /* Sous la valeur, en retrait : c'est une information de second plan au moment de choisir,
+     mais elle doit rester lisible sans survol — ni Android ni iOS n'en affichent. */
+  .tr-salaire { display: block; font-size: 11px; opacity: .6; white-space: nowrap; }
   .tr-apport { font-size: 11px; font-weight: 700; padding: 1px 5px; border-radius: 999px;
     white-space: nowrap; vertical-align: middle; }
   .tr-plus  { color: var(--vert);  background: rgba(60,190,120,.14); }
@@ -5632,7 +5635,13 @@ function apportRecrue(p) {
   const memePoste = me.players.filter(x => x.pos === p.pos);
   if (!memePoste.length) return { gain: null, faible: null };
   const faible = memePoste.reduce((a, b) => overall(a) <= overall(b) ? a : b);
-  return { gain: overall(p) - overall(faible), faible: faible };
+  // L'écart de salaire compte autant que l'écart de force : un « +7 » qui coûte 40 € de plus
+  // par journée n'est pas le même marché qu'un « +7 » gratuit.
+  return {
+    gain: overall(p) - overall(faible),
+    salaire: (p.salaire || 0) - (faible.salaire || 0),
+    faible: faible
+  };
 }
 
 // Pastille affichée dans la cellule « Général ». Chaîne vide quand la comparaison n'a pas
@@ -5641,7 +5650,9 @@ function pastilleApport(p) {
   const a = apportRecrue(p);
   if (a.gain === null) return '';
   const positif = a.gain > 0;
-  const titre = `Remplacerait ${a.faible.nom} (${overall(a.faible)})`;
+  const ecartSal = a.salaire > 0 ? ` · +${a.salaire} €/journée`
+                 : a.salaire < 0 ? ` · ${a.salaire} €/journée` : '';
+  const titre = `Remplacerait ${a.faible.nom} (${overall(a.faible)})${ecartSal}`;
   return ` <span class="tr-apport ${positif ? 'tr-plus' : 'tr-moins'}" title="${escHtml(titre)}">`
        + `${positif ? '+' : ''}${a.gain}</span>`;
 }
@@ -5669,7 +5680,8 @@ function playerRow(p, opts = {}) {
     <td data-label="Moral" style="color:${moralColor}">${moral}</td>
     <td data-label="Potentiel" title="Potentiel estimé">${stars}</td>
     <td data-label="Contrat">${contractTxt}</td>
-    <td data-label="Valeur">${euros(playerValue(p))}</td>
+    <td data-label="Valeur">${euros(playerValue(p))}${opts.apport
+      ? `<span class="tr-salaire">${p.salaire} €/j</span>` : ''}</td>
     <td data-label="" class="actionscell">${opts.actions || ''}</td>
   </tr>`;
 }
@@ -6021,7 +6033,9 @@ function renderTransferts() {
     Achat = valeur +10 % (±premium hors division). Vente (onglet Effectif) = valeur −10 %.
     Un club peut refuser de vendre ou contre-proposer un prix plus élevé — un bon <b>recruteur</b> limite ce risque et réduit le prix.<br>
     La pastille à côté de la note générale indique ce que la recrue <b>apporte</b> : l'écart
-    avec le joueur de son poste qu'elle remplacerait, c'est-à-dire le plus faible du groupe.</p>
+    avec le joueur de son poste qu'elle remplacerait, c'est-à-dire le plus faible du groupe.<br>
+    Sous la valeur figure son <b>salaire par journée</b> — le prix d'achat est ponctuel, le
+    salaire se paie à chaque match et pendant toute la durée du contrat.</p>
     <p>
       Portée :
       <select onchange="window._scoutScope=this.value;renderTransferts()">
