@@ -3515,13 +3515,24 @@ function upgradeCost(kind) {
 // ne monte pas. Les seuils sont calés pour rester atteignables — voir le plafond de
 // construction par division dans infraLevelDivRequirement(), qui interdit de bâtir trop
 // haut trop tôt. Exiger davantage créerait un blocage définitif.
+// Les CLASSES viennent du règlement des équipements (art. 2.2.7.2) et ne bougent pas. Le
+// niveau de stade qui leur correspond, lui, est une échelle interne au jeu — recalée ici.
+//
+// La N2 exigeait un niveau 5 quand la N3 en demandait 3 : deux paliers à franchir, soit
+// 49 900 € sur un revenu de N3 d'environ 12 000 € par saison. Mesuré sur trois clubs et
+// soixante saisons : vingt-deux montées méritées sur le terrain et refusées au bureau,
+// aucune promotion. Avec un seul palier, deux clubs sur trois atteignent l'Élite et les
+// refus tombent à quatre.
+//
+// Chaque division garde son propre seuil — rien n'est banalisé — et le haut de la pyramide
+// reste exigeant : N2 → N1 demande toujours deux paliers, N1 → Élite deux autres.
 const CLASSES_EQUIPEMENT = [
   { classe: 'E', stade: 1 }, // Régional
   { classe: 'E', stade: 2 }, // Pré-Nationale
   { classe: 'D', stade: 3 }, // N3
-  { classe: 'C', stade: 5 }, // N2
-  { classe: 'B', stade: 7 }, // N1
-  { classe: 'A', stade: 9 }  // Élite
+  { classe: 'C', stade: 4 }, // N2
+  { classe: 'B', stade: 6 }, // N1
+  { classe: 'A', stade: 8 }  // Élite
 ];
 
 function classeRequise(divIdx) {
@@ -4179,7 +4190,27 @@ let stage, quarts = null, demis = null, finale = null;
     });
     return;
   }
-  if (nQual === 8) {
+  // Table des demi-finales, propre à chaque division. L'Élite apparie S1–S2 et S3–S4
+  // (art. 1.8.1 G, compte tenu de l'ordre dans lequel ses quarts sont construits ici) ; la
+  // N1 apparie S1–S3 et S2–S4 (art. 2.7.1 H).
+  let tableDemies = [[0, 1], [2, 3]];
+
+  // `IDX_N1` est déclaré localement dans endSeason() : on recalcule ici plutôt que de
+  // déplacer une constante et d'élargir la portée d'un changement déjà délicat.
+  const idxN1 = DIVISIONS.length - 2;
+  if (nQual === 8 && G.divIdx === idxN1 && G.poules && G.poules.length === 2) {
+    // Art. 2.7.1 G : les deux poules se croisent systématiquement — 1er P1 contre 4ème P2,
+    // 2ème P1 contre 3ème P2, et ainsi de suite. Bâtir depuis un classement global laissait
+    // 9 % des quarts opposer deux clubs de la même poule, ce que le règlement exclut.
+    const tri = (a, b) => b.pts - a.pts || (b.bp - b.bc) - (a.bp - a.bc) || b.bp - a.bp;
+    const p1 = [...G.poules[0]].sort(tri), p2 = [...G.poules[1]].sort(tri);
+    quarts = [0, 1, 2, 3]
+      .map(r => [p1[r], p2[3 - r]])
+      .filter(([a, b]) => a && b)
+      .map(([a, b], i) => makeSeries(a.id, b.id, `Quart de finale ${i + 1}`));
+    tableDemies = [[0, 2], [1, 3]];
+    stage = 'quarts';
+  } else if (nQual === 8) {
     // bracket classique : 1v8, 4v5, 3v6, 2v7
     quarts = [[0, 7], [3, 4], [2, 5], [1, 6]]
       .map(([a, b], i) => makeSeries(seeds[a].id, seeds[b].id, `Quart de finale ${i + 1}`));
@@ -4193,7 +4224,7 @@ let stage, quarts = null, demis = null, finale = null;
     finale = [makeSeries(seeds[0].id, seeds[1].id, 'Finale')];
     stage = 'finale';
   }
-  G.playoff = { stage, seedRank, quarts, demis, finale, champion: null, finalists: [], humanOut: false, nQual };
+  G.playoff = { stage, seedRank, quarts, demis, finale, tableDemies, champion: null, finalists: [], humanOut: false, nQual };
   renderAll();
   const myId = myTeam().id;
   jouerMusique('playoffs');
@@ -4335,10 +4366,12 @@ function buildNextRound() {
   const roundArr = currentRound();
   if (po.stage === 'quarts') {
     const w = roundArr.map(s => s.winner);
-    po.demis = [
-      makeSeries(betterSeed(w[0], w[1]), worseSeed(w[0], w[1]), 'Demi-finale 1'),
-      makeSeries(betterSeed(w[2], w[3]), worseSeed(w[2], w[3]), 'Demi-finale 2')
-    ];
+    // La table dit quels vainqueurs s'affrontent. Sans elle, on supposait S1–S2 et S3–S4,
+    // ce qui est juste en Élite et faux en N1 (art. 2.7.1 H : S1–S3 et S2–S4).
+    // Les sauvegardes d'avant cette version n'en ont pas : on retombe sur l'ancien appariement.
+    const table = po.tableDemies || [[0, 1], [2, 3]];
+    po.demis = table.map(([a, b], i) =>
+      makeSeries(betterSeed(w[a], w[b]), worseSeed(w[a], w[b]), `Demi-finale ${i + 1}`));
     po.stage = 'demis';
   } else if (po.stage === 'demis') {
     const w = roundArr.map(s => s.winner);
