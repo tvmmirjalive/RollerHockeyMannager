@@ -427,6 +427,12 @@
   .rs-classement span { font-size: 13px; font-weight: 400; opacity: .6; margin-left: 5px; }
   .rs-vedette { display: flex; gap: 12px; align-items: center; margin-bottom: 10px; }
   .rs-evo { display: block; font-size: 11px; font-weight: 600; opacity: .95; }
+  /* Pastille d'apport. Compacte : elle se loge à côté de la note générale plutôt que dans
+     une quinzième colonne, que le tableau ne pourrait pas tenir en 390 px. */
+  .tr-apport { font-size: 11px; font-weight: 700; padding: 1px 5px; border-radius: 999px;
+    white-space: nowrap; vertical-align: middle; }
+  .tr-plus  { color: var(--vert);  background: rgba(60,190,120,.14); }
+  .tr-moins { color: var(--txt); opacity: .5; background: rgba(255,255,255,.06); }
   .modal-tapable { cursor: pointer; }
   .modal-tapable::after { content: "Touche l'écran pour continuer"; display: block;
     margin-top: 10px; font-size: 11px; opacity: .55; text-align: center; }
@@ -5616,6 +5622,30 @@ function renderTop() {
   if (ico && !ico.firstChild) ico.innerHTML = iconeHtml('jouer', '▶');
 }
 
+// Ce qu'une recrue apporte : l'écart avec le joueur qu'elle remplacerait, c'est-à-dire le
+// PLUS FAIBLE de son poste dans l'effectif. Pas la moyenne du poste : une moyenne dirait
+// « au-dessus de ton effectif » d'un joueur qui ne ferait pourtant entrer personne sur la
+// piste, puisque c'est toujours le plus faible qui cède sa place.
+function apportRecrue(p) {
+  const me = (typeof myTeam === 'function') ? myTeam() : null;
+  if (!me || !p) return { gain: null, faible: null };
+  const memePoste = me.players.filter(x => x.pos === p.pos);
+  if (!memePoste.length) return { gain: null, faible: null };
+  const faible = memePoste.reduce((a, b) => overall(a) <= overall(b) ? a : b);
+  return { gain: overall(p) - overall(faible), faible: faible };
+}
+
+// Pastille affichée dans la cellule « Général ». Chaîne vide quand la comparaison n'a pas
+// de sens — poste absent de l'effectif, ou écran qui ne la demande pas.
+function pastilleApport(p) {
+  const a = apportRecrue(p);
+  if (a.gain === null) return '';
+  const positif = a.gain > 0;
+  const titre = `Remplacerait ${a.faible.nom} (${overall(a.faible)})`;
+  return ` <span class="tr-apport ${positif ? 'tr-plus' : 'tr-moins'}" title="${escHtml(titre)}">`
+       + `${positif ? '+' : ''}${a.gain}</span>`;
+}
+
 function playerRow(p, opts = {}) {
   const ov = overall(p);
   const f = p.forme;
@@ -5632,7 +5662,7 @@ function playerRow(p, opts = {}) {
     <td data-label="Pos"><span class="pos ${p.pos}">${p.pos}</span></td>
     <td data-label="Nom" class="nomcell"><img src="${portraitFor(p.id)}" class="portrait-thumb" alt="">${clubBadge}${p.nom} ${p.starter && opts.mine ? '<span class="starterDot">●</span>' : ''}${injBadge}</td>
     <td data-label="Âge">${p.age}</td>
-    <td data-label="Général"><b>${ov}</b></td>
+    <td data-label="Général"><b>${ov}</b>${opts.apport ? pastilleApport(p) : ''}</td>
     <td data-label="Tir">${p.tir}</td><td data-label="Déf">${p.def}</td><td data-label="Vit">${p.vit}</td><td data-label="Gardien">${p.pos === 'G' ? p.gar : '—'}</td>
     <td data-label="Agr" style="color:${p.agr >= 70 ? 'var(--rouge)' : p.agr >= 50 ? 'var(--tan)' : 'var(--vert)'}">${p.agr}</td>
     <td data-label="Forme"><span class="forme" style="${fStyle}">${f}</span></td>
@@ -5957,6 +5987,7 @@ function renderTransferts() {
       const price = Math.round(playerValue(p) * 1.1 / 10) * 10;
       const blocked = !canSell(team, p);
       return playerRow(p, {
+        apport: true,
         club: team.short,
         actions: `<button class="btn buy" ${G.budget < price || blocked ? 'disabled' : ''}
           onclick="buyPlayer(${team.id},${p.id})">Acheter ${euros(price)}</button>
@@ -5971,6 +6002,7 @@ function renderTransferts() {
       const premium = divIdx < G.divIdx ? 1.25 : 0.95;
       const price = Math.round(playerValue(p) * 1.1 * premium / 10) * 10;
       return playerRow(p, {
+        apport: true,
         club: `${clubName} (${DIVISIONS[divIdx].label})`,
         actions: `<button class="btn buy" ${G.budget < price ? 'disabled' : ''}
           onclick="buyScoutPlayer(${p.id})">Recruter ${euros(price)}</button>`
@@ -5987,7 +6019,9 @@ function renderTransferts() {
     <h2>Centre de recrutement</h2>
     <p class="note">Budget disponible : <b style="color:var(--tan)">${euros(G.budget)}</b>.
     Achat = valeur +10 % (±premium hors division). Vente (onglet Effectif) = valeur −10 %.
-    Un club peut refuser de vendre ou contre-proposer un prix plus élevé — un bon <b>recruteur</b> limite ce risque et réduit le prix.</p>
+    Un club peut refuser de vendre ou contre-proposer un prix plus élevé — un bon <b>recruteur</b> limite ce risque et réduit le prix.<br>
+    La pastille à côté de la note générale indique ce que la recrue <b>apporte</b> : l'écart
+    avec le joueur de son poste qu'elle remplacerait, c'est-à-dire le plus faible du groupe.</p>
     <p>
       Portée :
       <select onchange="window._scoutScope=this.value;renderTransferts()">
