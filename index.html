@@ -2012,7 +2012,8 @@ async function presenterNouveauxMessages() {
     });
     m.read = true;
     if (typeof choix === 'string' && choix.indexOf('rep') === 0 && m.reponses) {
-      repondreAlaPresse(m, parseInt(choix.slice(3), 10));
+      const k = parseInt(choix.slice(3), 10);
+      if (m.vestiaire) repondreAuVestiaire(m, k); else repondreAlaPresse(m, k);
     }
     if (choix === 'passer') { nouveaux.slice(i + 1).forEach(x => x.read = true); break; }
   }
@@ -2135,6 +2136,120 @@ function repondreAlaPresse(message, index) {
   if (r.conf) G.boardConfidence = Math.round(clampV((G.boardConfidence ?? 60) + r.conf, 0, 100));
   message.body += `<p class="modal-note">Ta réponse : ${escHtml(r.dit)}</p>`;
   return r;
+}
+
+// ==================== Le vestiaire ====================
+// Voir 4-outils/patch-vestiaire.py.
+
+const VESTIAIRE_SEUILS = { plainte: 55, contagion: 40, depart: 30 };
+const VESTIAIRE_ENGAGEMENT = { journees: 5, minimum: 4 };
+
+const VESTIAIRE_REPONSES = [
+  { cle: 'rassurer', label: 'Le rassurer', moral: 12,
+    dit: "« Tu comptes pour ce groupe. Garde la tête froide. »",
+    credit: true },
+  { cle: 'promettre', label: 'Promettre du temps de jeu', moral: 6,
+    dit: "« Tu vas jouer. Je te le dis en face, pas dans le vide. »",
+    engage: true },
+  { cle: 'ignorer', label: 'Ne rien répondre', moral: 0,
+    dit: "« … »" }
+];
+
+// Le joueur dont le moral appelle une réaction. Un seul à la fois, et pas celui de la
+// dernière fois : on écoute un vestiaire, on ne subit pas un défilé de plaintes.
+function joueurQuiSePlaint(team) {
+  const candidats = team.players.filter(p =>
+    !p.injured && (p.moral ?? 70) < VESTIAIRE_SEUILS.plainte
+    && !p.engagement && p.id !== G.vestiaireDernier);
+  if (!candidats.length) return null;
+  return candidats.sort((a, b) => (a.moral ?? 70) - (b.moral ?? 70))[0];
+}
+
+// Un cadre malheureux tire le groupe vers le bas. « Cadre » se lit sur le niveau, pas sur
+// un titre : c'est celui qu'on écoute au vestiaire.
+function contagionVestiaire(team) {
+  const seuilCadre = team.players.reduce((m, p) => Math.max(m, overall(p)), 0) - 6;
+  const grognards = team.players.filter(p =>
+    !p.injured && (p.moral ?? 70) < VESTIAIRE_SEUILS.contagion && overall(p) >= seuilCadre);
+  if (!grognards.length) return 0;
+  team.players.forEach(p => {
+    if (grognards.indexOf(p) >= 0) return;
+    p.moral = Math.round(clampV((p.moral ?? 70) - 1, 15, 99));
+  });
+  return grognards.length;
+}
+
+// Fait paraître la remontée, avec ses réponses. Rien si personne n'a rien à dire.
+function remonteeVestiaire() {
+  if (typeof G === 'undefined' || !G) return null;
+  const me = myTeam();
+  if (!me) return null;
+  if (G.vestiaireJournee === G.day || G.vestiaireJournee === G.day - 1) return null;
+  const p = joueurQuiSePlaint(me);
+  if (!p) return null;
+  G.vestiaireJournee = G.day;
+  G.vestiaireDernier = p.id;
+  const veutPartir = (p.moral ?? 70) < VESTIAIRE_SEUILS.depart;
+  const joue = p.seasonGames || 0;
+  pushInbox(veutPartir ? `🚪 ${p.nom} veut partir` : `😠 ${p.nom} fait la tête`,
+    `<img src="${portraitFor(p.id)}" class="portrait-thumb sm" alt="">`
+    + (veutPartir
+      ? `${escHtml(p.nom)} est venu me voir. Il ne veut plus de cette situation et demande à
+         quitter le club. ${joue} match${joue > 1 ? 's' : ''} joué${joue > 1 ? 's' : ''} cette saison.`
+      : `${escHtml(p.nom)} ne décolère pas. ${joue} match${joue > 1 ? 's' : ''} joué${joue > 1 ? 's' : ''}
+         cette saison, et il estime valoir mieux que ça.`),
+    'vestiaire');
+  G.inbox[0].vestiaire = { joueur: p.id };
+  G.inbox[0].reponses = VESTIAIRE_REPONSES;
+  G.tabNotify.effectif = true;
+  return p;
+}
+
+// Applique la réponse du coach. Le crédit et l'engagement sont deux promesses de nature
+// différente : l'une est un apaisement qu'il faudra justifier, l'autre un contrat chiffré.
+function repondreAuVestiaire(message, index) {
+  if (!message || !message.vestiaire || message.reponse !== undefined) return null;
+  const r = VESTIAIRE_REPONSES[index];
+  if (!r) return null;
+  const me = myTeam();
+  const p = me && me.players.find(x => x.id === message.vestiaire.joueur);
+  if (!p) return null;
+  message.reponse = index;
+  if (r.moral) p.moral = Math.round(clampV((p.moral ?? 70) + r.moral, 15, 99));
+  if (r.credit || r.engage) {
+    p.engagement = { type: r.cle, jusqua: G.day + VESTIAIRE_ENGAGEMENT.journees,
+                     presences: 0, minimum: r.engage ? VESTIAIRE_ENGAGEMENT.minimum : 0,
+                     depart: p.seasonGames || 0 };
+  }
+  message.body += `<p class="modal-note">Ta réponse : ${escHtml(r.dit)}</p>`;
+  return r;
+}
+
+// Solde les engagements arrivés à échéance. Appelée après chaque journée jouée.
+function reglerEngagements() {
+  const me = myTeam();
+  if (!me) return [];
+  const soldes = [];
+  me.players.forEach(p => {
+    if (!p.engagement) return;
+    if (p.starter) p.engagement.presences++;
+    if (G.day < p.engagement.jusqua) return;
+    const e = p.engagement;
+    const tenu = e.minimum ? e.presences >= e.minimum : e.presences > 0;
+    p.moral = Math.round(clampV((p.moral ?? 70) + (tenu ? (e.minimum ? 18 : 6) : (e.minimum ? -25 : -20)), 15, 99));
+    pushInbox(tenu ? `🤝 Parole tenue — ${p.nom}` : `💥 Parole non tenue — ${p.nom}`,
+      e.minimum
+        ? (tenu ? `${escHtml(p.nom)} a joué ${e.presences} des ${VESTIAIRE_ENGAGEMENT.journees} dernières
+                   journées, comme promis. Il ne l'oubliera pas.`
+                : `${escHtml(p.nom)} n'a joué que ${e.presences} fois sur ${VESTIAIRE_ENGAGEMENT.journees}.
+                   Il avait ma parole. Il demande à partir.`)
+        : (tenu ? `${escHtml(p.nom)} s'est remis au travail. Le discours a porté.`
+                : `${escHtml(p.nom)} n'a rien vu venir de ce que je lui avais dit. Il ne me croira plus.`),
+      'vestiaire');
+    soldes.push({ joueur: p.id, tenu: tenu });
+    delete p.engagement;
+  });
+  return soldes;
 }
 
 function pushInbox(title, body, type) {
@@ -4054,12 +4169,17 @@ function playDay() {
     majAffinitesApresMatch(me2, (jeSuisHote ? myResult.res.gH - myResult.res.gA
                                             : myResult.res.gA - myResult.res.gH));
   }
+  if (myResult) {
+    reglerEngagements();
+    contagionVestiaire(myTeam());
+  }
   G.day++;
   // L'article part avant l'affichage : il rejoint ainsi le courrier présenté après le match.
   if (myResult) articleDePresse(myResult);
   G.lastReport = myResult;
   G.lastFinance = finance;
   G.lastInjuries = injuryLog;
+  if (myResult) remonteeVestiaire();
   renderAll();
   checkUnlockNotifications();
   if (myResult) watchMatch(myResult);
