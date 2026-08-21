@@ -347,8 +347,12 @@
   }
   .menu-title span { color: var(--tan); text-shadow: 0 0 34px rgba(243,207,149,.55); }
   .menu-sub {
-    color: var(--txt); opacity: .85; font-size: 14px; margin: 0 0 30px; line-height: 1.5;
+    color: var(--txt); opacity: .85; font-size: 14px; margin: 0 0 7px; line-height: 1.5;
     animation: tsRise .6s .1s cubic-bezier(.2,.7,.3,1) both;
+  }
+  .menu-version {
+    color: var(--muted); font-size: 11.5px; letter-spacing: .04em; margin: 0 0 23px;
+    animation: tsRise .6s .13s cubic-bezier(.2,.7,.3,1) both;
   }
   .menu-actions {
     display: flex; flex-direction: column; gap: 11px;
@@ -1114,6 +1118,7 @@
     <div class="ts-tagline">Roller in line hockey · Saison 2026-2027</div>
     <h1 class="menu-title">ROLLER HOCKEY <span>MANAGER</span></h1>
     <p class="menu-sub">Prends un club au plancher de la pyramide et fais-le monter jusqu'à l'Élite.</p>
+    <p class="menu-version" id="menuVersion"></p>
     <div class="menu-actions">
       <div id="menuSlots"></div>
       <button class="menu-btn menu-btn-primary menu-hidden" id="menuContinue">
@@ -3031,7 +3036,15 @@ async function effacerSlot(s, ev) {
   toast('Emplacement effacé.', 'info');
 }
 
+// Version du jeu. Source unique dans le HTML, tenue en phase avec `versionCode` et
+// `versionName` du build Android par 4-outils/patch-version.py, qui refuse de s'appliquer
+// si les deux divergent. Le mode d'échec évité est réel : l'APK a annoncé « 1.0 » pendant
+// soixante-dix-sept versions parce que rien ne reliait le jeu à son numéro.
+const VERSION_JEU = '103';
+
 function refreshMenu() {
+  const vers = document.getElementById('menuVersion');
+  if (vers) vers.textContent = 'version ' + VERSION_JEU;
   const btn = document.getElementById('menuContinue');
   const foot = document.getElementById('menuFoot');
   btn.classList.add('menu-hidden');
@@ -3694,11 +3707,39 @@ function lineupOf(team) {
   return { gk, field: field.slice(0, MAX_JOUEURS_CHAMP) };
 }
 
+// Part du temps de jeu par ligne. Un entraîneur qui raccourcit son banc fait jouer ses
+// meilleurs davantage : c'est ce que ces poids traduisent, et c'est ce qui rend le choix du
+// nombre de lignes réellement arbitrable.
+const PART_TEMPS_DE_GLACE = { 1: [1], 2: [0.55, 0.45], 3: [0.40, 0.35, 0.25] };
+
 function teamStrength(team) {
   const { gk, field } = lineupOf(team);
   const n = Math.max(field.length, 1);
-  const atk = field.reduce((s, p) => s + effOv(p) * (p.pos === 'A' ? 1.15 : 0.9), 0) / n;
-  const dfd = field.reduce((s, p) => s + effOv(p) * (p.pos === 'D' ? 1.15 : 0.9), 0) / n;
+
+  // Répartition des alignés par ligne. La règle vaut pour TOUTES les équipes : depuis la
+  // v100, `autoLineup()` assigne des lignes aux adversaires aussi, et leur meilleure ligne
+  // doit jouer davantage au même titre. Effet mesuré sur leur force : +0,6 %.
+  const parLigne = [];
+  field.forEach(p => {
+    const l = Math.max(1, ligneDe(p));
+    (parLigne[l - 1] || (parLigne[l - 1] = [])).push(p);
+  });
+  const lignes = parLigne.filter(l => l && l.length);
+  const parts = PART_TEMPS_DE_GLACE[lignes.length] || PART_TEMPS_DE_GLACE[1];
+
+  const moyenne = (bonus) => {
+    let total = 0, poids = 0;
+    lignes.forEach((l, i) => {
+      const part = parts[i] !== undefined ? parts[i] : (1 / lignes.length);
+      const m = l.reduce((s, p) => s + effOv(p) * bonus(p), 0) / l.length;
+      total += m * part; poids += part;
+    });
+    return poids ? total / poids : 0;
+  };
+  const atk = lignes.length ? moyenne(p => p.pos === 'A' ? 1.15 : 0.9)
+    : field.reduce((s, p) => s + effOv(p) * (p.pos === 'A' ? 1.15 : 0.9), 0) / n;
+  const dfd = lignes.length ? moyenne(p => p.pos === 'D' ? 1.15 : 0.9)
+    : field.reduce((s, p) => s + effOv(p) * (p.pos === 'D' ? 1.15 : 0.9), 0) / n;
   const gkV = gk ? effOv(gk) : 40;
   // Cohésion : ±4 % au plus. Un trio qui se connaît compense un écart de niveau ; deux
   // joueurs qui ne se supportent plus valent moins que la somme de leurs qualités.
@@ -6247,6 +6288,9 @@ function audioDebloquer() {
 function renderOptions() {
   const box = document.getElementById('optionsPanel');
   if (!box) return;
+  // Pied des Réglages : c'est l'écran où l'on va chercher un numéro pour signaler un défaut.
+  const piedVersion = `<p class="rg-info" style="text-align:center;margin-top:15px">
+    Roller Hockey Manager — <b>version ${VERSION_JEU}</b></p>`;
   const r = reglages();
   const capacite = navCapacite();
   const rep = navRepartition();
@@ -6295,7 +6339,8 @@ function renderOptions() {
           ? `Les ${rep.tiroir.length} écrans restants sont dans « Plus ».`
           : `Tout tient dans la barre, le bouton « Plus » disparaît.`}
         Élargis la fenêtre et la barre s'étoffe d'elle-même.</p>
-    </div>`;
+    </div>
+    ${piedVersion}`;
 }
 
 // Quitter une partie en cours mérite qu'on le demande — même si rien n'est perdu.
