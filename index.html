@@ -3876,6 +3876,97 @@ function qualifiesDivision(divIdx) {
   return out;
 }
 
+// ==================== Plateaux (format fédéral des phases finales) ====================
+// Voir 4-outils/patch-plateau.py pour les articles cités.
+
+const PLATEAU_PTS_VICTOIRE = 3;   // art. 11.3.1.1
+const PLATEAU_PTS_NUL = 1;
+const PLATEAU_PTS_DEFAITE = 0;
+
+// Clé d'un duel, indépendante de l'ordre : le goal-average particulier se lit dans les deux
+// sens (art. 11.3.2.2 B 1).
+function clePlateauDuel(a, b) { return a < b ? a + '-' + b : b + '-' + a; }
+
+function makePlateau(ids, label) {
+  const table = {};
+  ids.forEach(id => { table[id] = { pts: 0, bp: 0, bc: 0, j: 0 }; });
+  return { label: label || '', ids: ids.slice(), table: table, duels: {}, matchs: [], fait: false };
+}
+
+// Enregistre un résultat déjà connu. Séparé de la simulation pour que le classement soit
+// vérifiable sur des scores choisis, sans dépendre du hasard.
+function enregistrerRencontrePlateau(pl, idA, idB, ga, gb) {
+  const a = pl.table[idA], b = pl.table[idB];
+  if (!a || !b) return;
+  a.bp += ga; a.bc += gb; a.j++;
+  b.bp += gb; b.bc += ga; b.j++;
+  if (ga > gb) { a.pts += PLATEAU_PTS_VICTOIRE; b.pts += PLATEAU_PTS_DEFAITE; }
+  else if (gb > ga) { b.pts += PLATEAU_PTS_VICTOIRE; a.pts += PLATEAU_PTS_DEFAITE; }
+  else { a.pts += PLATEAU_PTS_NUL; b.pts += PLATEAU_PTS_NUL; }   // art. 5.4.1 B : le nul existe
+  const cle = clePlateauDuel(idA, idB);
+  const d = pl.duels[cle] || (pl.duels[cle] = {});
+  d[idA] = (d[idA] || 0) + ga;
+  d[idB] = (d[idB] || 0) + gb;
+  pl.matchs.push({ a: idA, b: idB, ga: ga, gb: gb });
+}
+
+// Une rencontre de plateau : format standard, donc PAS de prolongation. On réutilise
+// `butsAttendus()` du championnat — c'est la même simulation de jeu, seul le règlement de
+// fin de match diffère. Aucune écriture sur les équipes : voir l'en-tête du patch.
+function simulerRencontrePlateau(equipeA, equipeB) {
+  const sa = teamStrength(equipeA), sb = teamStrength(equipeB);
+  const fa = tacticFactor(equipeA), fb = tacticFactor(equipeB);
+  sa.atk *= fa.atk; sa.def *= fa.def; sb.atk *= fb.atk; sb.def *= fb.def;
+  // Terrain neutre : un plateau se joue chez un organisateur désigné, pas chez l'un des deux.
+  return { ga: poisson(butsAttendus(sa.atk, sb.def, false)),
+           gb: poisson(butsAttendus(sb.atk, sa.def, false)) };
+}
+
+// Joue toutes les rencontres non encore disputées. `resoudre(id)` rend l'équipe.
+function resolvePlateau(pl, resoudre) {
+  const trouve = resoudre || (typeof playoffTeam === 'function' ? playoffTeam : null);
+  if (!trouve) return pl;
+  for (let i = 0; i < pl.ids.length; i++) {
+    for (let k = i + 1; k < pl.ids.length; k++) {
+      const idA = pl.ids[i], idB = pl.ids[k];
+      if (pl.duels[clePlateauDuel(idA, idB)]) continue;   // déjà joué
+      const r = simulerRencontrePlateau(trouve(idA), trouve(idB));
+      enregistrerRencontrePlateau(pl, idA, idB, r.ga, r.gb);
+    }
+  }
+  pl.fait = true;
+  return pl;
+}
+
+// Classement d'un plateau, art. 11.3.2.2 B. L'ordre des critères est celui du règlement, et
+// il diffère du cas général (11.3.2.1) : ici le goal-average particulier passe AVANT les
+// points de confrontation directe, qui n'existent pas dans ce cas de figure.
+function classerPlateau(pl) {
+  const ga = id => pl.table[id].bp - pl.table[id].bc;
+  // Goal-average limité aux rencontres entre les équipes à départager (B 1 et B 2).
+  const gaEntre = (id, groupe) => {
+    let d = 0;
+    groupe.forEach(autre => {
+      if (autre === id) return;
+      const duel = pl.duels[clePlateauDuel(id, autre)];
+      if (duel) d += (duel[id] || 0) - (duel[autre] || 0);
+    });
+    return d;
+  };
+  const paquets = {};
+  pl.ids.forEach(id => { (paquets[pl.table[id].pts] || (paquets[pl.table[id].pts] = [])).push(id); });
+  const out = [];
+  Object.keys(paquets).map(Number).sort((a, b) => b - a).forEach(pts => {
+    const groupe = paquets[pts];
+    groupe.sort((x, y) =>
+      gaEntre(y, groupe) - gaEntre(x, groupe)     // B 1 et B 2
+      || ga(y) - ga(x)                            // B 3 : goal-average général
+      || pl.table[y].bp - pl.table[x].bp);        // B 4 : le plus de buts marqués
+    out.push.apply(out, groupe);
+  });
+  return out;
+}
+
 function startPlayoffs() {
   // garantie : la Coupe de France doit toujours être terminée avant les playoffs (donc bien avant les demies)
   if (G.cup && G.cup.season === G.season && !cupIsDone()) {
