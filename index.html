@@ -4430,6 +4430,26 @@ function advancePlayoffs() {
 // Corps commun des alertes : ce qui manque, ce que ça coûte, et s'il reste un chantier.
 // Les deux derniers chiffres comptent autant que le premier : une alerte qui dit quoi
 // faire sans dire si c'est faisable ne sert à rien.
+// Combien de saisons d'épargne pour atteindre une somme, au rythme de la saison en cours.
+// `G.saisonDebut` est l'instantané posé en v84 pour le résumé de fin de saison : la
+// différence avec le budget courant donne le gain réalisé jusqu'ici.
+function saisonsDEpargne(cout) {
+  const manque = cout - G.budget;
+  if (manque <= 0) return 0;
+  const depart = (G.saisonDebut && G.saisonDebut.budget) || 0;
+  const gain = G.budget - depart;
+  if (gain <= 0) return null;               // on ne gagne rien : impossible à estimer
+  return Math.ceil(manque / gain);
+}
+
+// Rang à partir duquel la montée devient une perspective réelle. En N3 et en N2 les quatre
+// premiers de chaque poule sont qualifiés pour les phases finales (art. 4.4 G et 3.5) ;
+// ailleurs, seuls les deux premiers jouent quelque chose. Prévenir un 4e de N3 n'est donc
+// pas du zèle : il est bel et bien en position de monter.
+function rangQualifiantMontee() {
+  return formatPhaseFinale(G.divIdx) ? 4 : 2;
+}
+
 function detailTravauxStade(divCible) {
   const req = classeRequise(divCible);
   const manque = req.stade - G.club.stade;
@@ -4479,9 +4499,35 @@ function alerterDirectionEffectif() {
 function alerterDirectionDebutSaison() {
   const suiv = G.divIdx + 1;
   if (suiv >= DIVISIONS.length || stadeSuffisantPour(suiv)) return;
-  pushInbox('🏗️ La direction sur les installations',
-    `Un point avant d'entamer la saison. ${detailTravauxStade(suiv)}
-     Sportivement, rien ne nous empêche de viser plus haut — administrativement, si.`, 'board');
+  const refus = G.refusStade || 0;
+  const cout = upgradeCost('stade');
+  const ans = saisonsDEpargne(cout);
+  // Le chiffrage n'apparaît qu'à partir du premier refus : avant, le joueur a d'autres
+  // priorités légitimes et l'assommer de calculs serait contre-productif.
+  const chiffrage = refus === 0 ? '' :
+    (ans === 0 ? ` Nous avons déjà de quoi payer le prochain palier (${euros(cout)}) : il n'y a plus qu'à décider.`
+     : ans === null ? ` Le prochain palier coûte ${euros(cout)}, et nous ne dégageons rien cette saison. Il faut trouver des recettes.`
+     : ` Le prochain palier coûte ${euros(cout)} : <b>${ans} saison${ans > 1 ? 's' : ''} d'épargne</b> au rythme actuel.`);
+
+  if (refus === 0) {
+    pushInbox('🏗️ La direction sur les installations',
+      `Un point avant d'entamer la saison. ${detailTravauxStade(suiv)}
+       Sportivement, rien ne nous empêche de viser plus haut — administrativement, si.`, 'board');
+    return;
+  }
+  if (refus === 1) {
+    pushInbox('🚧 Une montée nous a déjà été refusée',
+      `La saison passée, nous avons gagné sur la piste et perdu au bureau : la montée nous a été
+       <b>refusée</b> faute d'installation classée. ${detailTravauxStade(suiv)}${chiffrage}
+       Recommencer une saison dans ces conditions, ce serait jouer pour rien.`, 'board');
+  } else {
+    pushInbox('🛑 ' + refus + ' montées refusées — la salle est LA priorité',
+      `<b>${refus} fois</b> nous avons mérité la montée sur le terrain, <b>${refus} fois</b> elle nous
+       a été refusée pour la même raison. ${detailTravauxStade(suiv)}${chiffrage}
+       Tant que la salle n'est pas classée, tout l'argent mis dans l'effectif est de l'argent
+       qui ne nous fera pas monter.`, 'board');
+  }
+  G.tabNotify.club = true;
 }
 
 // Relance en cours de saison : seulement si la montée devient une perspective réelle.
@@ -4489,14 +4535,24 @@ function alerterDirectionDebutSaison() {
 function alerterDirectionSiMontee() {
   const suiv = G.divIdx + 1;
   if (suiv >= DIVISIONS.length || stadeSuffisantPour(suiv)) return;
-  if (G.alerteStadeSaison === G.season) return;
   if (G.day < Math.floor(G.schedule.length / 3)) return;
   const rang = sortedTeams().indexOf(myTeam());
-  if (rang < 0 || rang > 1) return; // seulement en position de montée
-  G.alerteStadeSaison = G.season;
-  pushInbox('⚠️ La direction insiste sur les travaux',
+  // Le seuil suit la division : quatre premiers qualifiés en N3 et en N2, deux ailleurs.
+  if (rang < 0 || rang >= rangQualifiantMontee()) return;
+
+  // Un club déjà refusé est relancé deux fois dans la saison ; les autres une seule. On
+  // insiste auprès de qui en a besoin, sans harceler celui qui découvre la contrainte.
+  const relances = (G.refusStade || 0) > 0 ? 2 : 1;
+  if (G.alerteStadeSaison !== G.season) { G.alerteStadeSaison = G.season; G.alerteStadeTour = 0; }
+  if ((G.alerteStadeTour || 0) >= relances) return;
+  G.alerteStadeTour = (G.alerteStadeTour || 0) + 1;
+
+  const dejaRefuse = (G.refusStade || 0) > 0;
+  pushInbox(dejaRefuse ? '🛑 La montée nous échappera encore' : '⚠️ La direction insiste sur les travaux',
     `Nous sommes ${rang + 1}${rang === 0 ? 'ᵉʳ' : 'ᵉ'} et la montée se dessine. Or elle nous serait
-     <b>refusée en l'état</b>. ${detailTravauxStade(suiv)}`, 'board');
+     <b>refusée en l'état</b>. ${detailTravauxStade(suiv)}
+     ${dejaRefuse ? `C'est exactement ce qui nous est déjà arrivé ${G.refusStade} fois. Il reste
+     ${G.schedule.length - G.day} journée${G.schedule.length - G.day > 1 ? 's' : ''} pour agir.` : ''}`, 'board');
   G.tabNotify.club = true;
 }
 
@@ -4505,6 +4561,7 @@ function confirmerTravauxSuffisants(avant) {
   const suiv = G.divIdx + 1;
   if (suiv >= DIVISIONS.length) return;
   if (avant || !stadeSuffisantPour(suiv)) return;
+  G.refusStade = 0;              // la contrainte est levée, le compteur repart à zéro
   pushInbox('✅ Installation homologuée',
     `Les travaux sont réceptionnés. Notre salle est désormais de <b>classe
      ${classeActuelle()}</b> : elle satisfait aux exigences de la
@@ -4663,6 +4720,8 @@ function endSeason() {
       division exige une salle de <b>classe ${req.classe}</b>, soit un stade de niveau ${req.stade} :
       le tien est au niveau ${G.club.stade}. Fais les travaux, et la place sera à toi.</div>`;
     promote = false;
+    // Compteur de refus : il gradue les alertes des saisons suivantes.
+    G.refusStade = (G.refusStade || 0) + 1;
   }
   if (promote && G.divIdx < DIVISIONS.length - 1) {
     const oldDivIdx = G.divIdx;
