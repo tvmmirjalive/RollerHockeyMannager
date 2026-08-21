@@ -3887,7 +3887,14 @@ function nbQualifies(divIdx, taillePoule) {
 // meilleurs suivants. Huit places, ce que la machine à états sait tenir.
 // Divisions jouant leurs phases finales en plateaux : N3 (art. 4.5.1 B). La N2 suivra
 // (art. 3.6.1 B) ; la N1 et l'Élite jouent des séries aller-retour et n'ont rien à voir ici.
-const DIVISIONS_PLATEAU = { 2: { plateauxQuarts: 8, passeQuarts: 2, passeDemies: 1, montees: 4 } };
+// `sens` : sens du décalage des poules dans la table des quarts. +1 en N3 (art. 4.5.2 A),
+// −1 en N2 (art. 3.6.2 A) — les deux premières séries coïncident, les suivantes tournent en
+// sens inverse. `conferences` : la N3 sépare ses huit poules en deux conférences A et B
+// (art. 4.4 C), la N2 n'en a qu'une.
+const DIVISIONS_PLATEAU = {
+  2: { plateauxQuarts: 8, conferences: 2, sens: 1,  passeQuarts: 2, passeDemies: 1, montees: 4 },
+  3: { plateauxQuarts: 4, conferences: 1, sens: -1, passeQuarts: 2, passeDemies: 2, montees: 2 }
+};
 
 function formatPhaseFinale(divIdx) {
   const def = DIVISIONS_PLATEAU[divIdx];
@@ -4057,20 +4064,23 @@ function startPlayoffs() {
 // le 2ᵉ de la suivante, le 3ᵉ de celle d'après et le 4ᵉ de la troisième — avec un décalage
 // d'une place à chaque série, à l'intérieur de sa conférence.
 // Conférence A : poules 0 à 3. Conférence B : poules 4 à 7.
-function composerPlateauxQuarts(qualifies) {
+function composerPlateauxQuarts(qualifies, def) {
   const parPouleRang = {};
   qualifies.forEach(q => { parPouleRang[q.poule + ':' + q.rang] = q.t; });
   const plateaux = [];
-  [0, 4].forEach(base => {           // les deux conférences
+  const bases = [];
+  for (let c = 0; c < def.conferences; c++) bases.push(c * 4);
+  bases.forEach((base, iConf) => {
     for (let s = 0; s < 4; s++) {
       const ids = [];
       for (let rang = 0; rang < 4; rang++) {
-        const poule = base + ((s + rang) % 4);
+        // +1 en N3, −1 en N2 : le modulo est écrit avec un « + 4 » pour rester positif.
+        const poule = base + (((rang + def.sens * s) % 4 + 4) % 4);
         const eq = parPouleRang[poule + ':' + rang];
         if (eq) ids.push(eq.id);
       }
-      const conf = base === 0 ? 'A' : 'B';
-      plateaux.push(makePlateau(ids, `Quart de finale ${plateaux.length + 1} — conférence ${conf}`));
+      const suffixe = def.conferences > 1 ? ` — conférence ${iConf === 0 ? 'A' : 'B'}` : '';
+      plateaux.push(makePlateau(ids, `Quart de finale ${plateaux.length + 1}${suffixe}`));
     }
   });
   return plateaux;
@@ -4080,7 +4090,7 @@ let stage, quarts = null, demis = null, finale = null;
   const defPlateau = formatPhaseFinale(G.divIdx);
   if (defPlateau) {
     // Format fédéral : on ne construit aucune série, seulement des plateaux.
-    const plateaux = composerPlateauxQuarts(qualifiesAvecRang(G.divIdx));
+    const plateaux = composerPlateauxQuarts(qualifiesAvecRang(G.divIdx), defPlateau);
     G.playoff = { format: 'plateau', stage: 'quarts', plateaux: plateaux, def: defPlateau,
                   seedRank: seedRank, quarts: null, demis: null, finale: null,
                   champion: null, finalists: [], promus: [], humanOut: false, nQual: seeds.length };
@@ -4200,25 +4210,33 @@ function pl_duelJoue(pl, a, b) { return !!pl.duels[clePlateauDuel(a, b)]; }
 function buildNextRoundPlateau() {
   const po = G.playoff, def = po.def;
   if (po.stage === 'quarts') {
-    const qualifies = [];
-    po.plateaux.forEach(pl => classerPlateau(pl).slice(0, def.passeQuarts).forEach(id => qualifies.push(id)));
+    // Table des demi-finales, art. 4.5.3 A (N3) et 3.6.3 A (N2) : par groupe de quatre
+    // quarts, deux plateaux qui alternent premiers et deuxièmes. Le premier prend le 1ᵉʳ du
+    // quart A, le 2ᵉ du quart B, le 1ᵉʳ du quart C, le 2ᵉ du quart D ; le second prend le
+    // complément. Un plateau étant un mini-championnat, l'ordre des équipes n'y compte pas.
+    const classes = po.plateaux.map(pl => classerPlateau(pl));
     po.plateaux = [];
-    for (let i = 0; i < qualifies.length; i += 4) {
-      po.plateaux.push(makePlateau(qualifies.slice(i, i + 4), `Demi-finale ${po.plateaux.length + 1}`));
+    for (let g = 0; g < classes.length; g += 4) {
+      const groupe = classes.slice(g, g + 4);
+      if (groupe.length < 4) break;
+      [0, 1].forEach(decalage => {
+        const ids = groupe.map((cl, i) => cl[(i + decalage) % 2]).filter(x => x !== undefined);
+        po.plateaux.push(makePlateau(ids, `Demi-finale ${po.plateaux.length + 1}`));
+      });
     }
     po.stage = 'demis';
   } else if (po.stage === 'demis') {
     const finalistes = [];
     po.plateaux.forEach(pl => classerPlateau(pl).slice(0, def.passeDemies).forEach(id => finalistes.push(id)));
-    // Art. 4.7 A : ces quatre-là occupent les quatre premières places du classement final,
-    // donc ils montent — quel que soit l'ordre que donneront les matchs de titre.
-    po.promus = finalistes.slice(0, def.montees);
     po.plateaux = [makePlateau(finalistes, 'Tournoi final')];
     po.stage = 'finale';
   } else if (po.stage === 'finale') {
     const cl = classerPlateau(po.plateaux[0]);
     po.champion = cl[0];
     po.finalists = cl.slice(0, 2);
+    // Les montées se lisent sur le classement du tournoi final : quatre en N3 (art. 4.7 A,
+    // soit tous ses finalistes), deux en N2 (art. 3.8 A). Une seule règle, au bon endroit.
+    po.promus = cl.slice(0, def.montees);
     po.stage = 'done';
   }
   po.humanOut = po.stage === 'done' || !monPlateau();
