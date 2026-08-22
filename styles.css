@@ -1,0 +1,1125 @@
+/* styles.css — toute la mise en forme du jeu.
+ *
+ * Sorti d'index.html au découpage (voir 4-outils/patch-decouper-css.py) : 1 110 lignes,
+ * 94 Ko, et pas une ligne de logique. Objectif déclaré par Mirja : la MANIABILITÉ. Le poids
+ * n'était pas le problème — mesuré, index.html ne coûtait que 168 Ko compressés sur le
+ * réseau et 68 ms d'analyse.
+ *
+ * Les commentaires sont conservés tels quels : ils disent POURQUOI une valeur est ce qu'elle
+ * est, et c'est la seule chose qu'un fichier de style ne peut pas redire tout seul.
+ *
+ * Ce qui n'est PAS ici : les attributs `style="…"` en ligne du HTML. Ce sont des valeurs
+ * calculées — couleur du moral, largeur d'une barre — pas de la feuille de style.
+ *
+ * Pièce NON CRITIQUE : sans ce fichier le jeu reste entièrement jouable, seulement sans mise
+ * en forme. La sentinelle prévient, elle ne bloque pas.
+ */
+  /* ==================== Police embarquée ====================
+     Tomorrow, sous licence SIL Open Font License 1.1. Embarquée plutôt que chargée
+     depuis Google : l'application doit fonctionner hors ligne, et le jeu ne doit
+     émettre aucune requête réseau au démarrage. Sous-ensemble latin uniquement —
+     un relevé des caractères du jeu n'a montré aucun besoin de latin-ext.
+     font-display: block plutôt que swap : la police étant déjà là, autant éviter
+     le clignotement d'une police de repli. */
+  @font-face {
+    font-family: 'Tomorrow';
+    font-style: normal;
+    font-weight: 400;
+    font-display: block;
+    src: url(data:font/woff2;charset=utf-8;base64,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) format('woff2');
+  }
+  @font-face {
+    font-family: 'Tomorrow';
+    font-style: normal;
+    font-weight: 500;
+    font-display: block;
+    src: url(data:font/woff2;charset=utf-8;base64,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) format('woff2');
+  }
+  @font-face {
+    font-family: 'Tomorrow';
+    font-style: normal;
+    font-weight: 700;
+    font-display: block;
+    src: url(data:font/woff2;charset=utf-8;base64,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) format('woff2');
+  }
+
+  :root {
+    --bleu: #00ade9;
+    --tan: #f3cf95;
+    --noir: #0d0d0f;
+    --panel: #16181d;
+    --panel2: #1e2128;
+    --txt: #e9eef4;
+    --muted: #93a0ad;
+    --vert: #3fce7a;
+    --rouge: #e85454;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; min-height: 100%; background: var(--noir); color: var(--txt);
+    font-family: 'Tomorrow', 'Segoe UI', sans-serif; }
+
+  /* ==================== Confort en application native (iOS / Android) ==================== */
+  /* Empêche le zoom automatique du texte, le rebond élastique du scroll et le halo bleu au tap. */
+  html { -webkit-text-size-adjust: 100%; }
+  html, body { overscroll-behavior: none; }
+  * { -webkit-tap-highlight-color: transparent; }
+  /* Pas de sélection de texte accidentelle en jouant (mais on la garde là où elle est utile). */
+  body { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+  input, textarea, select, #__jsErrorBox, .note, #mvFeed { -webkit-user-select: text; user-select: text; }
+  /* Supprime le délai de 300 ms et le zoom double-tap sur tout ce qui est cliquable. */
+  button, .btn, .menu-btn, .ts-team-card, .ts-chip, .player-card, .infra-fiche, nav button, select {
+    touch-action: manipulation;
+  }
+
+  /* Zones de sécurité : l'encoche / Dynamic Island en haut, la barre d'accueil en bas.
+     Le fond s'étend dessous (viewport-fit=cover) mais le contenu ne passe jamais dessous. */
+  header { padding-top: calc(12px + env(safe-area-inset-top, 0px)); }
+  header, nav { padding-left: calc(18px + env(safe-area-inset-left, 0px));
+                padding-right: calc(18px + env(safe-area-inset-right, 0px)); }
+  main { padding-bottom: calc(40px + env(safe-area-inset-bottom, 0px));
+         padding-left: calc(18px + env(safe-area-inset-left, 0px));
+         padding-right: calc(18px + env(safe-area-inset-right, 0px)); }
+  #menuScreen { padding-top: calc(30px + env(safe-area-inset-top, 0px));
+                padding-bottom: calc(30px + env(safe-area-inset-bottom, 0px)); }
+  #teamSelectScreen { padding-bottom: calc(70px + env(safe-area-inset-bottom, 0px)); }
+  #teamSelectScreen .ts-hero { padding-top: calc(72px + env(safe-area-inset-top, 0px)); }
+  #mvBox { padding-bottom: calc(14px + env(safe-area-inset-bottom, 0px)); }
+  header {
+    background: linear-gradient(90deg, #000, #10151c);
+    border-bottom: 3px solid var(--bleu);
+    padding: 12px 18px; display: flex; flex-wrap: wrap; gap: 14px; align-items: center; justify-content: space-between;
+  }
+  header h1 { margin: 0; font-size: 19px; letter-spacing: 1px; }
+  header h1 span { color: var(--bleu); }
+  #topinfo { display: flex; gap: 18px; font-size: 14px; flex-wrap: wrap; }
+  #topinfo b { color: var(--tan); }
+  nav { display: flex; flex-wrap: wrap; gap: 6px; padding: 10px 18px; background: var(--panel); }
+  nav button {
+    background: var(--panel2); color: var(--txt); border: 1px solid #2c313a;
+    padding: 8px 16px; border-radius: 6px; cursor: pointer; font-family: inherit; font-size: 14px;
+  }
+  nav button.active { background: var(--bleu); color: #04121f; font-weight: 700; border-color: var(--bleu); }
+  nav button { position: relative; }
+  nav button.notify { border-color: var(--tan); animation: navPulse 1.6s ease-in-out infinite; }
+  nav button.notify::after {
+    content: ''; position: absolute; top: -4px; right: -4px; width: 10px; height: 10px;
+    border-radius: 50%; background: var(--tan); box-shadow: 0 0 0 2px var(--panel);
+  }
+  @keyframes navPulse { 0%,100% { box-shadow: 0 0 0 0 rgba(243,207,149,.5); } 50% { box-shadow: 0 0 0 5px rgba(243,207,149,0); } }
+  nav button.play { background: var(--tan); color: #201503; font-weight: 700; border-color: var(--tan); margin-left: auto; }
+  main { padding: 16px 18px 40px; max-width: 1100px; margin: 0 auto;
+         --pad-x: calc(18px + env(safe-area-inset-left, 0px)); }
+  h2 { font-size: 17px; color: var(--bleu); border-bottom: 1px solid #2c313a; padding-bottom: 6px; }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  th, td { padding: 7px 8px; text-align: left; border-bottom: 1px solid #23272f; }
+  th { color: var(--muted); font-weight: 500; font-size: 12px; text-transform: uppercase; letter-spacing: .5px; }
+  tr.me { background: rgba(0,173,233,.10); }
+  tr.sel { background: rgba(243,207,149,.12); }
+  .pos { display: inline-block; min-width: 22px; text-align: center; border-radius: 4px; font-size: 12px; padding: 1px 4px; font-weight: 700; }
+  .pos.G { background: #6b4fd1; } .pos.D { background: #2e7dd1; } .pos.A { background: #d1642e; }
+  .portrait-thumb { width: 40px; height: 40px; border-radius: 9px; object-fit: cover; vertical-align: middle;
+    margin-right: 9px; border: 2px solid #3a4049; background: #12192b; }
+  .portrait-thumb.sm { width: 24px; height: 24px; margin-right: 6px; border-width: 1px; }
+
+  /* ==================== Cartes de sélection des titulaires ==================== */
+  .lineup-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; margin: 12px 0; }
+  .player-card {
+    background: var(--panel2); border: 2px solid #2c313a; border-radius: 10px;
+    padding: 10px 8px 8px; text-align: center; cursor: pointer; user-select: none;
+    transition: border-color .15s, transform .1s, background .15s;
+    position: relative;
+  }
+  .player-card:hover { border-color: #4a5058; transform: translateY(-2px); }
+  .player-card.selected { border-color: var(--vert); background: rgba(63,206,122,.10); }
+  .player-card.injured { opacity: .5; cursor: not-allowed; }
+  .player-card.injured:hover { transform: none; border-color: #2c313a; }
+  /* Carré arrondi et non plus rond : les nouveaux portraits remplissent l'image
+     jusqu'aux bords, un masque circulaire rognerait les oreilles et les cheveux. */
+  .player-card .card-portrait {
+    width: 84px; height: 84px; border-radius: 14px; object-fit: cover; display: block;
+    margin: 0 auto 6px; border: 3px solid #3a4049; background: #12192b;
+  }
+  .player-card.selected .card-portrait { border-color: var(--vert); }
+  .player-card .card-check {
+    position: absolute; top: 6px; right: 6px; width: 20px; height: 20px; border-radius: 50%;
+    background: var(--vert); color: #04210f; font-size: 13px; font-weight: 700;
+    display: none; align-items: center; justify-content: center; line-height: 1;
+  }
+  .player-card.selected .card-check { display: flex; }
+  .player-card .card-pos {
+    position: absolute; top: 6px; left: 6px; font-size: 10px; font-weight: 700; padding: 1px 5px;
+    border-radius: 4px; color: #fff;
+  }
+  .player-card .card-name { font-weight: 700; font-size: 13px; margin: 2px 0 6px; line-height: 1.2;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .player-card .card-overall {
+    font-size: 24px; font-weight: 700; color: var(--tan); line-height: 1;
+  }
+  .player-card .card-overall-label { font-size: 9px; color: var(--muted); text-transform: uppercase; letter-spacing: .5px; margin-bottom: 4px; }
+  .player-card .card-stats { display: flex; justify-content: center; gap: 8px; font-size: 11px; color: var(--muted); margin-top: 4px; }
+  .player-card .card-stats b { color: var(--txt); font-size: 12px; }
+  .player-card .card-bottom { display: flex; justify-content: space-between; align-items: center; margin-top: 6px; font-size: 11px; }
+  .player-card .card-injured-tag { font-size: 10px; color: var(--rouge); margin-top: 6px; }
+
+  /* ==================== Cartes d'infrastructure illustrées (style "fiche") ==================== */
+  .infra-fiche {
+    background: var(--panel2); border: 2px solid #2c313a; border-radius: 14px;
+    overflow: hidden; margin-bottom: 4px;
+  }
+  .infra-fiche .infra-img-wrap {
+    width: 100%; aspect-ratio: 3/2; overflow: hidden; position: relative; background: #0c1017;
+  }
+  .infra-fiche .infra-img-wrap img {
+    width: 100%; height: 100%; object-fit: cover; display: block;
+  }
+  .infra-fiche .infra-tier-badge {
+    position: absolute; top: 10px; right: 10px; background: rgba(10,12,16,.78); color: var(--tan);
+    font-weight: 700; font-size: 12px; padding: 4px 10px; border-radius: 20px; border: 1px solid #3a4049;
+  }
+  .infra-fiche .infra-body { padding: 14px 16px 16px; }
+  .infra-fiche .infra-title { font-size: 16px; font-weight: 700; margin-bottom: 2px; }
+  .infra-fiche .infra-level-bar-wrap {
+    background: #14181f; border-radius: 6px; height: 8px; margin: 8px 0 10px; overflow: hidden;
+  }
+  .infra-fiche .infra-level-bar {
+    height: 100%; background: linear-gradient(90deg, #2e7dd1, var(--vert)); border-radius: 6px;
+  }
+  .btn {
+    background: var(--panel2); border: 1px solid #2c313a; color: var(--txt);
+    padding: 4px 10px; border-radius: 5px; cursor: pointer; font-family: inherit; font-size: 13px;
+  }
+  .btn:hover { border-color: var(--bleu); }
+  .btn.buy { border-color: var(--vert); color: var(--vert); }
+  .btn.sell { border-color: var(--rouge); color: var(--rouge); }
+  .btn:disabled { opacity: .35; cursor: not-allowed; }
+  .tag { font-size: 11px; color: var(--muted); }
+  #matchReport {
+    background: var(--panel); border: 1px solid #2c313a; border-radius: 8px;
+    padding: 14px 16px; margin-bottom: 18px; display: none;
+  }
+  #matchReport h3 { margin: 0 0 8px; color: var(--tan); font-size: 16px; }
+  #matchReport .bigscore { font-size: 22px; font-weight: 700; margin: 4px 0 10px; }
+  #matchReport ul { margin: 4px 0; padding-left: 18px; color: var(--muted); font-size: 13px; }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+  @media (max-width: 800px) { .grid2 { grid-template-columns: 1fr; } }
+
+  /* ==================== RESPONSIVE MOBILE ==================== */
+  @media (max-width: 700px) {
+    header { padding: calc(10px + env(safe-area-inset-top, 0px)) calc(12px + env(safe-area-inset-right, 0px)) 10px calc(12px + env(safe-area-inset-left, 0px)); gap: 8px; }
+    header h1 { font-size: 15px; letter-spacing: .5px; }
+    #topinfo { font-size: 12px; gap: 10px; width: 100%; }
+    nav { padding: 8px calc(10px + env(safe-area-inset-right, 0px)) 8px calc(10px + env(safe-area-inset-left, 0px)); gap: 5px; }
+    nav button { padding: 7px 10px; font-size: 12px; }
+    main { padding: 10px calc(10px + env(safe-area-inset-right, 0px)) calc(30px + env(safe-area-inset-bottom, 0px)) calc(10px + env(safe-area-inset-left, 0px));
+           --pad-x: calc(10px + env(safe-area-inset-left, 0px)); }
+    h2 { font-size: 15px; }
+
+    /* tableaux de joueurs -> cartes empilées, une par joueur */
+    table.responsive-cards, table.responsive-cards tbody,
+    table.responsive-cards tr, table.responsive-cards td { display: block; width: 100%; }
+    table.responsive-cards thead, table.responsive-cards tr:first-child { display: none; }
+    table.responsive-cards tr {
+      border: 1px solid #2c313a; border-radius: 8px; margin-bottom: 10px;
+      padding: 6px 10px; background: var(--panel2);
+    }
+    table.responsive-cards td {
+      border: none; border-bottom: 1px solid #23272f; padding: 6px 2px 6px 44%;
+      position: relative; text-align: right; min-height: 18px; font-size: 13px;
+    }
+    table.responsive-cards td:last-child { border-bottom: none; }
+    table.responsive-cards td::before {
+      content: attr(data-label); position: absolute; left: 2px; top: 6px; width: 42%;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-align: left;
+      font-weight: 500; color: var(--muted); font-size: 10px; text-transform: uppercase; letter-spacing: .3px;
+    }
+    table.responsive-cards td.nomcell {
+      padding: 4px 2px; text-align: left; display: flex; align-items: center;
+      flex-wrap: wrap; font-size: 14px; font-weight: 600;
+    }
+    table.responsive-cards td.nomcell::before { content: none; }
+    table.responsive-cards td.actionscell {
+      padding: 8px 2px 2px; text-align: left; display: flex; gap: 6px; flex-wrap: wrap;
+    }
+    table.responsive-cards td.actionscell::before { content: none; }
+
+    /* schéma de tournoi : resserre les colonnes plutôt que de forcer un scroll trop large */
+    .bcol { min-width: 130px; }
+    .bbox { width: 120px; font-size: 11px; padding: 5px 7px; }
+    .bbox.final-box { width: 130px; }
+
+    /* tableaux classiques restants (classement, calendrier...) : on autorise le scroll horizontal
+       plutôt que de casser la lisibilité en compressant chaque colonne à l'excès */
+    table:not(.responsive-cards) { display: block; overflow-x: auto; white-space: nowrap; }
+  }
+  .card { background: var(--panel); border: 1px solid #2c313a; border-radius: 8px; padding: 12px 14px; margin-bottom: 14px; }
+  .forme { display:inline-block; width: 40px; text-align:center; border-radius:4px; font-size:12px; }
+  .starterDot { color: var(--vert); font-weight: 700; }
+  .note { color: var(--muted); font-size: 13px; }
+  #saveRow { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  select { background: var(--panel2); color: var(--txt); border: 1px solid #2c313a; border-radius: 5px; padding: 4px 8px; font-family: inherit; }
+  /* --- Schéma de tournoi (bracket) --- */
+  .bracket { display: flex; align-items: center; justify-content: center; gap: 0; margin: 16px 0; overflow-x: auto; padding: 10px 0; }
+  .bcol { display: flex; flex-direction: column; justify-content: space-around; gap: 14px; min-width: 190px; }
+  .bcol.qf { gap: 26px; }
+  .bslot { position: relative; display: flex; align-items: center; }
+  .bslot::after { content: ''; position: absolute; right: -18px; top: 50%; width: 18px; height: 1px; background: #3a4049; }
+  .bcol.final .bslot::after, .bcol.champion .bslot::after { display: none; }
+  .bbox { background: var(--panel2); border: 1px solid #3a4049; border-radius: 6px; padding: 6px 10px; font-size: 12px; width: 170px; }
+  .bbox.final-box { border-color: var(--tan); width: 190px; }
+  .bteam { display: flex; justify-content: space-between; padding: 2px 0; }
+  .bteam.win { color: var(--vert); font-weight: 700; }
+  .bteam.lose { opacity: .55; }
+  .bteam.me { color: var(--bleu); font-weight: 700; }
+  .bround-label { text-align: center; font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .5px; margin-bottom: 8px; }
+  .bchampion { text-align: center; font-size: 13px; color: var(--tan); font-weight: 700; margin-top: 10px; }
+  /* --- Vue match en direct --- */
+  #matchViewer {
+    position: fixed; inset: 0; background: rgba(4,6,10,.92); z-index: 50;
+    display: none; align-items: center; justify-content: center; padding: 12px;
+  }
+  #mvBox { background: var(--panel); border: 1px solid #2c313a; border-radius: 10px;
+    padding: 14px 16px; width: 100%; max-width: 780px; }
+  #mvHead { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; }
+  #mvScore { font-size: 20px; font-weight: 700; }
+  #mvScore .h { color: var(--bleu); } #mvScore .a { color: #f0803a; }
+  #mvClock { font-size: 18px; color: var(--tan); font-weight: 700; }
+  #mvCanvas { width: 100%; height: auto; border-radius: 8px; margin: 10px 0; display: block; background: #10141a; }
+  #mvFeed { max-height: 110px; overflow-y: auto; font-size: 13px; color: var(--muted);
+    background: var(--panel2); border-radius: 6px; padding: 8px 10px; }
+  #mvFeed .goal { color: var(--tan); font-weight: 700; }
+  #mvCtrls { display: flex; gap: 6px; margin-top: 10px; flex-wrap: wrap; }
+  #mvCtrls .btn.on { border-color: var(--bleu); color: var(--bleu); }
+
+  /* --- Fond : patinoire floutée + halo de division --- */
+  /* La photo donne la profondeur, le halo donne l'appartenance : le fond se teinte de
+     la couleur de la division en cours, et change donc à chaque montée. Les deux
+     couches tiennent dans un seul pseudo-élément, les dégradés étant empilés avant
+     l'image — dans background, la première couche est celle du dessus. */
+  body::before {
+    content: ''; position: fixed; inset: 0; pointer-events: none; z-index: 0;
+    background:
+      radial-gradient(100% 55% at 50% -6%,
+        color-mix(in srgb, var(--div) 20%, transparent) 0%, transparent 62%),
+      url('images/fond-ambiance.webp') center 26% / cover no-repeat;
+    opacity: .62;
+  }
+  /* Voile dégradé : maintient le contraste du texte et éteint le bas de l'écran,
+     là où passe la barre de navigation. */
+  body::after {
+    content: ''; position: fixed; inset: 0; pointer-events: none; z-index: 0;
+    background:
+      radial-gradient(120% 78% at 50% 4%, transparent 0%, rgba(13,13,15,.58) 68%,
+        rgba(13,13,15,.92) 100%),
+      linear-gradient(180deg, rgba(13,13,15,.46) 0%, rgba(13,13,15,.76) 55%,
+        rgba(13,13,15,.95) 100%),
+      url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3'/%3E%3C/filter%3E%3Crect width='140' height='140' filter='url(%23n)' opacity='.5'/%3E%3C/svg%3E");
+    background-size: cover, cover, 140px 140px;
+  }
+  header, nav, main { position: relative; z-index: 1; }
+
+  /* le jeu principal reste caché tant qu'aucune partie n'est lancée */
+  body:not(.game-started) header,
+  body:not(.game-started) nav,
+  body:not(.game-started) main { display: none; }
+
+  /* --- enchaînement des écrans : menu -> sélection d'équipe -> jeu --- */
+  #menuScreen { display: flex; }
+  body.ts-open #menuScreen,
+  body.game-started #menuScreen { display: none; }
+  #teamSelectScreen { display: none; }
+  body.ts-open #teamSelectScreen { display: block; }
+  body.game-started #teamSelectScreen,
+  body.game-started #tsConfirmOverlay { display: none !important; }
+
+  /* ==================== Page de garde ==================== */
+  #menuScreen {
+    position: fixed; inset: 0; z-index: 205;
+    align-items: center; justify-content: center; text-align: center;
+    padding: 30px 16px; overflow-y: auto; background: var(--noir);
+  }
+  .menu-bg {
+    position: absolute; inset: -4%;
+    background-size: cover; background-position: center 40%;
+    animation: tsSlowZoom 30s ease-in-out infinite alternate;
+  }
+  #menuScreen::after {
+    content: ''; position: absolute; inset: 0; pointer-events: none;
+    background:
+      radial-gradient(ellipse at 50% 30%, rgba(0,173,233,.16), transparent 60%),
+      linear-gradient(180deg, rgba(10,12,16,.72) 0%, rgba(10,12,16,.90) 100%);
+  }
+  .menu-inner { position: relative; z-index: 2; max-width: 460px; width: 100%; }
+  .menu-title {
+    font-size: 44px; font-weight: 800; letter-spacing: 1px; margin: 0 0 10px; line-height: 1.05;
+    text-shadow: 0 4px 26px rgba(0,0,0,.8);
+    animation: tsRise .6s cubic-bezier(.2,.7,.3,1) both;
+  }
+  .menu-title span { color: var(--tan); text-shadow: 0 0 34px rgba(243,207,149,.55); }
+  .menu-sub {
+    color: var(--txt); opacity: .85; font-size: 14px; margin: 0 0 7px; line-height: 1.5;
+    animation: tsRise .6s .1s cubic-bezier(.2,.7,.3,1) both;
+  }
+  .menu-version {
+    color: var(--muted); font-size: 11.5px; letter-spacing: .04em; margin: 0 0 23px;
+    animation: tsRise .6s .13s cubic-bezier(.2,.7,.3,1) both;
+  }
+  .menu-actions {
+    display: flex; flex-direction: column; gap: 11px;
+    animation: tsRise .6s .16s cubic-bezier(.2,.7,.3,1) both;
+  }
+  .menu-btn {
+    display: block; width: 100%; text-align: left; cursor: pointer;
+    background: linear-gradient(160deg, var(--panel2), var(--panel));
+    border: 1px solid #2c313a; border-radius: 12px; padding: 15px 18px;
+    color: var(--txt); font-family: inherit; font-size: 15px;
+    transition: transform .15s cubic-bezier(.2,.7,.3,1), border-color .15s, box-shadow .15s;
+  }
+  .menu-btn:hover {
+    transform: translateY(-2px); border-color: var(--tan);
+    box-shadow: 0 12px 26px -12px rgba(0,0,0,.8);
+  }
+  .menu-btn.menu-hidden { display: none; }
+  .menu-btn-label { display: block; font-weight: 700; }
+  .menu-btn-detail { display: block; font-size: 11.5px; color: var(--muted); margin-top: 3px; }
+  /* La corbeille d'un emplacement : discrète, et assez grande pour le doigt (44 pt). */
+  /* Emplacement abîmé : signalé sans dramatiser, et jamais effacé d'office. */
+  .menu-btn-abime { border-color: var(--rouge); }
+  /* Corps de modale qui avance au tap : le curseur et la consigne disent que c'est cliquable,
+     sans quoi le geste resterait à deviner. */
+  /* Introduction : carte de joueur. Dimensionnée pour 390 px, elle respire au-delà.
+     La grille s'auto-ajuste (3 colonnes sur téléphone, jusqu'à 6 sur bureau) plutôt que
+     d'être fixée par média-query — moins de code, et aucun débordement possible. */
+  /* Glissement latéral plutôt que vertical : on enchaîne quatorze cartes, le geste doit
+     évoquer qu'on feuillette. `overflow: hidden` sur le corps empêche la carte de déborder
+     pendant qu'elle entre — c'était l'origine du clignotement au changement de joueur. */
+  #modalBody { overflow-x: hidden; }
+  .intro-joueur, .intro-accueil { animation: ij-entree .22s cubic-bezier(.22,.61,.36,1); }
+  @keyframes ij-entree { from { opacity: 0; transform: translateX(-22px); } to { opacity: 1; transform: none; } }
+  .ij-tete { display: flex; gap: 12px; align-items: center; margin-bottom: 12px; }
+  /* `height` et non `aspect-ratio` + `max-height` : ce couple rétrécit la LARGEUR. */
+  .ij-portrait { height: 84px; width: 84px; object-fit: cover; border-radius: 10px; flex: 0 0 auto; }
+  .ij-ident { min-width: 0; }
+  .ij-nom { font-weight: 700; font-size: 17px; line-height: 1.2; }
+  .ij-sous { display: flex; gap: 6px; align-items: center; margin: 4px 0 6px; flex-wrap: wrap; }
+  .ij-poste { font-size: 11px; padding: 2px 7px; border-radius: 999px; color: #fff; }
+  .ij-general { font-size: 26px; font-weight: 800; line-height: 1; }
+  .ij-general-lib { font-size: 11px; font-weight: 400; opacity: .6; margin-left: 6px; }
+  .ij-grille { display: grid; grid-template-columns: repeat(auto-fit, minmax(88px, 1fr)); gap: 6px; }
+  .ij-stat { background: rgba(255,255,255,.05); border-radius: 8px; padding: 6px 8px;
+    display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+  .ij-lib { font-size: 10px; opacity: .6; text-transform: uppercase; letter-spacing: .4px; }
+  .ij-val { font-size: 15px; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .ij-club { font-size: 20px; font-weight: 800; margin: 0 0 2px; }
+  .modal-texte-intro { margin-top: 10px; line-height: 1.45; }
+  /* Projecteur du tutoriel. 250 : au-dessus de la navigation (200-210), SOUS les toasts
+     (300) et les modales (320) — embaucher un coach ouvre une confirmation qui doit rester
+     cliquable par-dessus le voile. */
+  #tutoVoile { display: none; position: fixed; inset: 0; z-index: 250; }
+  #tutoVoile.on { display: block; }
+  /* Le trou n'est qu'un effet : une ombre ne capte pas les clics, c'est le voile qui relaie. */
+  /* 0,58 et non 0,78 : à 0,78 la page derrière devenait illisible, alors que tout l'intérêt
+     est de regarder l'écran dont on parle. Et aucune transition : le cadre est repositionné
+     image par image, une inertie CSS le ferait traîner derrière sa cible. */
+  #tutoTrou { display: none; position: fixed; z-index: 251; pointer-events: none;
+    border-radius: 12px; box-shadow: 0 0 0 9999px rgba(4,6,10,.58); border: 2px solid var(--vert); }
+  #tutoTrou.on { display: block; }
+  #tutoBulle { display: none; position: fixed; z-index: 252; left: 50%; width: min(92vw, 420px);
+    background: var(--fond2, #141920); border: 1px solid #2c313a; border-radius: 14px;
+    padding: 14px 16px; box-shadow: 0 12px 40px rgba(0,0,0,.55); }
+  #tutoBulle.on { display: block; }
+  .tuto-titre { font-weight: 800; font-size: 16px; margin-bottom: 6px; color: var(--tan); }
+  .tuto-texte { line-height: 1.45; font-size: 14px; }
+  /* 44 px de haut minimum : c'est la cible tactile d'Apple, et le tutoriel est le premier
+     écran que touche un nouveau joueur. */
+  .tuto-pied { display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap; }
+  .tuto-pied .btn { min-height: 44px; flex: 1 1 auto; }
+  /* Résumé de saison. Mêmes conventions que les cartes de l'introduction. */
+  .rs-ecran { animation: ij-entree .18s ease-out; }
+  .rs-gros { font-size: 20px; font-weight: 800; margin: 0 0 2px; }
+  .rs-classement { font-size: 30px; font-weight: 800; line-height: 1.1; margin-top: 6px; }
+  .rs-classement span { font-size: 13px; font-weight: 400; opacity: .6; margin-left: 5px; }
+  .rs-vedette { display: flex; gap: 12px; align-items: center; margin-bottom: 10px; }
+  .rs-evo { display: block; font-size: 11px; font-weight: 600; opacity: .95; }
+  /* Pastille d'apport. Compacte : elle se loge à côté de la note générale plutôt que dans
+     une quinzième colonne, que le tableau ne pourrait pas tenir en 390 px. */
+  /* Sous la valeur, en retrait : c'est une information de second plan au moment de choisir,
+     mais elle doit rester lisible sans survol — ni Android ni iOS n'en affichent. */
+  /* Ligne et partenaire : deux mentions discrètes sur la carte. Jamais de chiffre
+     d'affinité — le potentiel s'affiche bien en étoiles depuis l'origine. */
+  .card-ligne { position: absolute; top: 6px; right: 6px; font-size: 10px; font-weight: 800;
+    padding: 1px 5px; border-radius: 999px; background: rgba(255,255,255,.14); }
+  .card-duo { font-size: 10px; margin-top: 2px; white-space: nowrap; overflow: hidden;
+    text-overflow: ellipsis; }
+  .duo-plus { color: var(--vert); } .duo-moins { color: var(--rouge); opacity: .8; }
+  .tr-salaire { display: block; font-size: 11px; opacity: .6; white-space: nowrap; }
+  .tr-apport { font-size: 11px; font-weight: 700; padding: 1px 5px; border-radius: 999px;
+    white-space: nowrap; vertical-align: middle; }
+  .tr-plus  { color: var(--vert);  background: rgba(60,190,120,.14); }
+  .tr-moins { color: var(--txt); opacity: .5; background: rgba(255,255,255,.06); }
+  .modal-tapable { cursor: pointer; }
+  .modal-tapable::after { content: "Touche l'écran pour continuer"; display: block;
+    margin-top: 10px; font-size: 11px; opacity: .55; text-align: center; }
+  .modal-lettre { line-height: 1.45; }
+  .modal-lettre img.portrait-thumb { vertical-align: middle; margin-right: 6px; }
+  .menu-slot-del { position: absolute; right: 8px; top: 50%; transform: translateY(-50%);
+                   min-width: 44px; min-height: 44px; display: flex; align-items: center;
+                   justify-content: center; opacity: .55; touch-action: manipulation; }
+  .menu-slot-del:hover { opacity: 1; }
+  #menuSlots .menu-btn { position: relative; padding-right: 52px; }
+  .menu-btn-primary {
+    border-color: var(--vert);
+    background: linear-gradient(160deg, rgba(63,206,122,.16), var(--panel));
+  }
+  .menu-btn-primary:hover { border-color: var(--vert); }
+  .menu-btn-primary .menu-btn-label { color: var(--vert); }
+  .menu-foot {
+    color: var(--muted); font-size: 11px; margin-top: 22px; line-height: 1.6;
+    animation: tsRise .6s .22s cubic-bezier(.2,.7,.3,1) both;
+  }
+  .ts-back {
+    background: none; border: none; color: var(--muted); font-family: inherit; font-size: 12px;
+    cursor: pointer; padding: 4px 8px; text-decoration: underline; margin-top: 2px;
+  }
+  .ts-back:hover { color: var(--txt); }
+  @media (max-width: 480px) {
+    .menu-title { font-size: 30px; }
+  }
+
+  /* ==================== Écran de sélection d'équipe ==================== */
+  #teamSelectScreen {
+    position: fixed; inset: 0; z-index: 200; background: var(--noir);
+    overflow-y: auto; padding: 0 0 70px;
+  }
+
+  /* --- Bandeau héros : image de stade + léger zoom lent, dégradé de lisibilité --- */
+  #teamSelectScreen .ts-hero {
+    position: relative; padding: 72px 16px 40px; text-align: center; overflow: hidden;
+  }
+  #teamSelectScreen .ts-hero-bg {
+    position: absolute; inset: -4%;
+    background-size: cover; background-position: center 38%;
+    animation: tsSlowZoom 26s ease-in-out infinite alternate;
+  }
+  @keyframes tsSlowZoom {
+    from { transform: scale(1); }
+    to   { transform: scale(1.09); }
+  }
+  #teamSelectScreen .ts-hero::after {
+    content: ''; position: absolute; inset: 0; pointer-events: none;
+    background:
+      radial-gradient(ellipse at 50% 15%, rgba(0,173,233,.20), transparent 62%),
+      linear-gradient(180deg, rgba(10,12,16,.52) 0%, rgba(10,12,16,.84) 58%, var(--noir) 100%);
+  }
+  #teamSelectScreen .ts-hero-inner { position: relative; z-index: 2; }
+
+  .ts-title {
+    font-size: 46px; font-weight: 800; letter-spacing: 1px; margin: 0 0 8px; line-height: 1.05;
+    text-shadow: 0 4px 26px rgba(0,0,0,.75);
+    animation: tsRise .6s cubic-bezier(.2,.7,.3,1) both;
+  }
+  .ts-title span { color: var(--tan); text-shadow: 0 0 34px rgba(243,207,149,.55); }
+  .ts-tagline {
+    color: var(--tan); font-size: 12px; letter-spacing: 3.5px; text-transform: uppercase;
+    margin-bottom: 8px; opacity: .9; animation: tsRise .6s .07s cubic-bezier(.2,.7,.3,1) both;
+  }
+  .ts-hero-stats {
+    display: flex; gap: 18px; justify-content: center; flex-wrap: wrap; margin: 14px 0 16px;
+    animation: tsRise .6s .12s cubic-bezier(.2,.7,.3,1) both;
+  }
+  .ts-hero-stat { text-align: center; }
+  .ts-hero-stat b { display: block; font-size: 20px; color: var(--txt); line-height: 1.1; }
+  .ts-hero-stat span { font-size: 10px; text-transform: uppercase; letter-spacing: 1.4px; color: var(--muted); }
+  .ts-sub {
+    color: var(--txt); font-size: 13.5px; max-width: 600px; margin: 0 auto; opacity: .88; line-height: 1.55;
+    animation: tsRise .6s .17s cubic-bezier(.2,.7,.3,1) both;
+  }
+  .ts-sub b { color: var(--tan); }
+  @keyframes tsRise {
+    from { opacity: 0; transform: translateY(14px); }
+    to   { opacity: 1; transform: none; }
+  }
+
+  /* --- Barre de recherche + filtres par division --- */
+  .ts-controls {
+    max-width: 980px; margin: -6px auto 22px; padding: 0 16px;
+    display: flex; flex-direction: column; gap: 12px; align-items: center;
+    animation: tsRise .6s .22s cubic-bezier(.2,.7,.3,1) both;
+  }
+  .ts-search {
+    width: 100%; max-width: 380px; padding: 11px 16px; border-radius: 24px;
+    background: var(--panel2); border: 1px solid #2c313a; color: var(--txt); font-size: 14px;
+    font-family: inherit; text-align: center; outline: none; transition: border-color .15s;
+  }
+  .ts-search:focus { border-color: var(--bleu); }
+  .ts-search::placeholder { color: var(--muted); }
+  .ts-chips { display: flex; gap: 7px; flex-wrap: wrap; justify-content: center; }
+  .ts-chip {
+    padding: 6px 13px; border-radius: 18px; font-size: 11.5px; font-weight: 600; cursor: pointer;
+    background: var(--panel2); border: 1px solid #2c313a; color: var(--muted);
+    transition: all .15s; text-transform: uppercase; letter-spacing: .6px;
+  }
+  .ts-chip:hover { color: var(--txt); border-color: #3a4049; }
+  .ts-chip.active { color: var(--noir); background: var(--chip-color, var(--tan)); border-color: var(--chip-color, var(--tan)); }
+
+  /* --- Grilles de clubs --- */
+  .ts-inner { max-width: 980px; margin: 0 auto; padding: 0 16px; }
+  .ts-div-block { margin-bottom: 32px; }
+  .ts-div-block.ts-hidden { display: none; }
+  .ts-div-title {
+    font-size: 12.5px; font-weight: 700; margin-bottom: 13px; padding-bottom: 8px; text-transform: uppercase;
+    letter-spacing: 1.6px; display: flex; align-items: center; gap: 10px;
+    border-bottom: 2px solid var(--div-color, #2c313a);
+  }
+  .ts-div-badge { font-size: 10.5px; font-weight: 500; color: var(--muted); text-transform: none; letter-spacing: 0; }
+  .ts-team-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; }
+  .ts-team-card {
+    position: relative; background: linear-gradient(160deg, var(--panel2), var(--panel));
+    border: 1px solid #2c313a; border-radius: 12px; padding: 15px 10px 13px;
+    cursor: pointer; text-align: center; overflow: hidden;
+    transition: transform .16s cubic-bezier(.2,.7,.3,1), border-color .16s, box-shadow .16s;
+    animation: tsPop .4s cubic-bezier(.2,.7,.3,1) both;
+  }
+  .ts-team-card.ts-hidden { display: none; }
+  @keyframes tsPop {
+    from { opacity: 0; transform: translateY(10px) scale(.97); }
+    to   { opacity: 1; transform: none; }
+  }
+  .ts-team-card::before {
+    content: ''; position: absolute; inset: 0; opacity: 0; transition: opacity .16s;
+    background: radial-gradient(ellipse at 50% 0%, var(--div-color, var(--tan)), transparent 72%);
+  }
+  .ts-team-card:hover {
+    transform: translateY(-4px); border-color: var(--div-color, var(--tan));
+    box-shadow: 0 12px 26px -10px rgba(0,0,0,.75);
+  }
+  .ts-team-card:hover::before { opacity: .13; }
+  .ts-team-card > * { position: relative; z-index: 1; }
+  .ts-crest {
+    width: 54px; height: 54px; border-radius: 50%; margin: 0 auto 10px;
+    display: flex; align-items: center; justify-content: center;
+    background: radial-gradient(circle at 34% 28%, color-mix(in srgb, var(--div-color, var(--tan)) 38%, var(--panel2)), var(--panel));
+    border: 2px solid var(--div-color, var(--tan));
+    font-weight: 800; font-size: 15px; letter-spacing: .5px; color: var(--txt);
+    transition: transform .16s cubic-bezier(.2,.7,.3,1), box-shadow .16s;
+  }
+  .ts-team-card:hover .ts-crest {
+    transform: scale(1.09);
+    box-shadow: 0 0 0 4px color-mix(in srgb, var(--div-color, var(--tan)) 22%, transparent);
+  }
+  .ts-team-name { font-size: 12.5px; font-weight: 600; line-height: 1.28; }
+  /* La ville sous le nom : discrète, mais c'est elle qui permet de se repérer parmi
+     184 clubs dont les surnoms ne disent pas la géographie. */
+  /* Le tableau de division : six colonnes dans 390 px. Sans largeur fixe, la colonne des
+     noms prenait 315 px à elle seule — « Les Karibous (Saint-Orens-De-Gameville) N3 » —
+     et poussait Poule, J, Pts et Diff hors du cadre, invisibles. Le contrôle de
+     débordement des tests ne le voyait pas : le dépassement était interne à la table. */
+  .tbl-division { width: 100%; table-layout: fixed; border-collapse: collapse; font-size: 12px; }
+  .tbl-division th, .tbl-division td { padding: 3px 2px; text-align: center; }
+  /* `max-width: 0` est l'astuce qui rend l'ellipse effective dans une cellule de tableau :
+     sans elle la cellule se dimensionne sur son contenu — mesuré à 261 px pour un tableau
+     de 340 — et pousse les colonnes chiffrées hors du cadre, quel que soit table-layout. */
+  .tbl-division th:nth-child(2), .tbl-division td:nth-child(2) {
+    text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    width: 100%; max-width: 0; }
+  .tbl-division th:nth-child(1), .tbl-division td:nth-child(1) { width: 30px; }
+  .tbl-division th:nth-child(3), .tbl-division td:nth-child(3) { width: 52px; }
+  .tbl-division th:nth-child(4), .tbl-division td:nth-child(4) { width: 40px; }
+  .ts-team-ville { font-size: 11px; color: var(--muted); margin-top: 2px;
+                   overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .ts-team-card.ts-defaut { border-color: var(--vert); }
+  .ts-team-card.ts-defaut .ts-crest { border-color: var(--vert);
+    background: radial-gradient(circle at 34% 28%, color-mix(in srgb, var(--vert) 38%, var(--panel2)), var(--panel)); }
+  .ts-team-card.ts-defaut::before { background: radial-gradient(ellipse at 50% 0%, var(--vert), transparent 72%); }
+  .ts-flag {
+    display: inline-block; margin-top: 6px; font-size: 9.5px; text-transform: uppercase;
+    letter-spacing: .8px; color: var(--vert); font-weight: 700;
+  }
+  .ts-empty { text-align: center; color: var(--muted); padding: 40px 16px; font-size: 14px; }
+
+  /* ==================== Double confirmation ==================== */
+  .ts-confirm-overlay {
+    display: none; position: fixed; inset: 0; z-index: 210; background: rgba(4,6,10,.86);
+    align-items: center; justify-content: center; padding: 16px; backdrop-filter: blur(4px);
+  }
+  .ts-confirm-overlay.show { display: flex; animation: tsFade .2s both; }
+  @keyframes tsFade { from { opacity: 0; } to { opacity: 1; } }
+  .ts-confirm-box {
+    background: linear-gradient(160deg, var(--panel2), var(--panel)); border: 1px solid #2c313a;
+    border-radius: 16px; padding: 30px 30px 26px; max-width: 390px; width: 100%; text-align: center;
+    box-shadow: 0 26px 70px -12px rgba(0,0,0,.8);
+    animation: tsPopIn .28s cubic-bezier(.2,.8,.3,1) both;
+  }
+  @keyframes tsPopIn {
+    from { opacity: 0; transform: translateY(16px) scale(.95); }
+    to   { opacity: 1; transform: none; }
+  }
+  .ts-confirm-crest {
+    width: 70px; height: 70px; border-radius: 50%; margin: 0 auto 14px;
+    display: flex; align-items: center; justify-content: center;
+    background: radial-gradient(circle at 34% 28%, color-mix(in srgb, var(--div-color, var(--tan)) 38%, var(--panel2)), var(--panel));
+    border: 2px solid var(--div-color, var(--tan)); font-weight: 800; font-size: 21px; color: var(--txt);
+    box-shadow: 0 0 0 6px color-mix(in srgb, var(--div-color, var(--tan)) 12%, transparent);
+  }
+  .ts-confirm-lead { color: var(--muted); font-size: 13px; margin: 0; }
+  .ts-confirm-name { font-size: 22px; font-weight: 700; color: var(--tan); margin: 4px 0 6px; }
+  .ts-confirm-origin { font-size: 11px; text-transform: uppercase; letter-spacing: 1.2px; margin-bottom: 14px; }
+  .ts-confirm-note { color: var(--muted); font-size: 12.5px; margin-bottom: 20px; line-height: 1.5; }
+  .ts-confirm-btns { display: flex; gap: 10px; justify-content: center; }
+
+  @media (max-width: 480px) {
+    .ts-title { font-size: 27px; }
+    .ts-tagline { font-size: 9.5px; letter-spacing: 2.2px; }
+    #teamSelectScreen .ts-hero { padding: calc(46px + env(safe-area-inset-top, 0px)) 14px 26px; }
+    .ts-hero-stat b { font-size: 17px; }
+    .ts-team-grid { grid-template-columns: repeat(auto-fill, minmax(136px, 1fr)); gap: 8px; }
+  }
+
+  /* ==================== Notifications : toasts et modales ====================
+     Remplacent les popups système, qui sont bloquants, hors
+     charte visuelle, et trahissent le site web emballé — motif de refus
+     classique côté App Store (guideline 4.2). */
+
+  #toastStack {
+    position: fixed; z-index: 300; left: 0; right: 0;
+    bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+    padding-left: calc(12px + env(safe-area-inset-left, 0px));
+    padding-right: calc(12px + env(safe-area-inset-right, 0px));
+    display: flex; flex-direction: column; align-items: center; gap: 8px;
+    pointer-events: none;
+  }
+  .toast {
+    pointer-events: auto; max-width: 430px; width: 100%;
+    background: linear-gradient(160deg, var(--panel2), var(--panel));
+    border: 1px solid #2c313a; border-left: 3px solid var(--muted);
+    border-radius: 10px; padding: 11px 14px;
+    font-size: 13.5px; line-height: 1.45; color: var(--txt);
+    box-shadow: 0 14px 34px -10px rgba(0,0,0,.75);
+    display: flex; gap: 10px; align-items: flex-start; cursor: pointer;
+    animation: toastIn .22s cubic-bezier(.2,.8,.3,1) both;
+  }
+  .toast.out { animation: toastOut .2s ease-in forwards; }
+  .toast-ico { flex: 0 0 auto; font-size: 15px; }
+  .toast-msg { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; }
+  .toast.warn { border-left-color: var(--tan); }
+  .toast.bad  { border-left-color: var(--rouge); }
+  .toast.good { border-left-color: var(--vert); }
+  .toast.info { border-left-color: var(--bleu); }
+  @keyframes toastIn  { from { opacity: 0; transform: translateY(14px) scale(.97); } to { opacity: 1; transform: none; } }
+  @keyframes toastOut { to { opacity: 0; transform: translateY(8px) scale(.98); } }
+
+  #modalOverlay {
+    display: none; position: fixed; inset: 0; z-index: 320;
+    background: rgba(4,6,10,.86); backdrop-filter: blur(4px);
+    align-items: center; justify-content: center;
+    padding-top: calc(16px + env(safe-area-inset-top, 0px));
+    padding-bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+    padding-left: calc(16px + env(safe-area-inset-left, 0px));
+    padding-right: calc(16px + env(safe-area-inset-right, 0px));
+  }
+  #modalOverlay.show { display: flex; animation: tsFade .2s both; }
+  .modal-box {
+    background: linear-gradient(160deg, var(--panel2), var(--panel));
+    border: 1px solid #2c313a; border-radius: 16px;
+    max-width: 440px; width: 100%; max-height: 100%;
+    display: flex; flex-direction: column; overflow: hidden;
+    box-shadow: 0 26px 70px -12px rgba(0,0,0,.8);
+    animation: tsPopIn .28s cubic-bezier(.2,.8,.3,1) both;
+  }
+  .modal-head { padding: 20px 22px 0; display: flex; gap: 10px; align-items: center; }
+  .modal-ico { font-size: 20px; flex: 0 0 auto; }
+  /* le h2 global porte un trait de soulignement : on le neutralise ici */
+  .modal-title { margin: 0; font-size: 16.5px; letter-spacing: .3px; color: var(--tan);
+                 border-bottom: 0; padding-bottom: 0; }
+  .modal-box.bad  .modal-title { color: var(--rouge); }
+  .modal-box.good .modal-title { color: var(--vert); }
+  .modal-body {
+    padding: 14px 22px 6px; overflow-y: auto; -webkit-overflow-scrolling: touch;
+    font-size: 13.5px; line-height: 1.55; color: var(--txt);
+  }
+  .modal-text { white-space: pre-wrap; overflow-wrap: anywhere; }
+  .modal-foot { padding: 16px 22px 20px; display: flex; gap: 10px; justify-content: flex-end; flex-wrap: wrap; }
+  .modal-foot .btn { padding: 9px 18px; font-size: 13.5px; }
+
+  /* Blocs de contenu structuré pour les annonces de fin de saison, playoffs, Coupe */
+  .modal-sub {
+    color: var(--muted); font-size: 10.5px; text-transform: uppercase;
+    letter-spacing: 1.2px; margin: 16px 0 8px;
+  }
+  .modal-body > .modal-sub:first-child { margin-top: 2px; }
+  .modal-note { color: var(--muted); font-size: 12.5px; margin: 0 0 10px; }
+  .modal-list { list-style: none; margin: 0; padding: 0; }
+  .modal-list li {
+    display: flex; align-items: baseline; gap: 10px; padding: 7px 11px;
+    border-radius: 7px; background: rgba(255,255,255,.035); margin-bottom: 5px; font-size: 13px;
+  }
+  .modal-list li .rk { flex: 0 0 22px; color: var(--muted); font-variant-numeric: tabular-nums; }
+  .modal-list li .nm { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; }
+  .modal-list li.me { background: color-mix(in srgb, var(--bleu) 16%, transparent); border: 1px solid color-mix(in srgb, var(--bleu) 40%, transparent); }
+  .modal-list li.me .nm { color: var(--bleu); font-weight: 700; }
+  .modal-stat {
+    display: flex; justify-content: space-between; gap: 12px; padding: 8px 11px;
+    border-radius: 7px; background: rgba(255,255,255,.035); margin-bottom: 5px; font-size: 13px;
+  }
+  .modal-stat span:first-child { color: var(--muted); }
+  .modal-stat span:last-child { color: var(--tan); font-weight: 600; text-align: right; }
+  .modal-flash {
+    padding: 12px 14px; border-radius: 9px; margin-bottom: 8px; font-size: 13px;
+    background: rgba(255,255,255,.04); border-left: 3px solid var(--muted); line-height: 1.5;
+  }
+  .modal-flash b { display: block; font-size: 14.5px; margin-bottom: 2px; }
+  .modal-flash.good { border-left-color: var(--vert); } .modal-flash.good b { color: var(--vert); }
+  .modal-flash.warn { border-left-color: var(--tan);  } .modal-flash.warn b { color: var(--tan); }
+  .modal-flash.bad  { border-left-color: var(--rouge);} .modal-flash.bad b  { color: var(--rouge); }
+  .modal-score {
+    display: flex; align-items: center; gap: 8px; padding: 7px 11px; border-radius: 7px;
+    background: rgba(255,255,255,.035); margin-bottom: 5px; font-size: 12.5px;
+  }
+  .modal-score .h, .modal-score .a { flex: 1 1 0; min-width: 0; overflow-wrap: anywhere; }
+  .modal-score .a { text-align: right; }
+  .modal-score .g { flex: 0 0 auto; color: var(--tan); font-weight: 700; font-variant-numeric: tabular-nums; }
+  .modal-score .w { color: var(--txt); font-weight: 600; }
+
+  @media (max-width: 480px) {
+    .modal-head  { padding-left: 17px; padding-right: 17px; padding-top: 17px; }
+    .modal-body  { padding-left: 17px; padding-right: 17px; }
+    .modal-foot  { padding: 14px 17px 17px; }
+    .modal-title { font-size: 15.5px; padding-bottom: 0; }
+    .modal-foot .btn { flex: 1 1 auto; text-align: center; }
+    .toast { font-size: 13px; }
+  }
+
+  /* ==================== Navigation mobile (variante C) ====================
+     La barre passe en bas : sur un écran de 844 px, le pouce atteint le tiers
+     inférieur, pas le sommet. Les cibles font 58 px, au-delà des 44 pt d'Apple
+     et des 48 dp de Material. */
+
+  body.game-started header { padding: 0; display: block; }
+  .hd-main { display: flex; align-items: center; gap: 10px;
+             padding: 10px calc(13px + env(safe-area-inset-right,0px)) 10px calc(13px + env(safe-area-inset-left,0px));
+             padding-top: calc(10px + env(safe-area-inset-top,0px)); }
+  .hd-crest { width: 36px; height: 36px; flex: 0 0 auto; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center; font-size: 12.5px;
+    font-weight: 800; color: var(--noir);
+    background: radial-gradient(circle at 34% 28%, var(--tan), #c9a468); }
+  .hd-txt { flex: 1 1 auto; min-width: 0; }
+  .hd-club { font-size: 14.5px; font-weight: 700; letter-spacing: .3px;
+             white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .hd-sub { font-size: 10.5px; color: var(--muted); white-space: nowrap;
+            overflow: hidden; text-overflow: ellipsis; }
+  .hd-btn { flex: 0 0 auto; width: 44px; height: 44px; border-radius: 11px;
+    border: 1px solid #2c313a; background: var(--panel2); color: var(--txt);
+    font-size: 16px; cursor: pointer; position: relative; font-family: inherit; }
+  .hd-btn b { position: absolute; top: -5px; right: -5px; min-width: 18px; height: 18px;
+    border-radius: 9px; background: var(--rouge); color: #fff; font-size: 10px;
+    line-height: 18px; font-weight: 700; }
+  .hd-btn b:empty { display: none; }
+  .hd-stats { display: flex; border-top: 1px solid rgba(255,255,255,.07); }
+  .hd-stat { flex: 1 1 0; min-width: 0; padding: 6px 3px 7px; text-align: center; }
+  .hd-stat span { display: block; font-size: 8.5px; color: var(--muted);
+                  text-transform: uppercase; letter-spacing: .7px; }
+  .hd-stat b { display: block; font-size: 12.5px; color: var(--tan);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .hd-stat + .hd-stat { border-left: 1px solid rgba(255,255,255,.07); }
+
+  /* la barre du bas ; l'ancienne barre du haut n'existe plus */
+  body.game-started nav {
+    position: fixed; left: 0; right: 0; bottom: 0; z-index: 120;
+    display: flex; align-items: stretch; gap: 0; flex-wrap: nowrap;
+    background: var(--panel); border-top: 1px solid #2c313a;
+    padding: 0 0 env(safe-area-inset-bottom, 0px);
+  }
+  nav button[data-nav] {
+    flex: 1 1 0; min-width: 0; min-height: 58px; border: 0; border-radius: 0;
+    background: none; color: var(--muted); font-family: inherit; font-size: 9.5px;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 3px; padding: 7px 2px; cursor: pointer; position: relative;
+  }
+  nav button[data-nav] .ic { font-size: 19px; line-height: 1; }
+  nav button[data-nav] .lb { white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+                             max-width: 100%; }
+  nav button[data-nav].active { background: none; color: var(--bleu); font-weight: 700; }
+  nav button[data-nav].active::before { content: ''; position: absolute; top: 0;
+    left: 22%; right: 22%; height: 2.5px; background: var(--bleu); border-radius: 0 0 3px 3px; }
+  nav button[data-nav].notify::after { content: ''; position: absolute; top: 7px;
+    right: calc(50% - 19px); width: 8px; height: 8px; border-radius: 50%;
+    background: var(--tan); animation: navPulse 1.6s ease-in-out infinite; }
+
+  /* le contenu doit dégager la barre du bas et le bouton flottant */
+  body.game-started main { padding-bottom: calc(150px + env(safe-area-inset-bottom, 0px)); }
+
+  /* sous-onglets du groupe Compétition */
+  #subnav { display: none; gap: 6px; padding: 9px 0 3px; }
+  #subnav.show { display: flex; }
+  #subnav button { flex: 1 1 0; min-height: 44px; border-radius: 9px;
+    border: 1px solid #2c313a; background: var(--panel2); color: var(--txt);
+    font-family: inherit; font-size: 12.5px; cursor: pointer; }
+  #subnav button.active { background: var(--bleu); color: #04121f;
+                          font-weight: 700; border-color: var(--bleu); }
+  #subnav button.notify { border-color: var(--tan); }
+
+  /* bouton d'action flottant */
+  #btnPlay {
+    position: fixed; z-index: 118; right: calc(14px + env(safe-area-inset-right, 0px));
+    bottom: calc(72px + env(safe-area-inset-bottom, 0px));
+    max-width: calc(100% - 28px); min-height: 52px; padding: 0 20px; border: 0;
+    border-radius: 26px; background: var(--bleu); color: #04121f;
+    font-family: inherit; font-size: 13.5px; font-weight: 800; cursor: pointer;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    box-shadow: 0 10px 26px -6px rgba(0,173,233,.6);
+  }
+  #btnPlay:disabled { opacity: .4; }
+  body:not(.game-started) #btnPlay, body:not(.game-started) nav { display: none; }
+
+  /* tiroir « Plus » */
+  #drawer { display: none; position: fixed; inset: 0; z-index: 200;
+            background: rgba(4,6,10,.72); backdrop-filter: blur(3px); }
+  #drawer.show { display: block; animation: tsFade .18s both; }
+  .drawer-in { position: absolute; left: 0; right: 0; bottom: 0;
+    background: var(--panel2); border-top: 1px solid #2c313a;
+    border-radius: 16px 16px 0 0; padding: 8px 12px 14px;
+    padding-bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+    animation: drawerUp .22s cubic-bezier(.2,.8,.3,1) both; }
+  @keyframes drawerUp { from { transform: translateY(100%); } to { transform: none; } }
+  .drawer-grab { width: 38px; height: 4px; border-radius: 2px; background: #2c313a;
+    margin: 4px auto 12px; position: relative; cursor: pointer; touch-action: manipulation; }
+  /* La poignée ne mesure que 4 px de haut ; sa zone tactile en fait 44, comme l'exige
+     Apple. Une poignée qu'on ne peut pas viser est une fausse promesse. */
+  .drawer-grab::after { content: ''; position: absolute; left: -60px; right: -60px;
+    top: -20px; bottom: -20px; }
+  .drawer-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+  .drawer-grid button { min-height: 76px; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; gap: 5px; background: var(--panel);
+    border: 1px solid #2c313a; border-radius: 11px; color: var(--txt);
+    font-family: inherit; font-size: 11px; cursor: pointer; position: relative; }
+  .drawer-grid button .ic { font-size: 21px; }
+  .drawer-grid button.notify { border-color: var(--tan); }
+  .drawer-grid button.notify::after { content: ''; position: absolute; top: 7px; right: 7px;
+    width: 8px; height: 8px; border-radius: 50%; background: var(--tan); }
+
+  /* réglage du son, dans le tiroir */
+  .drawer-audio { display: flex; align-items: center; gap: 11px; margin-top: 10px;
+    padding: 11px 12px; background: var(--panel); border: 1px solid #2c313a; border-radius: 11px; }
+  .drawer-audio button { min-width: 44px; min-height: 44px; border-radius: 9px;
+    border: 1px solid #2c313a; background: var(--panel2); color: var(--txt);
+    font-size: 17px; cursor: pointer; font-family: inherit; }
+  .drawer-audio button.on { border-color: var(--vert); color: var(--vert); }
+  .drawer-audio input[type=range] { flex: 1 1 auto; min-width: 0; accent-color: var(--bleu); height: 30px; }
+  .drawer-audio .lab { font-size: 11.5px; color: var(--muted); flex: 0 0 auto; }
+
+  /* Cibles tactiles du contenu. Les boutons du jeu faisaient 24 px de haut : sous les
+     44 pt d'Apple et les 48 dp de Material, les taps ratés sont mesurables. On ne
+     touche qu'à la hauteur et au rembourrage — ni la couleur, ni la bordure, ni la
+     place qu'ils occupent dans les grilles. */
+  @media (max-width: 760px) {
+    body.game-started .btn { min-height: 44px; padding: 10px 14px; font-size: 13.5px; }
+    body.game-started select,
+    body.game-started input[type=number],
+    body.game-started input[type=text] { min-height: 44px; }
+  }
+
+  @media (min-width: 760px) {
+    /* Au-delà du téléphone, la barre reste en bas mais se recentre et ses entrées
+       cessent de s'étirer sur toute la largeur. Attention : une largeur FIXE ici
+       déborde dès que le joueur affiche beaucoup d'entrées (9 × 130 px = 1170 px
+       sur un écran de 768). D'où `flex: 1 1 0` plafonné, qui partage l'espace
+       disponible au lieu de l'imposer. */
+    body.game-started nav { justify-content: center; }
+    nav button[data-nav] { flex: 1 1 0; max-width: 150px; }
+  }
+
+  /* ==================== Réglages ==================== */
+  .rg-bloc { background: var(--panel); border: 1px solid #2c313a; border-radius: 12px;
+             padding: 14px; margin-bottom: 12px; }
+  .rg-bloc h3 { margin: 0 0 4px; font-size: 14px; color: var(--bleu); }
+  .rg-bloc .note { margin: 0 0 12px; }
+
+  .rg-son { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+  .rg-son input[type=range] { flex: 1 1 160px; min-width: 120px; accent-color: var(--bleu); height: 34px; }
+  .rg-son .val { flex: 0 0 auto; font-variant-numeric: tabular-nums; color: var(--tan);
+                 font-weight: 700; min-width: 44px; text-align: right; }
+
+  .rg-liste { display: flex; flex-direction: column; gap: 6px; }
+  .rg-item { display: flex; align-items: center; gap: 10px; background: var(--panel2);
+             border: 1px solid #2c313a; border-radius: 10px; padding: 7px 9px; min-height: 52px; }
+  .rg-item.off { opacity: .55; }
+  .rg-item .ic { font-size: 18px; flex: 0 0 26px; text-align: center; }
+  .rg-item .ic img { width: 22px; height: 22px; vertical-align: middle; }
+  .rg-item .nm { flex: 1 1 auto; min-width: 0; font-size: 13px;
+                 white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .rg-item .pos { flex: 0 0 auto; font-size: 9px; color: var(--bleu); letter-spacing: .8px;
+                  text-transform: uppercase; border: 1px solid var(--bleu);
+                  border-radius: 5px; padding: 2px 5px; }
+  .rg-item .btn { min-width: 44px; min-height: 44px; padding: 0 10px; }
+  .rg-item .sw { flex: 0 0 auto; width: 52px; height: 30px; border-radius: 15px; border: 0;
+                 background: #3a4048; position: relative; cursor: pointer; }
+  .rg-item .sw::after { content: ''; position: absolute; top: 3px; left: 3px; width: 24px;
+                        height: 24px; border-radius: 50%; background: #cdd5de; transition: .18s; }
+  .rg-item .sw.on { background: var(--bleu); }
+  .rg-item .sw.on::after { left: 25px; background: #04121f; }
+  .rg-sep { border: 0; border-top: 1px dashed #2c313a; margin: 10px 0; }
+  .rg-info { font-size: 11.5px; color: var(--muted); line-height: 1.5; }
+  .rg-info b { color: var(--tan); }
+
+  /* Débordement horizontal entre 701 et ~900 px — typiquement l'iPad en portrait
+     (768 px). En dessous de 700 px, .responsive-cards se transforme en fiches
+     empilées ; au-delà, elle redevient un vrai tableau, plus large que l'écran, et
+     c'est toute la page qui part en scroll latéral. On lui donne son propre
+     défilement plutôt que d'imposer les fiches à une tablette, où le tableau reste
+     le meilleur affichage. */
+  @media (min-width: 701px) and (max-width: 900px) {
+    table.responsive-cards { display: block; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  }
+
+  /* icônes en image dans la barre ; l'emoji reste tant qu'aucune image n'est fournie */
+  nav button[data-nav] .ic img { width: 22px; height: 22px; display: block;
+                                 filter: grayscale(1) opacity(.72); }
+  nav button[data-nav].active .ic img { filter: none; }
+
+  /* le patin dans le bouton d'action */
+  #btnPlay { display: inline-flex; align-items: center; gap: 9px; }
+  #btnPlay .ic { flex: 0 0 auto; display: flex; }
+  #btnPlay .ic img { width: 24px; height: 24px; filter: brightness(0) saturate(100%); }
+  #btnPlayLabel { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+  /* ==================== Habillage des écrans ====================
+     --div porte la couleur de la division en cours. Elle est posée sur :root par
+     majCouleurDivision() à chaque rendu : toute l'interface change de teinte quand
+     le club monte, sans qu'aucune règle n'ait à le savoir. */
+  :root { --div: #8a93a3; }
+
+  /* --- bandeau d'écran --- */
+  /* Hauteur proportionnelle et non plus fixe. Les images sont au format 3:1 ;
+     une hauteur figée les réduisait à une bande de 8:1 dès que la fenêtre
+     s'élargissait. Le plafond évite qu'un bandeau mange tout l'écran sur un
+     grand moniteur. */
+  /* Le bandeau déborde jusqu'aux bords de main, mais uniquement sur les côtés.
+     La marge haute négative d'origine valait -10px : elle remontait le bandeau
+     par-dessus ce qui le précède — les sous-onglets des écrans Classement,
+     Calendrier et Coupe passaient dessous. Et -10px correspondait au rembourrage
+     mobile ; sur un écran large, où main a 18 px de marge, le bandeau restait
+     8 px trop court de chaque côté. La variable --pad-x suit désormais le
+     rembourrage réel, quelle que soit la largeur. */
+  /* Hauteur pilotée par la largeur de la fenêtre plutôt que par aspect-ratio :
+     combiné à max-height, aspect-ratio rétrécit la LARGEUR de la boîte au lieu de
+     rogner l'image — le bandeau ne faisait plus que 780 px sur un écran de 1440.
+     Avec clamp(), la boîte occupe toujours toute la largeur et c'est l'image qui
+     se recadre. 33vw donne très exactement le rapport 3:1 tant que le plafond
+     n'est pas atteint, soit jusqu'à ~790 px de large. */
+  .bandeau { position: relative; height: clamp(110px, 33vw, 260px); overflow: hidden;
+             margin: 0 calc(-1 * var(--pad-x, 10px)) 14px; }
+  /* Plus de désaturation : les images sont déjà sourdes, et le dégradé posé
+     par-dessus les éteignait davantage. */
+  .bandeau img { width: 100%; height: 100%; object-fit: cover; display: block;
+                 transform: scale(1.05); filter: saturate(1.06) contrast(1.02); }
+  .bandeau::after { content: ''; position: absolute; inset: 0;
+    /* Dégradé allégé : il ne sert qu'à asseoir le titre, pas à noircir l'image.
+       Le noir plein ne commence plus qu'aux tout derniers pourcents. */
+    background: linear-gradient(180deg, rgba(13,13,15,0) 0%, rgba(13,13,15,.42) 58%,
+                rgba(13,13,15,.88) 92%, var(--noir) 100%); }
+  .bandeau-txt { position: absolute; left: 14px; right: 14px; bottom: 11px; z-index: 2; }
+  .bandeau h2 { margin: 0; font-size: 21px; font-weight: 800; letter-spacing: .2px;
+                border: 0; padding: 0; color: var(--txt); text-shadow: 0 2px 14px rgba(0,0,0,.9); }
+  .bandeau .sous { font-size: 11.5px; color: #cbd4de; text-shadow: 0 1px 8px rgba(0,0,0,.9); }
+  .bandeau-fil { position: absolute; left: 0; right: 0; bottom: 0; height: 2px;
+                 background: var(--div); z-index: 3; opacity: .85; }
+  .eyebrow { display: inline-flex; align-items: center; gap: 6px; font-size: 9.5px;
+    text-transform: uppercase; letter-spacing: 1.4px; color: var(--div); font-weight: 700; margin-bottom: 3px; }
+  .eyebrow::before { content: ''; width: 16px; height: 2px; background: var(--div); border-radius: 1px; }
+
+  /* --- en-tête de section --- */
+  .sect { display: flex; align-items: center; gap: 9px; margin: 18px 0 9px; }
+  .sect b { font-size: 10.5px; text-transform: uppercase; letter-spacing: 1.3px;
+            color: var(--muted); font-weight: 700; }
+  .sect i { flex: 1 1 auto; height: 1px; background: linear-gradient(90deg, #2c313a, transparent); }
+
+  /* --- classement en liste --- */
+  .clst { background: var(--panel); border: 1px solid #2c313a; border-radius: 12px; overflow: hidden; }
+  .clst-l { display: flex; align-items: center; gap: 9px; padding: 10px 11px; font-size: 13px; position: relative; }
+  .clst-l + .clst-l { border-top: 1px solid rgba(255,255,255,.05); }
+  .clst-l .rk { flex: 0 0 20px; text-align: center; font-size: 12px; color: var(--muted);
+                font-variant-numeric: tabular-nums; }
+  .clst-l.podium .rk { color: var(--div); font-weight: 800; }
+  .clst-l .nm { flex: 1 1 auto; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .clst-l .pt { flex: 0 0 auto; font-weight: 800; color: var(--tan);
+                font-variant-numeric: tabular-nums; font-size: 15px; min-width: 26px; text-align: right; }
+  .clst-l .fm { flex: 0 0 auto; display: flex; gap: 2.5px; }
+  .clst-l .fm i { width: 5px; height: 5px; border-radius: 50%; background: #3a4048; }
+  .clst-l .fm i.v { background: var(--vert); }
+  .clst-l .fm i.d { background: var(--rouge); }
+  .clst-l .fm i.n { background: var(--tan); }
+  .clst-l.me { background: linear-gradient(90deg, color-mix(in srgb, var(--bleu) 20%, transparent), transparent); }
+  .clst-l.me::before { content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 3px; background: var(--bleu); }
+  .clst-l.me .nm { color: var(--bleu); font-weight: 700; }
+  .coupe-po { display: flex; align-items: center; gap: 8px; padding: 5px 11px; background: rgba(255,255,255,.03); }
+  .coupe-po span { font-size: 9px; text-transform: uppercase; letter-spacing: 1.1px;
+                   color: var(--div); font-weight: 700; }
+  .coupe-po i { flex: 1 1 auto; height: 1px; opacity: .6;
+    background: repeating-linear-gradient(90deg, var(--div) 0 5px, transparent 5px 10px); }
+
+  /* --- carte de rencontre --- */
+  .match-c { display: flex; align-items: center; gap: 11px; padding: 13px; border-radius: 12px;
+    background: linear-gradient(140deg, var(--panel2), var(--panel)); border: 1px solid #2c313a; }
+  .match-c .c { flex: 1 1 0; min-width: 0; text-align: center; }
+  .match-c .c b { display: block; font-size: 12.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .match-c .c span { font-size: 9.5px; color: var(--muted); }
+  .match-c .vs { flex: 0 0 auto; font-size: 11px; color: var(--div); font-weight: 800; letter-spacing: 1px; }
+
+  /* --- messages --- */
+  .msg { display: flex; gap: 10px; background: var(--panel); border: 1px solid #2c313a;
+         border-left: 3px solid var(--muted); border-radius: 10px; padding: 11px 12px; margin-bottom: 7px; }
+  .msg.t-objectif, .msg.t-board { border-left-color: var(--tan); }
+  .msg.t-transfert { border-left-color: var(--vert); }
+  .msg.t-contrat { border-left-color: var(--rouge); }
+  .msg.t-cup { border-left-color: var(--div); }
+  .msg .ic { flex: 0 0 auto; font-size: 16px; }
+  .msg .tx { flex: 1 1 auto; min-width: 0; }
+  .msg .tx b { display: block; font-size: 13px; margin-bottom: 2px; }
+  .msg .tx p { margin: 0; font-size: 11.5px; color: var(--muted); line-height: 1.45; }
+  .msg .tx .q { font-size: 9.5px; color: #6b7480; margin-top: 4px; display: block; }
+
+  /* --- état vide --- */
+  .vide { text-align: center; padding: 26px 20px 20px; }
+  .vide .rond { width: 78px; height: 78px; margin: 0 auto 14px; border-radius: 50%; display: flex;
+    align-items: center; justify-content: center; font-size: 31px;
+    background: radial-gradient(circle at 38% 30%, color-mix(in srgb, var(--div) 26%, var(--panel2)), var(--panel));
+    border: 1px solid color-mix(in srgb, var(--div) 45%, transparent); }
+  .vide h3 { margin: 0 0 6px; font-size: 15px; }
+  .vide p { margin: 0 auto; max-width: 270px; font-size: 12.5px; color: var(--muted); line-height: 1.55; }
+  .vide .apercu { margin-top: 18px; text-align: left; }
+  .vide .apercu-l { display: flex; align-items: center; gap: 9px; padding: 9px 11px; border-radius: 9px;
+    background: rgba(255,255,255,.025); border: 1px dashed #2c313a; margin-bottom: 6px;
+    font-size: 11.5px; color: #6b7480; }
+  .vide .apercu-l b { color: var(--muted); font-weight: 600; }
+
+  /* --- fiches de saison --- */
+  .saison { display: flex; align-items: center; gap: 11px; background: var(--panel);
+    border: 1px solid #2c313a; border-radius: 11px; padding: 11px 12px; margin-bottom: 7px;
+    position: relative; overflow: hidden; }
+  .saison::before { content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 3px; background: var(--sc, var(--div)); }
+  .saison .an { flex: 0 0 auto; text-align: center; min-width: 42px; }
+  .saison .an b { display: block; font-size: 13px; color: var(--tan); font-weight: 800; }
+  .saison .an span { font-size: 9px; color: var(--muted); text-transform: uppercase; letter-spacing: .8px; }
+  .saison .de { flex: 1 1 auto; min-width: 0; font-size: 12px; }
+  .saison .de span { display: block; font-size: 10.5px; color: var(--muted); margin-top: 2px; }
+  .saison .tr { flex: 0 0 auto; font-size: 19px; }
+
+  /* --- règle repliable --- */
+  .chip-info { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; color: var(--muted);
+    background: rgba(255,255,255,.04); border: 1px solid #2c313a; border-radius: 20px;
+    padding: 8px 13px; cursor: pointer; min-height: 40px; margin-top: 10px; font-family: inherit; }
+  .chip-info.open { color: var(--txt); border-color: var(--div); }
+  .regle { display: none; font-size: 11.5px; color: var(--muted); line-height: 1.55; margin-top: 8px;
+    padding: 11px; background: rgba(255,255,255,.025); border-radius: 9px; border: 1px solid #2c313a; }
+  .regle.show { display: block; }
+
+  /* --- portrait de coach --- */
+  .coach-ligne { display: flex; align-items: center; gap: 11px; }
+  .coach-photo { width: 52px; height: 52px; flex: 0 0 auto; border-radius: 12px;
+    object-fit: cover; border: 2px solid #3a4049; background: #12192b; }
+  .coach-txt { flex: 1 1 auto; min-width: 0; }
+
+  /* --- visuel de sponsor --- */
+  /* Format natif des visuels (3:2) plutôt qu'une hauteur figée : à 96 px on n'en
+     voyait qu'un bandeau de 13 % sur une fenêtre large. */
+  .sponsor-img { width: 100%; aspect-ratio: 3 / 2; max-height: 260px; object-fit: cover;
+    border-radius: 9px; margin-bottom: 9px; display: block; }
