@@ -1230,9 +1230,9 @@
 <main>
   <div id="matchReport"></div>
   <div id="subnav">
-    <button data-tab="classement" class="active">Classement</button>
-    <button data-tab="calendrier">Calendrier</button>
-    <button data-tab="coupe">Coupe</button>
+    <button data-tab="classement" class="active"></button>
+    <button data-tab="calendrier"></button>
+    <button data-tab="coupe"></button>
   </div>
   <section id="tab-effectif"></section>
   <section id="tab-club" style="display:none"></section>
@@ -1522,7 +1522,11 @@ let G = null; // état global de la partie
 function rnd(a, b) { return a + Math.random() * (b - a); }
 function irnd(a, b) { return Math.floor(rnd(a, b + 1)); }
 function pick(arr) { return arr[irnd(0, arr.length - 1)]; }
-function euros(n) { return n.toLocaleString('fr-FR') + " €"; }
+function euros(n) {
+  const l = (typeof langue === 'function') ? langue() : 'fr';
+  const s = Number(n).toLocaleString(l === 'en' ? 'en-GB' : 'fr-FR');
+  return l === 'en' ? '€' + s : s + ' €';
+}
 
 // ---------------- Boîte de réception ----------------
 // Carte de présentation d'un joueur, pour l'introduction de partie. Plus complète que
@@ -1588,7 +1592,7 @@ async function presenterIntroPartie() {
         <div class="ij-stat"><span class="ij-lib">Effectif</span><span class="ij-val">${me.players.length}</span></div>
       </div>
       <p class="modal-texte-intro">Tu pars du plancher de la pyramide, comme tout le monde.
-        L'objectif de la direction pour cette saison : <b>${escHtml(G.boardObjective ? G.boardObjective.label : '—')}</b>.</p>
+        ${T('intro.objectif', { objectifHtml: `<b>${escHtml(objectifLabel())}</b>` })}</p>
       <p class="modal-texte-intro">Faisons d'abord connaissance avec tes joueurs.</p>
     </div>`,
     actions: [{ label: 'Passer', value: 'passer' }, { label: 'Voir l\'effectif', value: 'ok', cls: 'buy' }]
@@ -3206,7 +3210,7 @@ async function effacerSlot(s, ev) {
 // `versionName` du build Android par 4-outils/patch-version.py, qui refuse de s'appliquer
 // si les deux divergent. Le mode d'échec évité est réel : l'APK a annoncé « 1.0 » pendant
 // soixante-dix-sept versions parce que rien ne reliait le jeu à son numéro.
-const VERSION_JEU = '110';
+const VERSION_JEU = '111';
 
 function refreshMenu() {
   const vers = document.getElementById('menuVersion');
@@ -5315,6 +5319,15 @@ function confirmerTravauxSuffisants(avant) {
     { classe: classeActuelle(), division: DIVISIONS[suiv].label }, 'board');
 }
 
+// Libellé de l'objectif de saison. Repli sur l'ancien `label` : les parties en cours l'ont
+// encore dans leur sauvegarde, et le leur retirer les laisserait sans objectif affiché.
+function objectifLabel() {
+  const o = G.boardObjective;
+  if (!o) return '—';
+  if (o.key) return T('objectif.' + o.key);
+  return o.label || '—';
+}
+
 function assignBoardObjective() {
   const n = G.teams.length;
   const lastRank = G.lastSeasonRank;
@@ -5322,21 +5335,23 @@ function assignBoardObjective() {
   let objective;
   if (atFloor) {
     // en N3 il n'y a rien "en dessous" : viser le milieu de tableau puis les playoffs, jamais le maintien
-    if (lastRank === undefined || lastRank >= Math.floor(n / 2)) objective = { key: 'milieu', label: 'Viser le milieu de tableau' };
-    else if (lastRank < 2) objective = { key: 'titre', label: 'Viser le titre de champion des playoffs' };
-    else objective = { key: 'playoffs', label: 'Disputer les playoffs (Top 8)' };
+    // Seul `key` est conservé : `label` était SAUVEGARDÉ, donc figé dans la langue du jour.
+    // Troisième fois que ce défaut se présente — courrier, réponses, et maintenant l'objectif.
+    if (lastRank === undefined || lastRank >= Math.floor(n / 2)) objective = { key: 'milieu' };
+    else if (lastRank < 2) objective = { key: 'titre' };
+    else objective = { key: 'playoffs' };
   } else if (lastRank === undefined) {
-    objective = { key: 'maintien', label: 'Assurer le maintien' };
+    objective = { key: 'maintien' };
   } else if (lastRank >= n - 3) {
-    objective = { key: 'maintien', label: 'Assurer le maintien (éviter la descente)' };
+    objective = { key: 'maintienDescente' };
   } else if (lastRank < 2) {
-    objective = { key: 'titre', label: 'Viser le titre de champion des playoffs' };
+    objective = { key: 'titre' };
   } else {
-    objective = { key: 'playoffs', label: 'Disputer les playoffs (Top 8)' };
+    objective = { key: 'playoffs' };
   }
   G.boardObjective = objective;
   pushInbox('courrier.objectif.fixe.titre', 'courrier.objectif.fixe.corps',
-    { division: DIVISIONS[G.divIdx].label, objectif: objective.label }, 'board');
+    { division: DIVISIONS[G.divIdx].label, objectif: objectifLabel() }, 'board');
   alerterDirectionDebutSaison();
   alerterDirectionEffectif();
 }
@@ -5344,7 +5359,7 @@ function assignBoardObjective() {
 function evaluateBoardObjective(rank, iAmChampion, n) {
   if (!G.boardObjective) return;
   let met = false;
-  if (G.boardObjective.key === 'maintien') met = rank < n - 2;
+  if (G.boardObjective.key === 'maintien' || G.boardObjective.key === 'maintienDescente') met = rank < n - 2;
   else if (G.boardObjective.key === 'milieu') met = rank < Math.floor(n / 2);
   else if (G.boardObjective.key === 'playoffs') met = rank < 8;
   else if (G.boardObjective.key === 'titre') met = iAmChampion;
@@ -5353,7 +5368,7 @@ function evaluateBoardObjective(rank, iAmChampion, n) {
   if (bonus) G.budget += bonus;
   pushInbox(met ? 'courrier.objectif.atteint.titre' : 'courrier.objectif.manque.titre',
     met ? 'courrier.objectif.atteint.corps' : 'courrier.objectif.manque.corps',
-    { objectif: G.boardObjective.label, prime: euros(bonus), confiance: G.boardConfidence },
+    { objectif: objectifLabel(), prime: euros(bonus), confiance: G.boardConfidence },
     'board');
 }
 
@@ -5754,16 +5769,22 @@ function sortedTeams() {
 }
 
 // ---------------- Staff technique / coaching ----------------
+// Libellés et descriptions sont sortis de ce tableau : ils vivent sous les clés
+// `staff.<poste>.label` et `staff.<poste>.desc`. L'icône et les seuils restent — ils ne se
+// traduisent pas.
 const ROLES = {
-  attaque:      { label: "Coach attaque", stat: "tir", icon: "🎯", desc: "Fait progresser le Tir des joueurs de champ", trains: true, reqDiv: 0, reqCentre: 1 },
-  defense:      { label: "Coach défense", stat: "def", icon: "🛡️", desc: "Fait progresser la Défense des joueurs de champ", trains: true, reqDiv: 0, reqCentre: 1 },
-  physique:     { label: "Préparateur physique", stat: "vit", icon: "⚡", desc: "Fait progresser la Vitesse de tout l'effectif", trains: true, reqDiv: 0, reqCentre: 1 },
-  gardiens:     { label: "Coach des gardiens", stat: "gar", icon: "🥅", desc: "Fait progresser la stat Gardien des gardiens", trains: true, reqDiv: 0, reqCentre: 1 },
-  discipline:   { label: "Coach mental / discipline", stat: "agr", icon: "🧘", desc: "Fait baisser l'Agressivité des joueurs et réduit les pénalités en match", trains: true, reqDiv: 2, reqCentre: 1 },
-  medecin:      { label: "Médecin du club", stat: null, icon: "⚕️", desc: "Réduit le risque et la durée des blessures", trains: false, reqDiv: 2, reqCentre: 2 },
-  recruteur:    { label: "Recruteur", stat: null, icon: "🔎", desc: "Réduit le coût des transferts et élargit le vivier de recrutement hors division", trains: false, reqDiv: 3, reqCentre: 2 },
-  specialistes: { label: "Coach situations spéciales", stat: null, icon: "🎯⚡", desc: "Améliore l'efficacité en supériorité numérique et solidifie l'infériorité numérique", trains: false, reqDiv: 3, reqCentre: 3 }
+  attaque:      { stat: "tir", icon: "🎯", trains: true, reqDiv: 0, reqCentre: 1 },
+  defense:      { stat: "def", icon: "🛡️", trains: true, reqDiv: 0, reqCentre: 1 },
+  physique:     { stat: "vit", icon: "⚡", trains: true, reqDiv: 0, reqCentre: 1 },
+  gardiens:     { stat: "gar", icon: "🥅", trains: true, reqDiv: 0, reqCentre: 1 },
+  discipline:   { stat: "agr", icon: "🧘", trains: true, reqDiv: 2, reqCentre: 1 },
+  medecin:      { stat: null, icon: "⚕️", trains: false, reqDiv: 2, reqCentre: 2 },
+  recruteur:    { stat: null, icon: "🔎", trains: false, reqDiv: 3, reqCentre: 2 },
+  specialistes: { stat: null, icon: "🎯⚡", trains: false, reqDiv: 3, reqCentre: 3 }
 };
+
+function roleLabel(role) { return T('staff.' + role + '.label'); }
+function roleDesc(role) { return T('staff.' + role + '.desc'); }
 
 function roleUnlocked(role) {
   const def = ROLES[role];
@@ -5772,8 +5793,8 @@ function roleUnlocked(role) {
 function roleRequirementText(role) {
   const def = ROLES[role];
   const need = [];
-  if (G.divIdx < def.reqDiv) need.push(`évoluer au moins en ${DIVISIONS[def.reqDiv].label}`);
-  if (G.club.centre < def.reqCentre) need.push(`centre d'entraînement niveau ${def.reqCentre}`);
+  if (G.divIdx < def.reqDiv) need.push(T('staff.requis.division', { division: DIVISIONS[def.reqDiv].label }));
+  if (G.club.centre < def.reqCentre) need.push(T('staff.requis.centre', { n: def.reqCentre }));
   return need.join(', ');
 }
 
@@ -5946,9 +5967,9 @@ function renderEntrainement() {
     const unlocked = roleUnlocked(role);
     if (!unlocked) {
       return `<div class="card" style="opacity:.6">
-        <b>${def.icon} ${def.label}</b><br>
-        <span class="note">${def.desc}.</span><br><br>
-        <span class="tag" style="color:var(--rouge)">🔒 Requis : ${roleRequirementText(role)}</span>
+        <b>${def.icon} ${roleLabel(role)}</b><br>
+        <span class="note">${roleDesc(role)}.</span><br><br>
+        <span class="tag" style="color:var(--rouge)">🔒 ${T('staff.requis', { quoi: roleRequirementText(role) })}</span>
       </div>`;
     }
     const c = G.staff[role];
@@ -5957,16 +5978,16 @@ function renderEntrainement() {
       const trainCost = c.note < 95 ? coachTrainCost(c.note) : null;
       current = `<div class="coach-ligne">
         <img class="coach-photo" src="${coachPortrait(c)}" alt="" onerror="this.remove()">
-        <div class="coach-txt"><b style="color:var(--tan)">${c.nom}</b> — note <b>${c.note}</b>/95</div>
+        <div class="coach-txt"><b style="color:var(--tan)">${c.nom}</b> — ${T('staff.note', { n: c.note })}</div>
         </div>
         <div style="margin-top:6px">
           ${trainCost !== null
-            ? `<button class="btn buy" ${G.budget < trainCost ? 'disabled' : ''} onclick="trainCoach('${role}')">📈 Former (+1) — ${euros(trainCost)}</button>`
-            : `<span class="tag">Compétence maximale</span>`}
-          <button class="btn sell" onclick="fireStaff('${role}')">Licencier (${euros(coachSeverance(c))})</button>
+            ? `<button class="btn buy" ${G.budget < trainCost ? 'disabled' : ''} onclick="trainCoach('${role}')">📈 ${T('staff.former', { prix: euros(trainCost) })}</button>`
+            : `<span class="tag">${T('staff.maximum')}</span>`}
+          <button class="btn sell" onclick="fireStaff('${role}')">${T('staff.licencier', { prix: euros(coachSeverance(c)) })}</button>
         </div>`;
     } else {
-      current = `<span class="tag">Poste vacant</span>`;
+      current = `<span class="tag">${T('staff.vacant')}</span>`;
     }
     // mercato : candidats toujours affichés (on peut remplacer directement le coach en poste)
     const candidates = G.market[role]
@@ -5976,45 +5997,40 @@ function renderEntrainement() {
         const hireCost = Math.round(coachBaseCost(cand.note) / 100) * 100;
         const sev = c ? coachSeverance(c) : 0;
         const total = hireCost + sev;
-        const label = c ? `Remplacer — ${euros(total)}` : `Embaucher — ${euros(hireCost)}`;
+        const label = c ? T('staff.remplacer', { prix: euros(total) }) : T('staff.embaucher', { prix: euros(hireCost) });
         return `<div style="margin-top:5px;display:flex;justify-content:space-between;align-items:center;gap:8px">
-          <span>${cand.nom} — note <b>${cand.note}</b></span>
+          <span>${cand.nom} — ${T('staff.noteCourte', { n: cand.note })}</span>
           <button class="btn buy" data-hire="${role}" ${G.budget < total ? 'disabled' : ''} onclick="hireStaff('${role}',${cand.id})">${label}</button>
         </div>`;
       }).join('');
     return `<div class="card">
-      <b>${def.icon} ${def.label}</b><br>
-      <span class="note">${def.desc}. La note du coach détermine la fréquence des progressions.</span><br><br>
+      <b>${def.icon} ${roleLabel(role)}</b><br>
+      <span class="note">${roleDesc(role)}. ${T('staff.frequence')}</span><br><br>
       ${current}
       <div style="margin-top:8px;border-top:1px solid #2c313a;padding-top:6px">
-        <span class="tag">💼 Mercato des entraîneurs${c ? " (remplacement inclut l'indemnité de départ)" : ''} :</span>
+        <span class="tag">💼 ${c ? T('staff.mercato.avec') : T('staff.mercato')}</span>
         ${candidates}
       </div>
     </div>`;
   }).join('');
   const lastGains = (G.lastTraining && G.lastTraining.length)
-    ? `<div class="card"><b>Dernière séance :</b><ul>${G.lastTraining.map(g => `<li>${g}</li>`).join('')}</ul></div>`
-    : `<p class="note">Aucune progression lors de la dernière journée${Object.values(G.staff).every(v => !v) ? ' — embauche un coach pour commencer !' : '.'}</p>`;
+    ? `<div class="card"><b>${T('entrainement.derniereSeance')}</b><ul>${G.lastTraining.map(g => `<li>${g}</li>`).join('')}</ul></div>`
+    : `<p class="note">${Object.values(G.staff).every(v => !v) ? T('entrainement.aucune.sansCoach') : T('entrainement.aucune')}</p>`;
   const sessionGains = (G.lastSessionTraining && G.lastSessionTraining.length)
-    ? `<div class="card"><b>Dernière séance hors match :</b><ul>${G.lastSessionTraining.map(g => `<li>${g}</li>`).join('')}</ul></div>` : '';
+    ? `<div class="card"><b>${T('entrainement.derniereHorsMatch')}</b><ul>${G.lastSessionTraining.map(g => `<li>${g}</li>`).join('')}</ul></div>` : '';
   document.getElementById('tab-entrainement').innerHTML = `
-    ${bandeau('entrainement', myTeam().name, 'Entraînement',
-              G.trainingAvailable ? 'Une séance est disponible' : 'Séance déjà menée cette semaine')}
+    ${bandeau('entrainement', myTeam().name, T('ecran.entrainement.label'),
+              G.trainingAvailable ? T('entrainement.dispo') : T('entrainement.deja'))}
     <div class="card">
-      <p class="note">Une séance supplémentaire, en dehors des journées de championnat, profite surtout à la
-      <b>ligne laissée au repos</b> (les joueurs non alignés) — ils arrivent frais et peuvent se concentrer sur le travail technique.
-      Une seule séance disponible entre deux journées.</p>
+      <p class="note">${T('entrainement.info')}</p>
       <button class="btn buy" ${!G.trainingAvailable ? 'disabled' : ''} onclick="runTrainingSession()">
-        ${G.trainingAvailable ? '🏋️ Lancer la séance' : '✔️ Séance déjà faite cette semaine'}
+        ${G.trainingAvailable ? '🏋️ ' + T('entrainement.lancer') : '✔️ ' + T('entrainement.deja')}
       </button>
     </div>
     ${sessionGains}
 
-    <h2>Staff technique</h2>
-    <p class="note">Recrute tes coachs sur le <b>mercato</b> (note = performance) : jeunes et titulaires progressent plus vite.
-    Certains postes se débloquent progressivement (division + niveau du centre d'entraînement).
-    Tu peux <b>remplacer</b> directement un coach en poste par un meilleur (l'indemnité de départ est incluse dans le prix),
-    ou <b>former</b> ton coach actuel pour lui faire gagner en compétence. Le coach discipline réduit aussi les pénalités en match.</p>
+    <h2>${T('entrainement.staff')}</h2>
+    <p class="note">${T('entrainement.staff.info')}</p>
     <div class="grid2">${cards}</div>
     ${lastGains}`;
 }
@@ -6307,6 +6323,14 @@ const REGLE_PLURIEL = {
   fr: n => (Math.abs(n) < 2 ? 'un' : 'autres'),
   en: n => (Math.abs(n) === 1 ? 'un' : 'autres')
 };
+
+// Le séparateur de milliers suit la langue : « 1 200 » en français, « 1,200 » en anglais.
+// Sans cela, les capacités et les affluences resteraient à la française au milieu d'un écran
+// anglais — invisible en relisant du code, évident à l'écran.
+function nombreLocal(n) {
+  try { return Number(n).toLocaleString(langue() === 'en' ? 'en-GB' : 'fr-FR'); }
+  catch (e) { return String(n); }
+}
 
 function langue() {
   const l = (typeof G !== 'undefined' && G && G.settings && G.settings.langue) || null;
@@ -6772,6 +6796,11 @@ function showTab(tab) {
   // sous-onglets : visibles uniquement pour le groupe Compétition
   const sub = document.getElementById('subnav');
   if (sub) {
+    // Les libellés sont écrits ici et non en HTML statique : sinon ils resteraient en
+    // français après un changement de langue, comme la barre du bas l'a fait une fois.
+    sub.querySelectorAll('button[data-tab]').forEach(b => {
+      b.textContent = ecranLabel(b.dataset.tab);
+    });
     sub.classList.toggle('show', groupe === 'competition');
     sub.querySelectorAll('button').forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
   }
@@ -6953,7 +6982,7 @@ function renderTop() {
   document.getElementById('uiRank').textContent =
     DIVISIONS[G.divIdx].label + ' · ' + T('bandeau.rang', { rang: rank, total: G.teams.length });
   document.getElementById('uiSeason').textContent = seasonLabel(G.season);
-  document.getElementById('uiObjective').textContent = G.boardObjective ? G.boardObjective.label : '—';
+  document.getElementById('uiObjective').textContent = objectifLabel();
   const bc = G.boardConfidence ?? 60;
   document.getElementById('uiBoardConf').textContent = bc + '/100';
   document.getElementById('uiBoardConf').style.color = bc >= 60 ? 'var(--vert)' : bc >= 35 ? 'var(--tan)' : 'var(--rouge)';
@@ -7013,26 +7042,26 @@ function playerRow(p, opts = {}) {
   const ov = overall(p);
   const f = p.forme;
   const fStyle = f >= 98 ? 'background:#1d4d31' : f >= 88 ? 'background:#3a3a1e' : 'background:#4d1f1f';
-  const injBadge = p.injured ? ` <span class="tag" style="color:var(--rouge)">🤕 ${p.injuryWeeks}j</span>` : '';
+  const injBadge = p.injured ? ` <span class="tag" style="color:var(--rouge)">🤕 ${T('joueur.indisponible.semaines', { n: p.injuryWeeks })}</span>` : '';
   const clubBadge = opts.club ? `<span class="tag">${opts.club}</span> ` : '';
   const stars = '⭐'.repeat(potentialStars(p));
   const moral = p.moral ?? 70;
   const moralColor = moral >= 75 ? 'var(--vert)' : moral >= 50 ? 'var(--tan)' : 'var(--rouge)';
   const contractTxt = opts.mine
-    ? `<span style="color:${(p.contractYears||0) <= 1 ? 'var(--rouge)' : 'var(--txt)'}">${p.contractYears ?? '—'} an(s)</span>`
+    ? `<span style="color:${(p.contractYears||0) <= 1 ? 'var(--rouge)' : 'var(--txt)'}">${p.contractYears === undefined || p.contractYears === null ? '—' : T('joueur.contrat.ans', { n: p.contractYears })}</span>`
     : '—';
   return `<tr class="${p.starter && opts.mine ? 'sel' : ''}" style="${p.injured ? 'opacity:.55' : ''}">
-    <td data-label="Pos"><span class="pos ${p.pos}">${p.pos}</span></td>
-    <td data-label="Nom" class="nomcell"><img src="${portraitFor(p.id)}" class="portrait-thumb" alt="">${clubBadge}${p.nom} ${p.starter && opts.mine ? '<span class="starterDot">●</span>' : ''}${injBadge}</td>
-    <td data-label="Âge">${p.age}</td>
-    <td data-label="Général"><b>${ov}</b>${opts.apport ? pastilleApport(p) : ''}</td>
-    <td data-label="Tir">${p.tir}</td><td data-label="Déf">${p.def}</td><td data-label="Vit">${p.vit}</td><td data-label="Gardien">${p.pos === 'G' ? p.gar : '—'}</td>
-    <td data-label="Agr" style="color:${p.agr >= 70 ? 'var(--rouge)' : p.agr >= 50 ? 'var(--tan)' : 'var(--vert)'}">${p.agr}</td>
-    <td data-label="Forme"><span class="forme" style="${fStyle}">${f}</span></td>
-    <td data-label="Moral" style="color:${moralColor}">${moral}</td>
-    <td data-label="Potentiel" title="Potentiel estimé">${stars}</td>
-    <td data-label="Contrat">${contractTxt}</td>
-    <td data-label="Valeur">${euros(playerValue(p))}${opts.apport
+    <td data-label="${escHtml(T('colonne.pos'))}"><span class="pos ${p.pos}">${p.pos}</span></td>
+    <td data-label="${escHtml(T('colonne.nom'))}" class="nomcell"><img src="${portraitFor(p.id)}" class="portrait-thumb" alt="">${clubBadge}${p.nom} ${p.starter && opts.mine ? '<span class="starterDot">●</span>' : ''}${injBadge}</td>
+    <td data-label="${escHtml(T('colonne.age'))}">${p.age}</td>
+    <td data-label="${escHtml(T('stat.general'))}"><b>${ov}</b>${opts.apport ? pastilleApport(p) : ''}</td>
+    <td data-label="${escHtml(T('stat.tir'))}">${p.tir}</td><td data-label="${escHtml(T('stat.def'))}">${p.def}</td><td data-label="${escHtml(T('stat.vit'))}">${p.vit}</td><td data-label="${escHtml(T('stat.gar'))}">${p.pos === 'G' ? p.gar : '—'}</td>
+    <td data-label="${escHtml(T('stat.agr'))}" style="color:${p.agr >= 70 ? 'var(--rouge)' : p.agr >= 50 ? 'var(--tan)' : 'var(--vert)'}">${p.agr}</td>
+    <td data-label="${escHtml(T('stat.forme'))}"><span class="forme" style="${fStyle}">${f}</span></td>
+    <td data-label="${escHtml(T('stat.moral'))}" style="color:${moralColor}">${moral}</td>
+    <td data-label="${escHtml(T('stat.potentiel'))}" title="${escHtml(T('stat.potentiel.estime'))}">${stars}</td>
+    <td data-label="${escHtml(T('colonne.contrat'))}">${contractTxt}</td>
+    <td data-label="${escHtml(T('colonne.valeur'))}">${euros(playerValue(p))}${opts.apport
       ? `<span class="tr-salaire">${p.salaire} €/j</span>` : ''}</td>
     <td data-label="" class="actionscell">${opts.actions || ''}</td>
   </tr>`;
@@ -7052,17 +7081,17 @@ function playerCard(p) {
   const formeColor = f >= 98 ? 'var(--vert)' : f >= 88 ? 'var(--tan)' : 'var(--rouge)';
   const posColor = { G: '#6b4fd1', D: '#2e7dd1', A: '#d1642e' }[p.pos];
   const statLine = p.pos === 'G'
-    ? `<span>GAR <b>${p.gar}</b></span><span>DÉF <b>${p.def}</b></span>`
-    : `<span>TIR <b>${p.tir}</b></span><span>DÉF <b>${p.def}</b></span><span>VIT <b>${p.vit}</b></span>`;
+    ? `<span>${T('stat.gar.court')} <b>${p.gar}</b></span><span>${T('stat.def.court')} <b>${p.def}</b></span>`
+    : `<span>${T('stat.tir.court')} <b>${p.tir}</b></span><span>${T('stat.def.court')} <b>${p.def}</b></span><span>${T('stat.vit.court')} <b>${p.vit}</b></span>`;
   if (p.injured) {
-    return `<div class="player-card injured" title="Indisponible">
+    return `<div class="player-card injured" title="${escHtml(T('joueur.indisponible'))}">
       <span class="card-pos" style="background:${posColor}">${p.pos}</span>
       <img src="${portraitFor(p.id)}" class="card-portrait" alt="">
       <div class="card-name">${p.nom}</div>
-      <div class="card-overall-label">Général</div>
+      <div class="card-overall-label">${T('stat.general')}</div>
       <div class="card-overall">${ov}</div>
       <div class="card-stats">${statLine}</div>
-      <div class="card-injured-tag">🤕 indisponible ${p.injuryWeeks}j</div>
+      <div class="card-injured-tag">🤕 ${T('joueur.indisponible.semaines', { n: p.injuryWeeks })}</div>
     </div>`;
   }
   return `<div class="player-card ${p.starter ? 'selected' : ''}" onclick="toggleStarter(${p.id});renderEffectif();">
@@ -7072,12 +7101,12 @@ function playerCard(p) {
     <img src="${portraitFor(p.id)}" class="card-portrait" alt="">
     <div class="card-name">${p.nom}</div>
     ${mentionDuo}
-    <div class="card-overall-label">Général</div>
+    <div class="card-overall-label">${T('stat.general')}</div>
     <div class="card-overall">${ov}</div>
     <div class="card-stats">${statLine}</div>
     <div class="card-bottom">
-      <span title="Forme" style="color:${formeColor}">Forme ${f}</span>
-      <span title="Moral" style="color:${moralColor}">Moral ${moral}</span>
+      <span style="color:${formeColor}">${T('stat.forme')} ${f}</span>
+      <span style="color:${moralColor}">${T('stat.moral')} ${moral}</span>
     </div>
   </div>`;
 }
@@ -7088,65 +7117,61 @@ function renderEffectif() {
   const cards = sorted.map(p => playerCard(p)).join('');
   const rows = sorted.map(p => playerRow(p, {
     mine: true,
-    actions: p.injured ? `<span class="tag">indisponible</span> <button class="btn sell" onclick="sellPlayer(${p.id})">Vendre</button>`
+    actions: p.injured ? `<span class="tag">${T('joueur.indisponible')}</span> <button class="btn sell" onclick="sellPlayer(${p.id})">${T('effectif.vendre')}</button>`
       : `<button class="btn ${p.consigne === 'prudent' ? 'buy' : ''}" onclick="basculerConsigne(${p.id})"
-                 title="Moins de fautes de crosse, mais joue en retrait">${p.consigne === 'prudent' ? '🧊 Sous consigne' : '🧊 Calmer'}</button>
-              <button class="btn sell" onclick="sellPlayer(${p.id})">Vendre</button>
-              <button class="btn" onclick="loanPlayer(${p.id})">Prêter</button>`
+                 title="${escHtml(T('effectif.calmer.info'))}">🧊 ${p.consigne === 'prudent' ? T('effectif.sousConsigne') : T('effectif.calmer')}</button>
+              <button class="btn sell" onclick="sellPlayer(${p.id})">${T('effectif.vendre')}</button>
+              <button class="btn" onclick="loanPlayer(${p.id})">${T('effectif.preter')}</button>`
   })).join('');
   const nField = me.players.filter(p => p.pos !== 'G' && p.starter).length;
   const totalWage = me.players.reduce((s, p) => s + (p.salaire || 0), 0);
   const objRows = me.players.filter(p => p.objective).map(p =>
-    `<li style="list-style:none;display:flex;align-items:center;gap:6px;margin-bottom:4px"><img src="${portraitFor(p.id)}" class="portrait-thumb sm" alt="">${p.nom} — objectif : ${p.objective.target} buts cette saison (${p.seasonGoals || 0} inscrits)
-     ${(p.seasonGoals || 0) >= p.objective.target ? '<span class="tag" style="color:var(--vert)">atteint ✓</span>' : ''}</li>`).join('');
+    `<li style="list-style:none;display:flex;align-items:center;gap:6px;margin-bottom:4px"><img src="${portraitFor(p.id)}" class="portrait-thumb sm" alt="">${T('effectif.objectifLigne', { nom: escHtml(p.nom), cible: p.objective.target, buts: p.seasonGoals || 0 })}
+     ${(p.seasonGoals || 0) >= p.objective.target ? `<span class="tag" style="color:var(--vert)">${T('effectif.objectifAtteint')} ✓</span>` : ''}</li>`).join('');
   document.getElementById('tab-effectif').innerHTML = `
-    ${bandeau('effectif', DIVISIONS[G.divIdx].label, 'Effectif',
-              `${me.name} · ${me.players.length} joueurs`)}
-    <p class="note">Composition : <b>1 gardien</b> (ne tourne pas) + <b>${nField} joueur(s) de champ</b> en rotation (●) —
-    de <b>4</b> (une ligne) à <b>${MAX_JOUEURS_CHAMP}</b> (trois lignes).
-    Une ligne : tes quatre meilleurs sur la piste, mais ils s'épuisent — <b>9 points de forme
-    par journée</b>. Deux lignes : <b>4,5</b>. Trois lignes : <b>3</b>, et tout le monde joue —
-    au prix d'un niveau moyen plus bas, et d'un vestiaire nettement plus calme.
-    <button class="btn" onclick="autoLineup(myTeam());renderEffectif()">Compo auto</button></p>
-    <p class="note">Intervalle de changement de ligne :
+    ${bandeau('effectif', DIVISIONS[G.divIdx].label, T('ecran.effectif.label'),
+              `${me.name} · ${T('effectif.nbJoueurs', { n: me.players.length })}`)}
+    <p class="note">${T('effectif.composition', { n: nField, max: MAX_JOUEURS_CHAMP })}
+    <button class="btn" onclick="autoLineup(myTeam());renderEffectif()">${T('effectif.compoAuto')}</button></p>
+    <p class="note">${T('effectif.intervalle')}
       <select onchange="setLineInterval(this.value)">
-        <option value="1" ${G.lineChangeInterval === 1 ? 'selected' : ''}>1 minute</option>
-        <option value="1.5" ${G.lineChangeInterval === 1.5 ? 'selected' : ''}>1,5 minute</option>
-        <option value="2" ${G.lineChangeInterval === 2 ? 'selected' : ''}>2 minutes</option>
-        <option value="3" ${G.lineChangeInterval === 3 ? 'selected' : ''}>3 minutes</option>
+        <option value="1" ${G.lineChangeInterval === 1 ? 'selected' : ''}>${T('effectif.minutes', { n: 1 })}</option>
+        <option value="1.5" ${G.lineChangeInterval === 1.5 ? 'selected' : ''}>${T('effectif.minutes1demi')}</option>
+        <option value="2" ${G.lineChangeInterval === 2 ? 'selected' : ''}>${T('effectif.minutes', { n: 2 })}</option>
+        <option value="3" ${G.lineChangeInterval === 3 ? 'selected' : ''}>${T('effectif.minutes', { n: 3 })}</option>
       </select>
-      <span class="tag">changements plus fréquents = joueurs plus frais, plus longs = plus d'usure par sortie</span></p>
-    <p class="note">Masse salariale : <b style="color:var(--tan)">${euros(totalWage)}</b>/match.</p>
+      <span class="tag">${T('effectif.intervalle.info')}</span></p>
+    <p class="note">${T('effectif.masseSalariale', { montantHtml: `<b style="color:var(--tan)">${euros(totalWage)}</b>` })}</p>
 
     <div class="card">
-      <b>🧊 Sélection des titulaires</b>
-      <p class="note">Clique sur une carte pour aligner ou retirer un joueur (● = titulaire, entouré en vert).</p>
+      <b>🧊 ${T('effectif.selection')}</b>
+      <p class="note">${T('effectif.selection.info')}</p>
       <div class="lineup-grid">${cards}</div>
     </div>
 
     <div class="card">
-      <b>📋 Consignes tactiques</b><br>
-      Style :
+      <b>📋 ${T('effectif.consignes')}</b><br>
+      ${T('effectif.style')}
       <select onchange="setTacticStyle(this.value)">
-        <option value="offensif" ${G.tactic.style==='offensif'?'selected':''}>Offensif (+attaque, −défense)</option>
-        <option value="equilibre" ${G.tactic.style==='equilibre'?'selected':''}>Équilibré</option>
-        <option value="defensif" ${G.tactic.style==='defensif'?'selected':''}>Défensif (+défense, −attaque)</option>
+        <option value="offensif" ${G.tactic.style==='offensif'?'selected':''}>${T('tactique.offensif')}</option>
+        <option value="equilibre" ${G.tactic.style==='equilibre'?'selected':''}>${T('tactique.equilibre')}</option>
+        <option value="defensif" ${G.tactic.style==='defensif'?'selected':''}>${T('tactique.defensif')}</option>
       </select>
-      &nbsp; Pressing :
+      &nbsp; ${T('effectif.pressing')}
       <select onchange="setTacticPressing(this.value)">
-        <option value="haut" ${G.tactic.pressing==='haut'?'selected':''}>Haut (agressif, plus de pénalités)</option>
-        <option value="moyen" ${G.tactic.pressing==='moyen'?'selected':''}>Moyen</option>
-        <option value="bas" ${G.tactic.pressing==='bas'?'selected':''}>Bas (prudent, moins de pénalités)</option>
+        <option value="haut" ${G.tactic.pressing==='haut'?'selected':''}>${T('pressing.haut')}</option>
+        <option value="moyen" ${G.tactic.pressing==='moyen'?'selected':''}>${T('pressing.moyen')}</option>
+        <option value="bas" ${G.tactic.pressing==='bas'?'selected':''}>${T('pressing.bas')}</option>
       </select>
-      <p class="note">Ces consignes s'appliquent à tous tes matchs (y compris en direct, modifiable pendant le match).</p>
+      <p class="note">${T('effectif.consignes.info')}</p>
     </div>
 
-    ${objRows ? `<div class="card"><b>🎯 Objectifs individuels de la saison</b><ul>${objRows}</ul></div>` : ''}
+    ${objRows ? `<div class="card"><b>🎯 ${T('effectif.objectifs')}</b><ul>${objRows}</ul></div>` : ''}
 
     <div class="card">
-      <b>📊 Statistiques de la saison</b>
+      <b>📊 ${T('effectif.stats')}</b>
       <table>
-        <tr><th>Joueur</th><th>Matchs</th><th>Buts</th><th>Pénalités</th></tr>
+        <tr><th>${T('colonne.joueur')}</th><th>${T('colonne.matchs')}</th><th>${T('colonne.buts')}</th><th>${T('colonne.penalites')}</th></tr>
         ${[...me.players].sort((a,b)=>(b.seasonGoals||0)-(a.seasonGoals||0)).slice(0,8).map(p =>
           `<tr><td><img src="${portraitFor(p.id)}" class="portrait-thumb sm" alt="">${p.nom}</td><td>${p.seasonGames||0}</td><td><b>${p.seasonGoals||0}</b></td><td>${p.seasonPenalties||0}</td></tr>`
         ).join('')}
@@ -7154,9 +7179,9 @@ function renderEffectif() {
     </div>
 
     <div class="card">
-      <b>📄 Effectif complet (détails, vente, prêt)</b>
+      <b>📄 ${T('effectif.complet')}</b>
       <table class="responsive-cards">
-        <tr><th>Pos</th><th>Nom</th><th>Âge</th><th>Général</th><th>Tir</th><th>Déf</th><th>Vit</th><th>Gardien</th><th>Agr</th><th>Forme</th><th>Moral</th><th>Potentiel</th><th>Contrat</th><th>Valeur</th><th></th></tr>
+        <tr><th>${T('colonne.pos')}</th><th>${T('colonne.nom')}</th><th>${T('colonne.age')}</th><th>${T('stat.general')}</th><th>${T('stat.tir')}</th><th>${T('stat.def')}</th><th>${T('stat.vit')}</th><th>${T('stat.gar')}</th><th>${T('stat.agr')}</th><th>${T('stat.forme')}</th><th>${T('stat.moral')}</th><th>${T('stat.potentiel')}</th><th>${T('colonne.contrat')}</th><th>${T('colonne.valeur')}</th><th></th></tr>
         ${rows}
       </table>
     </div>`;
@@ -7191,18 +7216,18 @@ function renderClassement() {
       const dom = G.teams[mm.home] === me;
       const adv = dom ? G.teams[mm.away] : G.teams[mm.home];
       const rangAdv = classe.indexOf(adv) + 1;
-      prochaine = `<div class="sect"><b>Prochaine rencontre</b><i></i></div>
+      prochaine = `<div class="sect"><b>${T('classement.prochaine')}</b><i></i></div>
         <div class="match-c">
-          <div class="c"><b>${me.short}</b><span>${classe.indexOf(me) + 1}<sup>e</sup> · ${dom ? 'à domicile' : 'à l\'extérieur'}</span></div>
-          <div class="vs">J${G.day + 1}</div>
-          <div class="c"><b>${adv.short}</b><span>${rangAdv}<sup>e</sup> · ${adv.pts} pts</span></div>
+          <div class="c"><b>${me.short}</b><span>${T('classement.rang', { n: classe.indexOf(me) + 1 })} · ${dom ? T('classement.domicile') : T('classement.exterieur')}</span></div>
+          <div class="vs">${T('classement.journeeCourte', { n: G.day + 1 })}</div>
+          <div class="c"><b>${adv.short}</b><span>${T('classement.rang', { n: rangAdv })} · ${T('classement.points', { n: adv.pts })}</span></div>
         </div>`;
     }
   }
   const po = G.playoff;
 
   function bbox(series, extraClass) {
-    if (!series) return `<div class="bslot"><div class="bbox ${extraClass||''}"><div class="bteam">à déterminer</div><div class="bteam">à déterminer</div></div></div>`;
+    if (!series) return `<div class="bslot"><div class="bbox ${extraClass||''}"><div class="bteam">${T('playoffs.aDeterminer')}</div><div class="bteam">${T('playoffs.aDeterminer')}</div></div></div>`;
     const h = playoffTeam(series.home), a = playoffTeam(series.away);
     const line = (t, wins) => {
       const isWinner = series.winner === t.id;
@@ -7216,41 +7241,41 @@ function renderClassement() {
   }
 
   const bracket = po ? `
-    <h2>🏆 Playoffs — ${DIVISIONS[G.divIdx].label} (Top ${po.nQual || 8}, séries au meilleur des 3)</h2>
+    <h2>🏆 ${T('playoffs.titre', { division: DIVISIONS[G.divIdx].label, n: po.nQual || 8 })}</h2>
     <div class="bracket">
       ${po.quarts ? `<div class="bcol qf">
-        <div class="bround-label">Quarts</div>
+        <div class="bround-label">${T('playoffs.quarts')}</div>
         ${bbox(po.quarts[0])}${bbox(po.quarts[1])}
       </div>` : ''}
       ${po.demis || po.stage === 'quarts' ? `<div class="bcol sf">
-        <div class="bround-label">Demies</div>
+        <div class="bround-label">${T('playoffs.demies')}</div>
         ${bbox(po.demis && po.demis[0])}
       </div>` : ''}
       <div class="bcol final">
-        <div class="bround-label">Finale</div>
+        <div class="bround-label">${T('playoffs.finale')}</div>
         ${bbox(po.finale && po.finale[0], 'final-box')}
         ${po.champion !== null && po.champion !== undefined ? `<div class="bchampion">🏆 ${playoffTeam(po.champion).name}</div>` : ''}
       </div>
       ${po.demis || po.stage === 'quarts' ? `<div class="bcol sf">
-        <div class="bround-label">Demies</div>
+        <div class="bround-label">${T('playoffs.demies')}</div>
         ${bbox(po.demis && po.demis[1])}
       </div>` : ''}
       ${po.quarts ? `<div class="bcol qf">
-        <div class="bround-label">Quarts</div>
+        <div class="bround-label">${T('playoffs.quarts')}</div>
         ${bbox(po.quarts[2])}${bbox(po.quarts[3])}
       </div>` : ''}
     </div>
-    ${po.humanOut && po.stage !== 'done' ? "<p class=\"note\" style=\"text-align:center\">Ton équipe est éliminée — le reste du tableau se résout automatiquement au clic sur le bouton d'action.</p>" : ''}
-  ` : `<p class="note">Les ${nbQualifies(G.divIdx, G.teams.length)} premiers du classement disputeront les playoffs à l'issue de la saison régulière, chaque tour en série aller-retour + match d'appui éventuel (au meilleur des 3).</p>`;
+    ${po.humanOut && po.stage !== 'done' ? `<p class="note" style="text-align:center">${T('playoffs.elimine')}</p>` : ''}
+  ` : `<p class="note">${T('classement.playoffsAVenir', { n: nbQualifies(G.divIdx, G.teams.length) })}</p>`;
 
   // Classement de toute la division, sous celui de la poule. Indispensable dès que la
   // phase finale se joue entre poules : on ne se compare plus à ses seuls adversaires
   // directs. Replié par défaut — c'est un repère, pas l'écran principal.
   const national = (G.poules && G.poules.length > 1) ? `
     <details class="card">
-      <summary><b>🇫🇷 Classement de ${escHtml(DIVISIONS[G.divIdx].label)}</b> — ${classementNational().length} équipes, ${G.poules.length} poules</summary>
+      <summary><b>🇫🇷 ${T('classement.national', { division: escHtml(DIVISIONS[G.divIdx].label) })}</b> — ${T('classement.national.detail', { equipes: classementNational().length, poules: G.poules.length })}</summary>
       <table class="tbl-division"><thead>
-        <tr><th>#</th><th>Équipe</th><th>Poule</th><th>Pts</th></tr>
+        <tr><th>#</th><th>${T('colonne.equipe')}</th><th>${T('colonne.poule')}</th><th>${T('colonne.pts')}</th></tr>
       </thead><tbody>
       ${classementNational().map((e, i) => `
         <tr class="${e.t.human ? 'me' : ''}">
@@ -7263,21 +7288,20 @@ function renderClassement() {
 
   const journee = Math.min(G.day + 1, G.schedule.length);
   document.getElementById('tab-classement').innerHTML = `
-    ${bandeau('classement', `${DIVISIONS[G.divIdx].label} · Saison ${seasonLabel(G.season)}`,
-              'Classement', `Journée ${journee} sur ${G.schedule.length} · ${G.teams.length} équipes`)}
+    ${bandeau('classement', `${DIVISIONS[G.divIdx].label} · ${T('bandeau.saison')} ${seasonLabel(G.season)}`,
+              T('ecran.classement.label'),
+              T('classement.sousTitre', { journee: journee, total: G.schedule.length, equipes: G.teams.length }))}
     <div class="clst">${rows}</div>
-    <button class="chip-info" onclick="this.classList.toggle('open');this.nextElementSibling.classList.toggle('show')">ⓘ Détail chiffré et règles des playoffs</button>
+    <button class="chip-info" onclick="this.classList.toggle('open');this.nextElementSibling.classList.toggle('show')">ⓘ ${T('classement.detail')}</button>
     <div class="regle">
       <table style="margin-bottom:10px">
-        <tr><th>#</th><th>Équipe</th><th>J</th><th>V</th><th>VP</th><th>DP</th><th>D</th><th>BP</th><th>BC</th><th>Diff</th><th>Pts</th></tr>
+        <tr><th>#</th><th>${T('colonne.equipe')}</th><th>${T('colonne.j')}</th><th>${T('colonne.v')}</th><th>${T('colonne.vp')}</th><th>${T('colonne.dp')}</th><th>${T('colonne.d')}</th><th>${T('colonne.bp')}</th><th>${T('colonne.bc')}</th><th>${T('colonne.diff')}</th><th>${T('colonne.pts')}</th></tr>
         ${detail}
       </table>
       ${(G.poules && G.poules.length > 1)
-        ? `Chaque poule qualifie ses ${nbQualifies(G.divIdx, G.teams.length)} premiers. Le tableau final réunit
-           huit équipes de toute la division : d'abord les champions de poule, puis les meilleurs suivants.`
-        : `Les ${nbQualifies(G.divIdx, G.teams.length)} premiers disputent les playoffs.`}
-      Quarts, demi-finales puis finale, chaque tour au meilleur des 3 (aller, retour,
-      match d'appui éventuel). Les deux finalistes montent.
+        ? T('classement.regle.poules', { n: nbQualifies(G.divIdx, G.teams.length) })
+        : T('classement.regle.simple', { n: nbQualifies(G.divIdx, G.teams.length) })}
+      ${T('classement.regle.format')}
     </div>
     ${national}
     ${prochaine}
@@ -7286,10 +7310,11 @@ function renderClassement() {
 
 function renderCalendrier() {
   const half = G.schedule.length / 2;
-  let html = bandeau('calendrier', `${DIVISIONS[G.divIdx].label} · Saison ${seasonLabel(G.season)}`,
-                     'Calendrier', `${G.schedule.length} journées · aller-retour`);
+  let html = bandeau('calendrier', `${DIVISIONS[G.divIdx].label} · ${T('bandeau.saison')} ${seasonLabel(G.season)}`,
+                     T('ecran.calendrier.label'),
+                     T('calendrier.sousTitre', { n: G.schedule.length }));
 
-  // Pre-Match Hub : aperçu du prochain adversaire
+  // Avant-match : aperçu du prochain adversaire
   if (G.day < G.schedule.length) {
     const round = G.schedule[G.day];
     const myMatch = round.find(m => G.teams[m.home].human || G.teams[m.away].human);
@@ -7302,10 +7327,10 @@ function renderCalendrier() {
       const oppTop = [...oppT.players].sort((a, b) => overall(b) - overall(a))[0];
       const oppTirTop = [...oppT.players].filter(p => p.pos !== 'G').sort((a, b) => b.tir - a.tir)[0];
       html += `<div class="card" style="border-color:var(--tan)">
-        <b>🔎 Pre-Match Hub — Prochain adversaire (${isHomeNext ? 'domicile' : 'extérieur'})</b><br>
-        <b style="color:var(--tan)">${oppT.name}</b> — ${oppT.v}V ${oppT.n}N ${oppT.d}D, forme ${oppForm}% de points pris<br>
-        <span class="tag">Meilleur joueur : ${oppTop ? oppTop.nom + ' (général ' + overall(oppTop) + ')' : '—'}
-        — Danger offensif : ${oppTirTop ? oppTirTop.nom + ' (Tir ' + oppTirTop.tir + ')' : '—'}</span>
+        <b>🔎 ${T('calendrier.avantMatch', { ou: isHomeNext ? T('classement.domicile') : T('classement.exterieur') })}</b><br>
+        <b style="color:var(--tan)">${oppT.name}</b> — ${T('calendrier.bilan', { v: oppT.v, n: oppT.n, d: oppT.d, forme: oppForm })}<br>
+        <span class="tag">${T('calendrier.meilleur', { qui: oppTop ? oppTop.nom + ' (' + T('stat.general') + ' ' + overall(oppTop) + ')' : '—' })}
+        — ${T('calendrier.danger', { qui: oppTirTop ? oppTirTop.nom + ' (' + T('stat.tir') + ' ' + oppTirTop.tir + ')' : '—' })}</span>
       </div>`;
     }
   }
@@ -7313,7 +7338,7 @@ function renderCalendrier() {
   G.schedule.forEach((round, r) => {
     const isNext = r === G.day;
     html += `<div class="card" ${isNext ? 'style="border-color:var(--bleu)"' : ''}>
-      <b style="color:${isNext ? 'var(--bleu)' : 'var(--muted)'}">Journée ${r + 1}${r < half ? ' (aller)' : ' (retour)'}${isNext ? ' — à venir' : ''}</b>
+      <b style="color:${isNext ? 'var(--bleu)' : 'var(--muted)'}">${T('calendrier.journee', { n: r + 1 })} ${r < half ? T('calendrier.aller') : T('calendrier.retour')}${isNext ? ' — ' + T('calendrier.aVenir') : ''}</b>
       <table>` +
       round.map(m => {
         const h = G.teams[m.home], a = G.teams[m.away];
@@ -7327,21 +7352,21 @@ function renderCalendrier() {
   document.getElementById('tab-calendrier').innerHTML = html;
 }
 
+// Les libellés vivent sous les clés `tri.<cle>` ; ici ne restent que les fonctions de tri.
 const SORT_KEYS = {
-  ov: { label: "Général", fn: overall }, tir: { label: "Tir", fn: p => p.tir },
-  def: { label: "Déf", fn: p => p.def }, vit: { label: "Vit", fn: p => p.vit },
-  gar: { label: "Gardien", fn: p => p.gar }, val: { label: "Valeur", fn: playerValue },
-  age: { label: "Âge", fn: p => p.age }, agr: { label: "Agressivité", fn: p => p.agr }
+  ov: { fn: overall }, tir: { fn: p => p.tir },
+  def: { fn: p => p.def }, vit: { fn: p => p.vit },
+  gar: { fn: p => p.gar }, val: { fn: playerValue },
+  age: { fn: p => p.age }, agr: { fn: p => p.agr }
 };
 function renderTransferts() {
   if (G.season < 2) {
     document.getElementById('tab-transferts').innerHTML = `
-      ${bandeau('transferts', myTeam().name, 'Transferts',
-                `Budget ${euros(G.budget)} · ${myTeam().players.length} joueurs sous contrat`)}
+      ${bandeau('transferts', myTeam().name, T('ecran.transferts.label'),
+                T('transferts.sousTitre', { budget: euros(G.budget), n: myTeam().players.length }))}
       <div class="card" style="text-align:center">
-        <p class="note">🔒 Le marché des transferts n'ouvre qu'à partir de la <b>saison 2</b>.</p>
-        <p class="note">Ta première saison se joue avec l'effectif de départ — fais tes preuves,
-        observe qui progresse, et prépare ton budget avant de te lancer sur le marché.</p>
+        <p class="note">🔒 ${T('transferts.ferme')}</p>
+        <p class="note">${T('transferts.ferme.info')}</p>
       </div>`;
     return;
   }
@@ -7365,8 +7390,8 @@ function renderTransferts() {
         apport: true,
         club: team.short,
         actions: `<button class="btn buy" ${G.budget < price || blocked ? 'disabled' : ''}
-          onclick="buyPlayer(${team.id},${p.id})">Acheter ${euros(price)}</button>
-          ${blocked ? '<span class="tag">non vendable</span>' : ''}`
+          onclick="buyPlayer(${team.id},${p.id})">${T('transferts.acheter', { prix: euros(price) })}</button>
+          ${blocked ? `<span class="tag">${T('transferts.nonVendable')}</span>` : ''}`
       });
     }).join('');
   } else {
@@ -7380,39 +7405,33 @@ function renderTransferts() {
         apport: true,
         club: `${clubName} (${DIVISIONS[divIdx].label})`,
         actions: `<button class="btn buy" ${G.budget < price ? 'disabled' : ''}
-          onclick="buyScoutPlayer(${p.id})">Recruter ${euros(price)}</button>`
+          onclick="buyScoutPlayer(${p.id})">${T('transferts.recruter', { prix: euros(price) })}</button>`
       });
     }).join('');
   }
 
-  const posOptions = [['ALL','Tous postes'],['G','Gardien'],['D','Défenseur'],['A','Attaquant']]
+  const posOptions = [['ALL', T('poste.tous')], ['G', T('poste.G')], ['D', T('poste.D')], ['A', T('poste.A')]]
     .map(([v,l]) => `<option value="${v}" ${posFilter===v?'selected':''}>${l}</option>`).join('');
   const sortOptions = Object.entries(SORT_KEYS)
-    .map(([k,d]) => `<option value="${k}" ${sortKey===k?'selected':''}>${d.label}</option>`).join('');
+    .map(([k]) => `<option value="${k}" ${sortKey===k?'selected':''}>${T('tri.' + k)}</option>`).join('');
 
   document.getElementById('tab-transferts').innerHTML = `
-    <h2>Centre de recrutement</h2>
-    <p class="note">Budget disponible : <b style="color:var(--tan)">${euros(G.budget)}</b>.
-    Achat = valeur +10 % (±premium hors division). Vente (onglet Effectif) = valeur −10 %.
-    Un club peut refuser de vendre ou contre-proposer un prix plus élevé — un bon <b>recruteur</b> limite ce risque et réduit le prix.<br>
-    La pastille à côté de la note générale indique ce que la recrue <b>apporte</b> : l'écart
-    avec le joueur de son poste qu'elle remplacerait, c'est-à-dire le plus faible du groupe.<br>
-    Sous la valeur figure son <b>salaire par journée</b> — le prix d'achat est ponctuel, le
-    salaire se paie à chaque match et pendant toute la durée du contrat.</p>
+    <h2>${T('transferts.titre')}</h2>
+    <p class="note">${T('transferts.info', { budgetHtml: `<b style="color:var(--tan)">${euros(G.budget)}</b>` })}</p>
     <p>
-      Portée :
+      ${T('transferts.portee')}
       <select onchange="window._scoutScope=this.value;renderTransferts()">
-        <option value="div" ${scope==='div'?'selected':''}>Ma division (${DIVISIONS[G.divIdx].label})</option>
-        <option value="pyramide" ${scope==='pyramide'?'selected':''}>Toute la pyramide (hors division)</option>
+        <option value="div" ${scope==='div'?'selected':''}>${T('transferts.portee.division', { division: DIVISIONS[G.divIdx].label })}</option>
+        <option value="pyramide" ${scope==='pyramide'?'selected':''}>${T('transferts.portee.pyramide')}</option>
       </select>
-      &nbsp; Poste : <select onchange="window._scoutPos=this.value;renderTransferts()">${posOptions}</select>
-      &nbsp; Trier par : <select onchange="window._scoutSort=this.value;renderTransferts()">${sortOptions}</select>
+      &nbsp; ${T('transferts.poste')} <select onchange="window._scoutPos=this.value;renderTransferts()">${posOptions}</select>
+      &nbsp; ${T('transferts.trier')} <select onchange="window._scoutSort=this.value;renderTransferts()">${sortOptions}</select>
       &nbsp; <button class="btn" onclick="window._scoutDir=(window._scoutDir==='asc'?'desc':'asc');renderTransferts()">
-        ${sortDir === 'desc' ? '⬇ Décroissant' : '⬆ Croissant'}</button>
+        ${sortDir === 'desc' ? '⬇ ' + T('transferts.decroissant') : '⬆ ' + T('transferts.croissant')}</button>
     </p>
     <table class="responsive-cards">
-      <tr><th>Pos</th><th>Nom (club)</th><th>Âge</th><th>Général</th><th>Tir</th><th>Déf</th><th>Vit</th><th>Gardien</th><th>Agr</th><th>Forme</th><th>Moral</th><th>Potentiel</th><th>Contrat</th><th>Valeur</th><th></th></tr>
-      ${rows || '<tr><td colspan="15" class="note">Aucun joueur pour ce filtre.</td></tr>'}
+      <tr><th>${T('colonne.pos')}</th><th>${T('colonne.nomClub')}</th><th>${T('colonne.age')}</th><th>${T('stat.general')}</th><th>${T('stat.tir')}</th><th>${T('stat.def')}</th><th>${T('stat.vit')}</th><th>${T('stat.gar')}</th><th>${T('stat.agr')}</th><th>${T('stat.forme')}</th><th>${T('stat.moral')}</th><th>${T('stat.potentiel')}</th><th>${T('colonne.contrat')}</th><th>${T('colonne.valeur')}</th><th></th></tr>
+      ${rows || `<tr><td colspan="15" class="note">${T('transferts.aucun')}</td></tr>`}
     </table>`;
 }
 
@@ -7481,14 +7500,14 @@ function renderClub() {
     const img = infraTierImage(imgKey, lvl, 10);
     const pct = Math.round((lvl / 10) * 100);
     return `<div class="infra-fiche">
-      ${img ? `<div class="infra-img-wrap"><img src="${img}" alt="${label}"><span class="infra-tier-badge">Niveau ${lvl}/10</span></div>` : ''}
+      ${img ? `<div class="infra-img-wrap"><img src="${img}" alt="${label}"><span class="infra-tier-badge">${T('club.niveau', { n: lvl, max: 10 })}</span></div>` : ''}
       <div class="infra-body">
         <div class="infra-title">${label}</div>
         <span class="note">${desc}</span>
         <div class="infra-level-bar-wrap"><div class="infra-level-bar" style="width:${pct}%"></div></div>
-        ${lvl >= 10 ? `<span class="tag">Niveau maximum</span>`
-          : divLocked ? `<span class="tag" style="color:var(--rouge)">🔒 Niveau ${nextLevel} requiert ${DIVISIONS[reqDiv].label}</span>`
-          : `<button class="btn buy" ${(G.budget < cost || G.upgradesThisSeason >= MAX_UPGRADES_PER_SEASON) ? 'disabled' : ''} onclick="upgradeInfra('${kind}')">Améliorer — ${euros(cost)}</button>`}
+        ${lvl >= 10 ? `<span class="tag">${T('club.niveauMax')}</span>`
+          : divLocked ? `<span class="tag" style="color:var(--rouge)">🔒 ${T('club.niveauRequis', { n: nextLevel, division: DIVISIONS[reqDiv].label })}</span>`
+          : `<button class="btn buy" ${(G.budget < cost || G.upgradesThisSeason >= MAX_UPGRADES_PER_SEASON) ? 'disabled' : ''} onclick="upgradeInfra('${kind}')">${T('club.ameliorer', { prix: euros(cost) })}</button>`}
       </div>
     </div>`;
   };
@@ -7498,12 +7517,12 @@ function renderClub() {
   const divSuiv = G.divIdx + 1;
   const reqSuiv = divSuiv < DIVISIONS.length ? classeRequise(divSuiv) : null;
   const classeCard = `<div class="card">
-    <b>🏟️ Classement de l'installation — classe ${clAct}</b>
-    <p class="note">Le règlement fédéral (art. 2.2.7.2) attache chaque division à une classe de salle.
+    <b>🏟️ ${T('club.classe.titre', { classe: clAct })}</b>
+    <p class="note">${T('club.classe.regle')}
     ${reqSuiv ? (stadeSuffisantPour(divSuiv)
-      ? `Ton stade de niveau ${c.stade} est classé <b>${clAct}</b> : il autorise déjà la montée en ${escHtml(DIVISIONS[divSuiv].label)}.`
-      : `Monter en ${escHtml(DIVISIONS[divSuiv].label)} exige la <b>classe ${reqSuiv.classe}</b>, soit un stade de niveau ${reqSuiv.stade}. Le tien est au niveau ${c.stade} : sans travaux, la montée sera refusée.`)
-      : `Tu es au sommet : la classe A est exigée pour l'Élite et pour toute finale nationale.`}</p>
+      ? T('club.classe.suffisant', { niveau: c.stade, classe: clAct, division: escHtml(DIVISIONS[divSuiv].label) })
+      : T('club.classe.insuffisant', { division: escHtml(DIVISIONS[divSuiv].label), classe: reqSuiv.classe, requis: reqSuiv.stade, niveau: c.stade }))
+      : T('club.classe.sommet')}</p>
   </div>`;
 
   const logeCost = 4000 + c.loges * 800;
@@ -7514,10 +7533,10 @@ function renderClub() {
     const unlocked = sponsorUnlocked(s);
     const signed = sponsorSigned(i);
     let action;
-    if (signed) action = `<span class="tag" style="color:var(--vert)">✓ Contrat actif</span>
-      <button class="btn sell" onclick="toggleSponsor(${i})">Résilier</button>`;
-    else if (unlocked) action = `<button class="btn buy" onclick="toggleSponsor(${i})">Signer</button>`;
-    else action = `<span class="tag" style="color:var(--rouge)">Requis : ${sponsorRequirementText(s)}</span>`;
+    if (signed) action = `<span class="tag" style="color:var(--vert)">✓ ${T('club.sponsor.actif')}</span>
+      <button class="btn sell" onclick="toggleSponsor(${i})">${T('club.sponsor.resilier')}</button>`;
+    else if (unlocked) action = `<button class="btn buy" onclick="toggleSponsor(${i})">${T('club.sponsor.signer')}</button>`;
+    else action = `<span class="tag" style="color:var(--rouge)">${T('staff.requis', { quoi: sponsorRequirementText(s) })}</span>`;
     return `<div class="card" style="${signed ? 'border-color:var(--vert)' : !unlocked ? 'opacity:.6' : ''}">
       <img class="sponsor-img" src="${sponsorImage(i)}" alt="" onerror="this.remove()">
       <b>${nomSponsor(i)}</b> — ${euros(s.income)}/match<br>${action}
@@ -7527,71 +7546,68 @@ function renderClub() {
   const fin = G.lastFinance;
   const finHtml = fin ? `
     <div class="card">
-      <b>Recettes du dernier match ${fin.attendance ? `(${fin.attendance.toLocaleString('fr-FR')} spectateurs)` : '(déplacement)'}</b>
+      <b>${fin.attendance ? T('club.recettes.domicile', { n: nombreLocal(fin.attendance) }) : T('club.recettes.deplacement')}</b>
       <table>
-        <tr><td>Billetterie</td><td>${euros(fin.billet)}</td></tr>
-        <tr><td>Buvette</td><td>${euros(fin.buvette)}</td></tr>
-        <tr><td>Loges VIP</td><td>${euros(fin.loges)}</td></tr>
-        <tr><td>Sponsoring</td><td>${euros(fin.sponsor)}</td></tr>
-        <tr><td>Droits de diffusion</td><td>${euros(fin.tv)}</td></tr>
-        <tr><td>Communication</td><td>${euros(fin.marketing)}</td></tr>
-        <tr><td>Masse salariale (joueurs)</td><td>${euros(fin.salaires)}</td></tr>
-        <tr><td>Salaires du staff</td><td>${euros(fin.staff || 0)}</td></tr>
-        <tr><td>Entretien / frais</td><td>${euros(fin.entretien)}</td></tr>
-        <tr><td><b>Total</b></td><td><b style="color:${fin.total>=0?'var(--vert)':'var(--rouge)'}">${euros(fin.total)}</b></td></tr>
+        <tr><td>${T('club.poste.billetterie')}</td><td>${euros(fin.billet)}</td></tr>
+        <tr><td>${T('club.poste.buvette')}</td><td>${euros(fin.buvette)}</td></tr>
+        <tr><td>${T('club.poste.loges')}</td><td>${euros(fin.loges)}</td></tr>
+        <tr><td>${T('club.poste.sponsoring')}</td><td>${euros(fin.sponsor)}</td></tr>
+        <tr><td>${T('club.poste.tv')}</td><td>${euros(fin.tv)}</td></tr>
+        <tr><td>${T('club.poste.communication')}</td><td>${euros(fin.marketing)}</td></tr>
+        <tr><td>${T('club.poste.salaires')}</td><td>${euros(fin.salaires)}</td></tr>
+        <tr><td>${T('club.poste.staff')}</td><td>${euros(fin.staff || 0)}</td></tr>
+        <tr><td>${T('club.poste.entretien')}</td><td>${euros(fin.entretien)}</td></tr>
+        <tr><td><b>${T('club.poste.total')}</b></td><td><b style="color:${fin.total>=0?'var(--vert)':'var(--rouge)'}">${euros(fin.total)}</b></td></tr>
       </table>
-    </div>` : `<p class="note">Aucune recette enregistrée pour l'instant.</p>`;
+    </div>` : `<p class="note">${T('club.aucuneRecette')}</p>`;
 
   document.getElementById('tab-club').innerHTML = `
-    ${bandeau('club', myTeam().name, 'Le club',
-              `Capacité ${stadiumCapacity()} places · ${MAX_UPGRADES_PER_SEASON - G.upgradesThisSeason} chantier(s) disponible(s)`)}
+    ${bandeau('club', myTeam().name, T('ecran.club.label'),
+              T('club.sousTitre', { places: nombreLocal(stadiumCapacity()), n: MAX_UPGRADES_PER_SEASON - G.upgradesThisSeason }))}
     ${classeCard}
-    <p class="note">Capacité actuelle : <b style="color:var(--tan)">${stadiumCapacity().toLocaleString('fr-FR')}</b> places.
-    Chantiers disponibles cette saison : <b style="color:${G.upgradesThisSeason >= MAX_UPGRADES_PER_SEASON ? 'var(--rouge)' : 'var(--vert)'}">${MAX_UPGRADES_PER_SEASON - G.upgradesThisSeason}/${MAX_UPGRADES_PER_SEASON}</b>
-    (améliorations infrastructure + loges VIP confondues — les travaux prennent du temps, impossible de tout refaire en une saison).</p>
+    <p class="note">${T('club.capacite', { placesHtml: `<b style="color:var(--tan)">${nombreLocal(stadiumCapacity())}</b>` })}
+    ${T('club.chantiers', { chantiersHtml: `<b style="color:${G.upgradesThisSeason >= MAX_UPGRADES_PER_SEASON ? 'var(--rouge)' : 'var(--vert)'}">${MAX_UPGRADES_PER_SEASON - G.upgradesThisSeason}/${MAX_UPGRADES_PER_SEASON}</b>` })}</p>
     <div class="lineup-grid" style="grid-template-columns:repeat(auto-fill,minmax(280px,1fr))">
-      ${infraCard('stade', 'club', '🏟️ Tribunes', "Augmente la capacité d'accueil du public")}
-      ${infraCard('confort', 'tribune', '🪑 Confort', "Sièges, visibilité : fait revenir plus de spectateurs")}
-      ${infraCard('buvette', 'buvette', '🥤 Buvette', "Augmente les dépenses moyennes par spectateur")}
-      ${infraCard('centre', 'entrainement', "🏋️ Centre d'entraînement", "Accélère toutes les progressions du staff technique")}
-      ${infraCard('pole', 'poleespoir', "🌟 Pôle Espoir", "Forme régulièrement de jeunes recrues à fort potentiel, qui rejoignent directement l'effectif — compense en partie les départs à la retraite")}
+      ${infraCard('stade', 'club', '🏟️ ' + T('infra.stade.label'), T('infra.stade.desc'))}
+      ${infraCard('confort', 'tribune', '🪑 ' + T('infra.confort.label'), T('infra.confort.desc'))}
+      ${infraCard('buvette', 'buvette', '🥤 ' + T('infra.buvette.label'), T('infra.buvette.desc'))}
+      ${infraCard('centre', 'entrainement', '🏋️ ' + T('infra.centre.label'), T('infra.centre.desc'))}
+      ${infraCard('pole', 'poleespoir', '🌟 ' + T('infra.pole.label'), T('infra.pole.desc'))}
       <div class="infra-fiche">
         ${(() => { const img = infraTierImage('VIP', c.loges, 15); const pct = Math.round((c.loges/15)*100);
-          return img ? `<div class="infra-img-wrap"><img src="${img}" alt="Loges VIP"><span class="infra-tier-badge">${c.loges}/15 loges</span></div>` : ''; })()}
+          return img ? `<div class="infra-img-wrap"><img src="${img}" alt="${escHtml(T('infra.loges.label'))}"><span class="infra-tier-badge">${T('infra.loges.compte', { n: c.loges })}</span></div>` : ''; })()}
         <div class="infra-body">
-          <div class="infra-title">🎟️ Loges VIP</div>
-          <span class="note">${euros(c.loges*220)}/match de recette fixe</span>
+          <div class="infra-title">🎟️ ${T('infra.loges.label')}</div>
+          <span class="note">${T('infra.loges.recette', { montant: euros(c.loges*220) })}</span>
           <div class="infra-level-bar-wrap"><div class="infra-level-bar" style="width:${Math.round((c.loges/15)*100)}%"></div></div>
-          ${c.loges >= 15 ? `<span class="tag">Maximum atteint</span>`
-            : logeDivLocked ? `<span class="tag" style="color:var(--rouge)">🔒 ${nextLoge}e loge requiert ${DIVISIONS[logeReqDiv].label}</span>`
-            : `<button class="btn buy" ${(G.budget<logeCost || G.upgradesThisSeason >= MAX_UPGRADES_PER_SEASON)?'disabled':''} onclick="buyLoge()">Construire une loge — ${euros(logeCost)}</button>`}
+          ${c.loges >= 15 ? `<span class="tag">${T('club.niveauMax')}</span>`
+            : logeDivLocked ? `<span class="tag" style="color:var(--rouge)">🔒 ${T('infra.loges.requis', { n: nextLoge, division: DIVISIONS[logeReqDiv].label })}</span>`
+            : `<button class="btn buy" ${(G.budget<logeCost || G.upgradesThisSeason >= MAX_UPGRADES_PER_SEASON)?'disabled':''} onclick="buyLoge()">${T('infra.loges.construire', { prix: euros(logeCost) })}</button>`}
         </div>
       </div>
     </div>
 
-    <h2>Billetterie & Communication</h2>
+    <h2>${T('club.billetterie')}</h2>
     <div class="card">
-      Prix du billet :
+      ${T('club.prixBillet')}
       <select onchange="setTicketPrice(this.value)">
         ${[4,6,8,10,13,16].map(v => `<option value="${v}" ${c.ticketPrice===v?'selected':''}>${v} €</option>`).join('')}
       </select>
-      <span class="tag">prix bas = plus d'affluence, prix haut = plus de recette par personne</span>
+      <span class="tag">${T('club.prixBillet.info')}</span>
     </div>
     <div class="card">
-      Budget communication (par match à domicile) :
+      ${T('club.communication')}
       <select onchange="setMarketing(this.value)">
         ${[0,500,1200,2500,4000].map(v => `<option value="${v}" ${c.marketing===v?'selected':''}>${euros(v)}</option>`).join('')}
       </select>
-      <span class="tag">fait venir plus de monde, mais coûte à chaque match domicile</span>
+      <span class="tag">${T('club.communication.info')}</span>
     </div>
 
-    <h2>Sponsoring</h2>
-    <p class="note">Les contrats sont <b>cumulatifs</b> : tu peux signer plusieurs sponsors à la fois, chacun débloqué
-    par un niveau de division et d'infrastructure suffisant. Revenu total des sponsors actifs :
-    <b style="color:var(--tan)">${euros(sponsorTotal)}/match</b>.</p>
+    <h2>${T('club.sponsoring')}</h2>
+    <p class="note">${T('club.sponsoring.info', { totalHtml: `<b style="color:var(--tan)">${euros(sponsorTotal)}/match</b>` })}</p>
     <div class="grid2">${sponsorCards}</div>
 
-    <h2>Finances du dernier match</h2>
+    <h2>${T('club.finances')}</h2>
     ${finHtml}`;
 }
 
@@ -7604,26 +7620,26 @@ function showReport() {
   const isPlayoff = !!G.lastReport.playoff;
   const goals = res.scorers.map(s =>
     `<li style="list-style:none;display:flex;align-items:center;gap:6px;margin-bottom:3px">${s.minute}' — <img src="${portraitFor(s.id)}" class="portrait-thumb sm" alt="">${s.nom} <span class="tag">(${s.team})</span></li>`).join('');
-  const otHtml = res.wentOT ? `<p class="tag">Score à égalité à la fin du temps réglementaire — but en or en prolongation.</p>` : '';
-  const others = isPlayoff ? '' : `<p class="tag">Autres résultats : ` + G.schedule[G.day - 1]
+  const otHtml = res.wentOT ? `<p class="tag">${T('rapport.prolongation')}</p>` : '';
+  const others = isPlayoff ? '' : `<p class="tag">${T('rapport.autres')} ` + G.schedule[G.day - 1]
     .filter(x => x !== m)
     .map(x => `${G.teams[x.home].short} ${x.score[0]}–${x.score[1]} ${G.teams[x.away].short}`)
     .join(' &nbsp;•&nbsp; ') + `</p>`;
   const training = (!isPlayoff && G.lastTraining && G.lastTraining.length)
-    ? `<p class="tag" style="color:var(--vert)">Entraînement : ${G.lastTraining.join(' • ')}</p>` : '';
+    ? `<p class="tag" style="color:var(--vert)">${T('ecran.entrainement.label')} : ${G.lastTraining.join(' • ')}</p>` : '';
   const injuries = (!isPlayoff && G.lastInjuries && G.lastInjuries.length)
     ? `<p class="tag" style="color:var(--rouge)">🤕 ${G.lastInjuries.join(' • ')}</p>` : '';
   const fin = isPlayoff ? null : G.lastFinance;
-  const finTag = fin ? `<p class="tag">Recette du match : <b style="color:${fin.total>=0?'var(--vert)':'var(--rouge)'}">${euros(fin.total)}</b> (détail dans l'onglet Club)</p>` : '';
+  const finTag = fin ? `<p class="tag">${T('rapport.recette', { montantHtml: `<b style="color:${fin.total>=0?'var(--vert)':'var(--rouge)'}">${euros(fin.total)}</b>` })}</p>` : '';
   const cardsHtml = (res.penalties && res.penalties.length)
-    ? `<p class="tag"><b>Pénalités :</b> ` + res.penalties.map(p =>
+    ? `<p class="tag"><b>${T('colonne.penalites')} :</b> ` + res.penalties.map(p =>
         `${p.minute}' ${PENALTY_LABEL[p.type]} ${p.nom} (${p.team}, ${p.faute}, ${p.dur}')`
       ).join(' • ') + `</p>`
-    : `<p class="tag">Aucune pénalité sifflée.</p>`;
+    : `<p class="tag">${T('rapport.aucunePenalite')}</p>`;
   box.innerHTML = `
-    <h3>${isPlayoff ? '🏆 ' + G.lastReport.title : 'Journée ' + G.day + ' — Rapport de match'}</h3>
+    <h3>${isPlayoff ? '🏆 ' + G.lastReport.title : T('rapport.titre', { n: G.day })}</h3>
     <div class="bigscore">${home.name} <span style="color:var(--bleu)">${res.gH} — ${res.gA}</span> ${away.name}</div>
-    <ul>${goals || '<li>Aucun but…</li>'}</ul>
+    <ul>${goals || `<li>${T('rapport.aucunBut')}</li>`}</ul>
     ${cardsHtml}
     ${otHtml}
     ${others}
