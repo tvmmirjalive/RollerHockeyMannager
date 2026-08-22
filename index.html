@@ -2105,8 +2105,12 @@ async function presenterNouveauxMessages() {
     if (reste >= 1) actions.push({ label: 'Tout passer', value: 'passer' });
     // Un article de presse attend une réponse : ses boutons remplacent le « Suivant ».
     // Se taire reste possible — « Tout passer » — et n'a aucun effet.
-    if (m.reponses && m.reponse === undefined) {
-      m.reponses.forEach((r, k) => actions.push({ label: r.label, value: 'rep' + k, cls: k ? 'buy' : '' }));
+    const jeu = reponsesDe(m);
+    if (jeu && m.reponse === undefined) {
+      const fam = familleDe(m);
+      jeu.forEach((r, k) => actions.push({
+        label: r.cle ? libelleReponse(fam, r) : r.label,   // `r.label` : sauvegardes d'avant
+        value: 'rep' + k, cls: k ? 'buy' : '' }));
     } else {
       actions.push({ label: reste ? `Suivant · ${reste} en attente` : 'Fermer', value: 'suivant', cls: 'buy' });
     }
@@ -2117,7 +2121,7 @@ async function presenterNouveauxMessages() {
       actions: actions
     });
     m.read = true;
-    if (typeof choix === 'string' && choix.indexOf('rep') === 0 && m.reponses) {
+    if (typeof choix === 'string' && choix.indexOf('rep') === 0 && reponsesDe(m)) {
       const k = parseInt(choix.slice(3), 10);
       if (m.vestiaire) repondreAuVestiaire(m, k);
       else if (m.brouille) reglerBrouille(m, k);
@@ -2151,22 +2155,16 @@ const PRESSE_ACCROCHES = {
 // 2,5 %. Elles seront à remesurer quand le vestiaire lui aura rendu sa variance (phase 3).
 const PRESSE_REPONSES = {
   elogieux: [
-    { label: 'Rester mesuré', moral: 0, conf: 2,
-      dit: "« Une victoire, rien de plus. On se remet au travail dès demain. »" },
-    { label: 'Féliciter le groupe', moral: 3, conf: 0,
-      dit: "« Ils ont été énormes. Ce soir, c'est pour eux. »" }
+    { cle: 'mesure', moral: 0, conf: 2 },
+    { cle: 'feliciter', moral: 3, conf: 0 }
   ],
   neutre: [
-    { label: 'Rester concentré', moral: 0, conf: 1,
-      dit: "« On prend les points et on avance. Rien n'est fait. »" },
-    { label: 'Saluer le caractère', moral: 2, conf: 0,
-      dit: "« Ils ne se sont pas affolés. C'est ce que je retiens. »" }
+    { cle: 'concentre', moral: 0, conf: 1 },
+    { cle: 'caractere', moral: 2, conf: 0 }
   ],
   severe: [
-    { label: 'Défendre mes joueurs', moral: 3, conf: -2,
-      dit: "« Personne ne s'est caché. Le groupe n'est pas en cause. »" },
-    { label: 'Assumer publiquement', moral: -1, conf: 3,
-      dit: "« C'est indigne de ce club. À commencer par moi. »" }
+    { cle: 'defendre', moral: 3, conf: -2 },
+    { cle: 'assumer', moral: -1, conf: 3 }
   ]
 };
 
@@ -2207,15 +2205,16 @@ function articleDePresse(rapport) {
   G.presseJournee = G.day;
 
   const ton = exploit ? 'elogieux' : contreperf ? 'severe' : presseTonDuMatch(mien, adverse, ecart);
-  const accroche = pick(PRESSE_ACCROCHES[ton]);
-  const journal = pick(PRESSE_JOURNAUX);
+  // On tire des INDICES, pas des textes : un texte tiré ici serait figé dans la sauvegarde.
+  const iAccroche = irnd(0, PRESSE_ACCROCHES[ton].length - 1);
+  const iJournal = irnd(0, PRESSE_JOURNAUX.length - 1);
 
-  let corps = `${escHtml(me.name)} ${mien}–${sien} ${escHtml(adverse.name)}.`;
-  if (exploit) corps += ` Personne n'attendait ce résultat face au leader.`;
-  else if (contreperf) corps += ` Une défaite contre la lanterne rouge, difficile à expliquer.`;
-  else if (ecart >= 4) corps += ` L'écart dit tout de la maîtrise affichée.`;
-  else if (ecart <= -4) corps += ` Le score est sévère, mais il n'est pas volé.`;
-  if (triple) corps += ` <b>${escHtml(triple)}</b> s'offre un triplé.`;
+  // Le cas décide de la clé, et le triplé d'une variante. Deux clés par cas plutôt qu'une
+  // concaténation : une phrase composée morceau par morceau ne se traduit pas — l'ordre des
+  // mots et la place de l'incise changent d'une langue à l'autre.
+  const cas = exploit ? 'exploit' : contreperf ? 'contreperf'
+            : ecart >= 4 ? 'large' : ecart <= -4 ? 'lourde' : 'simple';
+  const cleCorps = 'presse.corps.' + cas + (triple ? '.triple' : '');
 
   // L'effet reste volontairement faible : l'amplitude utile du moral n'est aujourd'hui que
   // de 2,5 %, et un coup de pouce plus fort serait du bruit plutôt qu'une mécanique.
@@ -2224,19 +2223,23 @@ function articleDePresse(rapport) {
     me.players.forEach(p => { p.moral = Math.round(clampV((p.moral || 70) + d, 15, 99)); });
     G.boardConfidence = Math.round(clampV((G.boardConfidence ?? 60) + (d > 0 ? 1 : -1), 0, 100));
   }
-  pushInbox('courrier.brut.titre', 'courrier.brut.corps',
-    { titreHtml: `📰 ${escHtml(accroche)}`, corpsHtml: `<i>${escHtml(journal)}</i> — ${corps}` },
+  pushInbox('presse.accroche.' + ton + '.' + iAccroche, cleCorps,
+    { journal: PRESSE_JOURNAUX[iJournal], nous: me.name, eux: adverse.name,
+      mien: mien, sien: sien, triple: triple || '' },
     'presse');
-  // Les réponses voyagent avec la lettre : `presenterNouveauxMessages()` en fera ses boutons.
-  G.inbox[0].reponses = PRESSE_REPONSES[ton] || PRESSE_REPONSES.neutre;
-  return { ton, accroche, journal };
+  // La lettre stocke le NOM de son jeu de réponses, pas le tableau : recopier le tableau
+  // figerait libellés et citations dans la sauvegarde.
+  G.inbox[0].jeuReponses = 'presse.' + (PRESSE_REPONSES[ton] ? ton : 'neutre');
+  return { ton, accroche: T('presse.accroche.' + ton + '.' + iAccroche),
+           journal: PRESSE_JOURNAUX[iJournal] };
 }
 
 // Applique la réponse du coach et la conserve dans la lettre : en relisant sa boîte, le
 // joueur retrouve ce qu'il a dit. Une réponse déjà donnée ne se rejoue pas.
 function repondreAlaPresse(message, index) {
-  if (!message || !message.reponses || message.reponse !== undefined) return null;
-  const r = message.reponses[index];
+  const jeuP = reponsesDe(message);
+  if (!message || !jeuP || message.reponse !== undefined) return null;
+  const r = jeuP[index];
   if (!r) return null;
   message.reponse = index;
   const me = myTeam();
@@ -2244,7 +2247,8 @@ function repondreAlaPresse(message, index) {
     me.players.forEach(p => { p.moral = Math.round(clampV((p.moral || 70) + r.moral, 15, 99)); });
   }
   if (r.conf) G.boardConfidence = Math.round(clampV((G.boardConfidence ?? 60) + r.conf, 0, 100));
-  noterReponse(message, 'courrier.ta-reponse', { dit: r.dit });
+  noterReponse(message, 'courrier.ta-reponse',
+    r.cle ? { ditCle: cleCitation('presse', r) } : { dit: r.dit });
   return r;
 }
 
@@ -2255,15 +2259,43 @@ const VESTIAIRE_SEUILS = { plainte: 55, contagion: 40, depart: 30 };
 const VESTIAIRE_ENGAGEMENT = { journees: 5, minimum: 4 };
 
 const VESTIAIRE_REPONSES = [
-  { cle: 'rassurer', label: 'Le rassurer', moral: 12,
-    dit: "« Tu comptes pour ce groupe. Garde la tête froide. »",
-    credit: true },
-  { cle: 'promettre', label: 'Promettre du temps de jeu', moral: 6,
-    dit: "« Tu vas jouer. Je te le dis en face, pas dans le vide. »",
-    engage: true },
-  { cle: 'ignorer', label: 'Ne rien répondre', moral: 0,
-    dit: "« … »" }
+  { cle: 'rassurer', moral: 12, credit: true },
+  { cle: 'promettre', moral: 6, engage: true },
+  { cle: 'ignorer', moral: 0 }
 ];
+
+// Réponses à une brouille : séparer les deux joueurs, ou les laisser faire.
+const BROUILLE_REPONSES = [
+  { cle: 'separer', moral: 0 },
+  { cle: 'laisser', moral: 0 }
+];
+
+// Registre des jeux de réponses. Une lettre stocke le NOM de son jeu, pas le tableau : sans
+// cela, les libellés et les citations étaient recopiés dans la sauvegarde et se figeaient
+// exactement comme le texte des lettres avant la v109 — le même défaut, une couche plus bas.
+const JEUX_REPONSES = {
+  'presse.elogieux': PRESSE_REPONSES.elogieux,
+  'presse.neutre': PRESSE_REPONSES.neutre,
+  'presse.severe': PRESSE_REPONSES.severe,
+  'vestiaire': VESTIAIRE_REPONSES,
+  'brouille': BROUILLE_REPONSES
+};
+
+// Les réponses d'une lettre. `m.reponses` n'existe que dans les sauvegardes d'avant cette
+// version : elles gardent leurs boutons tels qu'ils ont été écrits.
+function reponsesDe(m) {
+  if (m.jeuReponses && JEUX_REPONSES[m.jeuReponses]) return JEUX_REPONSES[m.jeuReponses];
+  return m.reponses || null;
+}
+
+// Libellé d'un bouton de réponse, et citation correspondante. `familleReponse` porte le
+// préfixe de clé — « presse », « vestiaire », « brouille ».
+function libelleReponse(famille, r) { return T('reponse.' + famille + '.' + r.cle + '.label'); }
+function cleCitation(famille, r) { return 'reponse.' + famille + '.' + r.cle + '.dit'; }
+function familleDe(m) {
+  const j = m.jeuReponses || '';
+  return j.indexOf('presse') === 0 ? 'presse' : (j || 'vestiaire');
+}
 
 // Le joueur dont le moral appelle une réaction. Un seul à la fois, et pas celui de la
 // dernière fois : on écoute un vestiaire, on ne subit pas un défilé de plaintes.
@@ -2306,7 +2338,7 @@ function remonteeVestiaire() {
     { nom: p.nom, n: joue, portraitHtml: `<img src="${portraitFor(p.id)}" class="portrait-thumb sm" alt="">` },
     'vestiaire');
   G.inbox[0].vestiaire = { joueur: p.id };
-  G.inbox[0].reponses = VESTIAIRE_REPONSES;
+  G.inbox[0].jeuReponses = 'vestiaire';
   G.tabNotify.effectif = true;
   return p;
 }
@@ -2315,7 +2347,7 @@ function remonteeVestiaire() {
 // différente : l'une est un apaisement qu'il faudra justifier, l'autre un contrat chiffré.
 function repondreAuVestiaire(message, index) {
   if (!message || !message.vestiaire || message.reponse !== undefined) return null;
-  const r = VESTIAIRE_REPONSES[index];
+  const r = (reponsesDe(message) || VESTIAIRE_REPONSES)[index];
   if (!r) return null;
   const me = myTeam();
   const p = me && me.players.find(x => x.id === message.vestiaire.joueur);
@@ -2327,7 +2359,8 @@ function repondreAuVestiaire(message, index) {
                      presences: 0, minimum: r.engage ? VESTIAIRE_ENGAGEMENT.minimum : 0,
                      depart: p.seasonGames || 0 };
   }
-  noterReponse(message, 'courrier.ta-reponse', { dit: r.dit });
+  noterReponse(message, 'courrier.ta-reponse',
+    r.cle ? { ditCle: cleCitation('vestiaire', r) } : { dit: r.dit });
   return r;
 }
 
@@ -2380,10 +2413,8 @@ const EVENEMENTS_CLUB = [
       const [a, b] = duoDuneLigne(ctx.team);
       majAffinite(a.id, b.id, -2);
       [a, b].forEach(p => { p.moral = Math.round(clampV((p.moral ?? 70) - 5, 15, 99)); });
-      return { titre: `🔥 Accrochage au vestiaire`,
-        corps: `${escHtml(a.nom)} et ${escHtml(b.nom)} en sont venus aux mots après la
-                rencontre. Ils jouent sur la même ligne, et ça se voit désormais.`,
-        duo: [a.id, b.id] };
+      return { cleTitre: 'evenement.accrochage.titre', cleCorps: 'evenement.accrochage.corps',
+        params: { a: a.nom, b: b.nom }, duo: [a.id, b.id] };
     }
   },
   {
@@ -2397,9 +2428,8 @@ const EVENEMENTS_CLUB = [
       const stat = jeune.pos === 'G' ? 'gar' : pick(['tir', 'def', 'vit']);
       jeune[stat] = Math.round(clampV(jeune[stat] + 1, 30, cap));
       jeune.moral = Math.round(clampV((jeune.moral ?? 70) + 6, 15, 99));
-      return { titre: `🧭 ${escHtml(ancien.nom)} prend ${escHtml(jeune.nom)} sous son aile`,
-        corps: `L'ancien a passé la semaine à travailler avec le jeune. Ça se verra sur la
-                piste, et ça se voit déjà au vestiaire.` };
+      return { cleTitre: 'evenement.parrainage.titre', cleCorps: 'evenement.parrainage.corps',
+        params: { ancien: ancien.nom, jeune: jeune.nom } };
     }
   },
   {
@@ -2414,10 +2444,8 @@ const EVENEMENTS_CLUB = [
       const rival = rivaux.sort((a, b) => overall(a) - overall(b))[0];
       majAffinite(frustre.id, rival.id, -1);
       frustre.moral = Math.round(clampV((frustre.moral ?? 70) - 6, 15, 99));
-      return { titre: `😤 ${escHtml(frustre.nom)} supporte mal la concurrence`,
-        corps: `Il estime valoir mieux que ${escHtml(rival.nom)}, qui joue à sa place.
-                L'ambiance entre eux s'en ressent.`,
-        duo: [frustre.id, rival.id] };
+      return { cleTitre: 'evenement.jalousie.titre', cleCorps: 'evenement.jalousie.corps',
+        params: { frustre: frustre.nom, rival: rival.nom }, duo: [frustre.id, rival.id] };
     }
   },
   {
@@ -2431,9 +2459,8 @@ const EVENEMENTS_CLUB = [
         }
       }
       ctx.team.players.forEach(p => { p.moral = Math.round(clampV((p.moral ?? 70) + 3, 15, 99)); });
-      return { titre: `🎉 Soirée du club`,
-        corps: `Tout le monde était là, joueurs, bénévoles et dirigeants. Ce sont ces
-                soirées-là qui font tenir un groupe sur une saison.` };
+      return { cleTitre: 'evenement.soiree.titre', cleCorps: 'evenement.soiree.corps',
+        params: {} };
     }
   }
 ];
@@ -2453,18 +2480,14 @@ function evenementDuClub(ecart) {
   if (!fait) return null;
   G.evenementJournee = G.day;
   G.evenementDernier = choisi.cle;
-  pushInbox('courrier.brut.titre', 'courrier.brut.corps',
-    { titreHtml: fait.titre, corpsHtml: fait.corps }, 'club');
+  pushInbox(fait.cleTitre, fait.cleCorps, fait.params || {}, 'club');
   // Une brouille appelle une décision : séparer les deux joueurs, ou tenir bon.
   if (fait.duo) {
     G.inbox[0].brouille = fait.duo;
-    G.inbox[0].reponses = [
-      { label: 'Les séparer de ligne', moral: 0, dit: "« Ils ne joueront plus ensemble. »" },
-      { label: 'Les laisser régler ça', moral: 0, dit: "« Ce sont des adultes. Qu'ils se parlent. »" }
-    ];
+    G.inbox[0].jeuReponses = 'brouille';
   }
   G.tabNotify.effectif = true;
-  return { cle: choisi.cle, titre: fait.titre };
+  return { cle: choisi.cle, titre: T(fait.cleTitre, fait.params || {}) };
 }
 
 // Séparer coûte : on casse aussi les ententes que le joueur déplacé avait dans sa ligne.
@@ -2489,12 +2512,13 @@ function reglerBrouille(message, index) {
       });
       a.ligne = cible;
       noterReponse(message, 'courrier.brouille.deplace',
-        { dit: message.reponses[0].dit, nom: a.nom, ligne: cible });
+        { ditCle: cleCitation('brouille', BROUILLE_REPONSES[0]), nom: a.nom, ligne: cible });
     } else {
       noterReponse(message, 'courrier.brouille.impossible');
     }
   } else {
-    noterReponse(message, 'courrier.ta-reponse', { dit: message.reponses[1].dit });
+    noterReponse(message, 'courrier.ta-reponse',
+      { ditCle: cleCitation('brouille', BROUILLE_REPONSES[1]) });
   }
   return true;
 }
@@ -2535,7 +2559,13 @@ function messageCorps(m) {
   // La réponse du coach s'ajoutait autrefois au corps par concaténation, ce qui la figeait
   // elle aussi. Elle est désormais notée à part et composée au même moment que le reste.
   if (m.note && m.note.cle) {
-    corps += `<p class="modal-note">${T(m.note.cle, paramsCourrier(m.note.params))}</p>`;
+    // `ditCle` plutôt que `dit` : passer le texte de la citation le figerait dans la langue
+    // du jour, exactement comme le corps des lettres avant la v109. Seule imbrication de
+    // `T()` du fichier, et faite ici en code — un dictionnaire qui s'appellerait lui-même
+    // serait ingérable.
+    const pn = Object.assign({}, m.note.params);
+    if (pn.ditCle) { pn.dit = T(pn.ditCle); delete pn.ditCle; }
+    corps += `<p class="modal-note">${T(m.note.cle, paramsCourrier(pn))}</p>`;
   }
   return corps;
 }
@@ -3176,7 +3206,7 @@ async function effacerSlot(s, ev) {
 // `versionName` du build Android par 4-outils/patch-version.py, qui refuse de s'appliquer
 // si les deux divergent. Le mode d'échec évité est réel : l'APK a annoncé « 1.0 » pendant
 // soixante-dix-sept versions parce que rien ne reliait le jeu à son numéro.
-const VERSION_JEU = '109';
+const VERSION_JEU = '110';
 
 function refreshMenu() {
   const vers = document.getElementById('menuVersion');
