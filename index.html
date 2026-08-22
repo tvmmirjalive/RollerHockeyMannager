@@ -2111,9 +2111,9 @@ async function presenterNouveauxMessages() {
       actions.push({ label: reste ? `Suivant · ${reste} en attente` : 'Fermer', value: 'suivant', cls: 'buy' });
     }
     const choix = await showModal({
-      title: m.title, ico: '✉️', tapPourSuivant: true,
-      html: `<div class="modal-lettre">${m.body}</div>
-             <p class="modal-note">Saison ${m.season} · journée ${m.day}</p>`,
+      title: messageTitre(m), ico: '✉️', tapPourSuivant: true,
+      html: `<div class="modal-lettre">${messageCorps(m)}</div>
+             <p class="modal-note">${T('courrier.date', { saison: m.season, journee: m.day })}</p>`,
       actions: actions
     });
     m.read = true;
@@ -2224,7 +2224,9 @@ function articleDePresse(rapport) {
     me.players.forEach(p => { p.moral = Math.round(clampV((p.moral || 70) + d, 15, 99)); });
     G.boardConfidence = Math.round(clampV((G.boardConfidence ?? 60) + (d > 0 ? 1 : -1), 0, 100));
   }
-  pushInbox(`📰 ${accroche}`, `<i>${escHtml(journal)}</i> — ${corps}`, 'presse');
+  pushInbox('courrier.brut.titre', 'courrier.brut.corps',
+    { titreHtml: `📰 ${escHtml(accroche)}`, corpsHtml: `<i>${escHtml(journal)}</i> — ${corps}` },
+    'presse');
   // Les réponses voyagent avec la lettre : `presenterNouveauxMessages()` en fera ses boutons.
   G.inbox[0].reponses = PRESSE_REPONSES[ton] || PRESSE_REPONSES.neutre;
   return { ton, accroche, journal };
@@ -2242,7 +2244,7 @@ function repondreAlaPresse(message, index) {
     me.players.forEach(p => { p.moral = Math.round(clampV((p.moral || 70) + r.moral, 15, 99)); });
   }
   if (r.conf) G.boardConfidence = Math.round(clampV((G.boardConfidence ?? 60) + r.conf, 0, 100));
-  message.body += `<p class="modal-note">Ta réponse : ${escHtml(r.dit)}</p>`;
+  noterReponse(message, 'courrier.ta-reponse', { dit: r.dit });
   return r;
 }
 
@@ -2299,13 +2301,9 @@ function remonteeVestiaire() {
   G.vestiaireDernier = p.id;
   const veutPartir = (p.moral ?? 70) < VESTIAIRE_SEUILS.depart;
   const joue = p.seasonGames || 0;
-  pushInbox(veutPartir ? `🚪 ${p.nom} veut partir` : `😠 ${p.nom} fait la tête`,
-    `<img src="${portraitFor(p.id)}" class="portrait-thumb sm" alt="">`
-    + (veutPartir
-      ? `${escHtml(p.nom)} est venu me voir. Il ne veut plus de cette situation et demande à
-         quitter le club. ${joue} match${joue > 1 ? 's' : ''} joué${joue > 1 ? 's' : ''} cette saison.`
-      : `${escHtml(p.nom)} ne décolère pas. ${joue} match${joue > 1 ? 's' : ''} joué${joue > 1 ? 's' : ''}
-         cette saison, et il estime valoir mieux que ça.`),
+  pushInbox(veutPartir ? 'courrier.vestiaire.partir.titre' : 'courrier.vestiaire.tete.titre',
+    veutPartir ? 'courrier.vestiaire.partir.corps' : 'courrier.vestiaire.tete.corps',
+    { nom: p.nom, n: joue, portraitHtml: `<img src="${portraitFor(p.id)}" class="portrait-thumb sm" alt="">` },
     'vestiaire');
   G.inbox[0].vestiaire = { joueur: p.id };
   G.inbox[0].reponses = VESTIAIRE_REPONSES;
@@ -2329,7 +2327,7 @@ function repondreAuVestiaire(message, index) {
                      presences: 0, minimum: r.engage ? VESTIAIRE_ENGAGEMENT.minimum : 0,
                      depart: p.seasonGames || 0 };
   }
-  message.body += `<p class="modal-note">Ta réponse : ${escHtml(r.dit)}</p>`;
+  noterReponse(message, 'courrier.ta-reponse', { dit: r.dit });
   return r;
 }
 
@@ -2345,14 +2343,10 @@ function reglerEngagements() {
     const e = p.engagement;
     const tenu = e.minimum ? e.presences >= e.minimum : e.presences > 0;
     p.moral = Math.round(clampV((p.moral ?? 70) + (tenu ? (e.minimum ? 18 : 6) : (e.minimum ? -25 : -20)), 15, 99));
-    pushInbox(tenu ? `🤝 Parole tenue — ${p.nom}` : `💥 Parole non tenue — ${p.nom}`,
-      e.minimum
-        ? (tenu ? `${escHtml(p.nom)} a joué ${e.presences} des ${VESTIAIRE_ENGAGEMENT.journees} dernières
-                   journées, comme promis. Il ne l'oubliera pas.`
-                : `${escHtml(p.nom)} n'a joué que ${e.presences} fois sur ${VESTIAIRE_ENGAGEMENT.journees}.
-                   Il avait ma parole. Il demande à partir.`)
-        : (tenu ? `${escHtml(p.nom)} s'est remis au travail. Le discours a porté.`
-                : `${escHtml(p.nom)} n'a rien vu venir de ce que je lui avais dit. Il ne me croira plus.`),
+    pushInbox(tenu ? 'courrier.engagement.tenu.titre' : 'courrier.engagement.rompu.titre',
+      e.minimum ? (tenu ? 'courrier.engagement.chiffre.tenu' : 'courrier.engagement.chiffre.rompu')
+                : (tenu ? 'courrier.engagement.parole.tenue' : 'courrier.engagement.parole.rompue'),
+      { nom: p.nom, presences: e.presences, journees: VESTIAIRE_ENGAGEMENT.journees },
       'vestiaire');
     soldes.push({ joueur: p.id, tenu: tenu });
     delete p.engagement;
@@ -2459,7 +2453,8 @@ function evenementDuClub(ecart) {
   if (!fait) return null;
   G.evenementJournee = G.day;
   G.evenementDernier = choisi.cle;
-  pushInbox(fait.titre, fait.corps, 'club');
+  pushInbox('courrier.brut.titre', 'courrier.brut.corps',
+    { titreHtml: fait.titre, corpsHtml: fait.corps }, 'club');
   // Une brouille appelle une décision : séparer les deux joueurs, ou tenir bon.
   if (fait.duo) {
     G.inbox[0].brouille = fait.duo;
@@ -2493,21 +2488,61 @@ function reglerBrouille(message, index) {
         if (q.id !== a.id && affiniteEntre(a.id, q.id) > 0) majAffinite(a.id, q.id, -1);
       });
       a.ligne = cible;
-      message.body += `<p class="modal-note">Ta réponse : ${escHtml(message.reponses[0].dit)} ` +
-        `${escHtml(a.nom)} passe en ligne ${cible}.</p>`;
+      noterReponse(message, 'courrier.brouille.deplace',
+        { dit: message.reponses[0].dit, nom: a.nom, ligne: cible });
     } else {
-      message.body += `<p class="modal-note">Aucune ligne ne peut l'accueillir. Il reste où il est.</p>`;
+      noterReponse(message, 'courrier.brouille.impossible');
     }
   } else {
-    message.body += `<p class="modal-note">Ta réponse : ${escHtml(message.reponses[1].dit)}</p>`;
+    noterReponse(message, 'courrier.ta-reponse', { dit: message.reponses[1].dit });
   }
   return true;
 }
 
-function pushInbox(title, body, type) {
+// Le courrier stocke une CLÉ et ses paramètres, pas une phrase. Trois raisons, dont deux
+// qui dépassent la traduction : changer de langue retraduit tout le courrier ; corriger une
+// faute de frappe corrige enfin les parties en cours ; et une sauvegarde pèse des clés au
+// lieu de soixante lettres.
+function pushInbox(cleTitre, cleCorps, params, type) {
   if (!G.inbox) G.inbox = [];
-  G.inbox.unshift({ id: Date.now() + Math.random(), season: G.season, day: G.day + 1, title, body, type: type || 'info', read: false });
+  G.inbox.unshift({ id: Date.now() + Math.random(), season: G.season, day: G.day + 1,
+                    cleTitre, cleCorps, params: params || {}, type: type || 'info', read: false });
   if (G.inbox.length > 60) G.inbox.length = 60; // on garde un historique raisonnable
+}
+
+// Les paramètres sont échappés ICI, au rendu, sauf ceux dont le nom finit par `Html`. Les
+// noms de joueurs sont donc protégés sans que chaque appelant y pense, et les portraits
+// passent intacts. On stocke des valeurs brutes : la sauvegarde reste lisible, et
+// l'échappement suit la langue plutôt que d'être figé à l'écriture.
+function paramsCourrier(p) {
+  const out = {};
+  Object.keys(p || {}).forEach(k => {
+    out[k] = /Html$/.test(k) ? p[k] : escHtml(String(p[k]));
+  });
+  return out;
+}
+
+// Les deux formes coexistent. Une sauvegarde d'avant cette version porte `title` et `body`
+// en clair : elle garde ses lettres telles qu'elles ont été écrites, dans la langue où elles
+// l'ont été. Réécrire le passé serait plus surprenant que de le laisser.
+function messageTitre(m) {
+  if (m.cleTitre) return T(m.cleTitre, paramsCourrier(m.params));
+  return m.title || '';
+}
+
+function messageCorps(m) {
+  let corps = m.cleCorps ? T(m.cleCorps, paramsCourrier(m.params)) : (m.body || '');
+  // La réponse du coach s'ajoutait autrefois au corps par concaténation, ce qui la figeait
+  // elle aussi. Elle est désormais notée à part et composée au même moment que le reste.
+  if (m.note && m.note.cle) {
+    corps += `<p class="modal-note">${T(m.note.cle, paramsCourrier(m.note.params))}</p>`;
+  }
+  return corps;
+}
+
+// Note la réponse du coach sans toucher au corps du message.
+function noterReponse(message, cle, params) {
+  message.note = { cle: cle, params: params || {} };
 }
 
 let nextPlayerId = 1;
@@ -3141,7 +3176,7 @@ async function effacerSlot(s, ev) {
 // `versionName` du build Android par 4-outils/patch-version.py, qui refuse de s'appliquer
 // si les deux divergent. Le mode d'échec évité est réel : l'APK a annoncé « 1.0 » pendant
 // soixante-dix-sept versions parce que rien ne reliait le jeu à son numéro.
-const VERSION_JEU = '108';
+const VERSION_JEU = '109';
 
 function refreshMenu() {
   const vers = document.getElementById('menuVersion');
@@ -4301,9 +4336,9 @@ function evaluatePlayerObjectives() {
     if (!p.objective) return;
     const met = (p.seasonGoals || 0) >= p.objective.target;
     p.moral = Math.round(clampV((p.moral || 70) + (met ? 10 : -6), 20, 99));
-    pushInbox(met ? '🎯 Objectif individuel atteint' : '📉 Objectif individuel manqué',
-      met ? `${p.nom} a atteint son objectif de ${p.objective.target} buts (${p.seasonGoals} inscrits) — moral en hausse.`
-          : `${p.nom} n'a marqué que ${p.seasonGoals || 0} but(s) sur un objectif de ${p.objective.target} — un peu déçu.`,
+    pushInbox(met ? 'courrier.objectifJoueur.atteint.titre' : 'courrier.objectifJoueur.manque.titre',
+      met ? 'courrier.objectifJoueur.atteint.corps' : 'courrier.objectifJoueur.manque.corps',
+      { nom: p.nom, cible: p.objective.target, buts: p.seasonGoals || 0 },
       'objectif');
   });
 }
@@ -4793,7 +4828,8 @@ function startPlayoffs() {
   // garantie : la Coupe de France doit toujours être terminée avant les playoffs (donc bien avant les demies)
   if (G.cup && G.cup.season === G.season && !cupIsDone()) {
     cupAutoResolveRest();
-    pushInbox('🏆 Coupe de France', `La coupe a été résolue automatiquement avant le coup d'envoi des playoffs (vainqueur : ${cupTeam(G.cup.champion).name}).`, 'cup');
+    pushInbox('courrier.coupe.titre', 'courrier.coupe.auto',
+      { vainqueur: cupTeam(G.cup.champion).name }, 'cup');
   }
   // La barre des playoffs s'adapte à la poule : les poules réelles vont de 4 à 11 équipes,
   // et un Top 8 figé sortait du tableau (seeds[7] indéfini) dans toute poule de moins de
@@ -5179,16 +5215,9 @@ function alerterDirectionEffectif() {
   const ecart = force - milieu;
   if (ecart >= -2) return; // à niveau, ou au-dessus : rien à signaler
   const grave = ecart <= -6;
-  pushInbox(grave ? '🚨 La direction s\'inquiète de l\'effectif' : '📉 La direction sur l\'effectif',
-    `Un mot sur le groupe avant d'attaquer la saison. La moyenne de l'effectif est à
-     <b>${force}</b>, quand la ${escHtml(DIVISIONS[G.divIdx].label)} tourne autour de
-     <b>${milieu}</b> : <b>${Math.abs(ecart)} points de retard</b>.
-     ${grave
-       ? `À cet écart, l'entraînement seul ne rattrapera pas la saison — il fait gagner
-          quelques points par an, pas dix. Le <b>marché des transferts</b> est le seul levier
-          immédiat : quelques recrues bien choisies valent mieux qu'une saison de séances.`
-       : `L'entraînement peut combler ça sur une saison ou deux si le staff est bon.
-          Un renfort ou deux sur le marché accélérerait les choses.`}`,
+  pushInbox(grave ? 'courrier.effectif.grave.titre' : 'courrier.effectif.leger.titre',
+    grave ? 'courrier.effectif.grave.corps' : 'courrier.effectif.leger.corps',
+    { force: force, division: DIVISIONS[G.divIdx].label, milieu: milieu, ecart: Math.abs(ecart) },
     'contrat');
 }
 
@@ -5207,22 +5236,16 @@ function alerterDirectionDebutSaison() {
      : ` Le prochain palier coûte ${euros(cout)} : <b>${ans} saison${ans > 1 ? 's' : ''} d'épargne</b> au rythme actuel.`);
 
   if (refus === 0) {
-    pushInbox('🏗️ La direction sur les installations',
-      `Un point avant d'entamer la saison. ${detailTravauxStade(suiv)}
-       Sportivement, rien ne nous empêche de viser plus haut — administrativement, si.`, 'board');
+    pushInbox('courrier.stade.point.titre', 'courrier.stade.point.corps',
+      { detailHtml: detailTravauxStade(suiv) }, 'board');
     return;
   }
   if (refus === 1) {
-    pushInbox('🚧 Une montée nous a déjà été refusée',
-      `La saison passée, nous avons gagné sur la piste et perdu au bureau : la montée nous a été
-       <b>refusée</b> faute d'installation classée. ${detailTravauxStade(suiv)}${chiffrage}
-       Recommencer une saison dans ces conditions, ce serait jouer pour rien.`, 'board');
+    pushInbox('courrier.stade.refus1.titre', 'courrier.stade.refus1.corps',
+      { detailHtml: detailTravauxStade(suiv), chiffrageHtml: chiffrage }, 'board');
   } else {
-    pushInbox('🛑 ' + refus + ' montées refusées — la salle est LA priorité',
-      `<b>${refus} fois</b> nous avons mérité la montée sur le terrain, <b>${refus} fois</b> elle nous
-       a été refusée pour la même raison. ${detailTravauxStade(suiv)}${chiffrage}
-       Tant que la salle n'est pas classée, tout l'argent mis dans l'effectif est de l'argent
-       qui ne nous fera pas monter.`, 'board');
+    pushInbox('courrier.stade.refusN.titre', 'courrier.stade.refusN.corps',
+      { n: refus, detailHtml: detailTravauxStade(suiv), chiffrageHtml: chiffrage }, 'board');
   }
   G.tabNotify.club = true;
 }
@@ -5245,11 +5268,10 @@ function alerterDirectionSiMontee() {
   G.alerteStadeTour = (G.alerteStadeTour || 0) + 1;
 
   const dejaRefuse = (G.refusStade || 0) > 0;
-  pushInbox(dejaRefuse ? '🛑 La montée nous échappera encore' : '⚠️ La direction insiste sur les travaux',
-    `Nous sommes ${rang + 1}${rang === 0 ? 'ᵉʳ' : 'ᵉ'} et la montée se dessine. Or elle nous serait
-     <b>refusée en l'état</b>. ${detailTravauxStade(suiv)}
-     ${dejaRefuse ? `C'est exactement ce qui nous est déjà arrivé ${G.refusStade} fois. Il reste
-     ${G.schedule.length - G.day} journée${G.schedule.length - G.day > 1 ? 's' : ''} pour agir.` : ''}`, 'board');
+  pushInbox(dejaRefuse ? 'courrier.stade.encore.titre' : 'courrier.stade.insiste.titre',
+    dejaRefuse ? 'courrier.stade.encore.corps' : 'courrier.stade.insiste.corps',
+    { rang: rang + 1, ordinal: rang === 0 ? 'ᵉʳ' : 'ᵉ', detailHtml: detailTravauxStade(suiv),
+      refus: G.refusStade || 0, n: G.schedule.length - G.day }, 'board');
   G.tabNotify.club = true;
 }
 
@@ -5259,10 +5281,8 @@ function confirmerTravauxSuffisants(avant) {
   if (suiv >= DIVISIONS.length) return;
   if (avant || !stadeSuffisantPour(suiv)) return;
   G.refusStade = 0;              // la contrainte est levée, le compteur repart à zéro
-  pushInbox('✅ Installation homologuée',
-    `Les travaux sont réceptionnés. Notre salle est désormais de <b>classe
-     ${classeActuelle()}</b> : elle satisfait aux exigences de la
-     ${escHtml(DIVISIONS[suiv].label)}. La montée ne dépend plus que du terrain.`, 'board');
+  pushInbox('courrier.stade.homologue.titre', 'courrier.stade.homologue.corps',
+    { classe: classeActuelle(), division: DIVISIONS[suiv].label }, 'board');
 }
 
 function assignBoardObjective() {
@@ -5285,7 +5305,8 @@ function assignBoardObjective() {
     objective = { key: 'playoffs', label: 'Disputer les playoffs (Top 8)' };
   }
   G.boardObjective = objective;
-  pushInbox('📋 Objectif de la direction', `Pour cette saison en ${DIVISIONS[G.divIdx].label}, la direction fixe l'objectif : ${objective.label}.`, 'board');
+  pushInbox('courrier.objectif.fixe.titre', 'courrier.objectif.fixe.corps',
+    { division: DIVISIONS[G.divIdx].label, objectif: objective.label }, 'board');
   alerterDirectionDebutSaison();
   alerterDirectionEffectif();
 }
@@ -5300,9 +5321,9 @@ function evaluateBoardObjective(rank, iAmChampion, n) {
   G.boardConfidence = Math.round(clampV((G.boardConfidence ?? 60) + (met ? 10 : -8), 0, 100));
   const bonus = met ? Math.round(1500 * (1 + DIVISIONS[G.divIdx].prestige)) : 0;
   if (bonus) G.budget += bonus;
-  pushInbox(met ? '✅ Objectif atteint' : '⚠️ Objectif manqué',
-    met ? `La direction est satisfaite : objectif "${G.boardObjective.label}" atteint ! Prime de confiance : ${euros(bonus)}.`
-        : `La direction est déçue : objectif "${G.boardObjective.label}" non atteint (confiance du board en baisse : ${G.boardConfidence}/100).`,
+  pushInbox(met ? 'courrier.objectif.atteint.titre' : 'courrier.objectif.manque.titre',
+    met ? 'courrier.objectif.atteint.corps' : 'courrier.objectif.manque.corps',
+    { objectif: G.boardObjective.label, prime: euros(bonus), confiance: G.boardConfidence },
     'board');
 }
 
@@ -5462,17 +5483,11 @@ function endSeason() {
   // On explique l'accession : sans cela, finir premier sans monter serait incompréhensible.
   if (accession) {
     const tickets = ticketsDeLigue(n);
-    pushInbox(accession.monte ? '🎟️ Accession décrochée' : '🎟️ Phase d\'accession',
-      accession.rang === null && !aLeTicketDAccession(rank + 1, n)
-        ? `${rank + 1}<sup>e</sup> de la poule : pas de ticket pour la phase d'accession. `
-          + `Notre ligue n'y envoie que <b>${tickets}</b> club${tickets > 1 ? 's' : ''}, `
-          + `pris parmi les quatre premiers (art. 9.3 B). Il faut finir plus haut.`
-        : accession.monte
-          ? `Tournoi d'accession remporté : <b>${accession.rang}<sup>e</sup></b> sur les `
-            + `${ACCESSION_PLACES} places nationales. Direction la Nationale 3.`
-          : `Tournoi d'accession disputé, mais la place nous échappe : seules `
-            + `<b>${ACCESSION_PLACES} places</b> sont en jeu pour toute la France (art. 9.3 C). `
-            + `Gagner sa poule ne suffit pas — il faut sortir du tournoi.`,
+    pushInbox(accession.monte ? 'courrier.accession.decrochee.titre' : 'courrier.accession.phase.titre',
+      (accession.rang === null && !aLeTicketDAccession(rank + 1, n))
+        ? 'courrier.accession.pasDeTicket'
+        : (accession.monte ? 'courrier.accession.gagnee' : 'courrier.accession.perdue'),
+      { rang: rank + 1, n: tickets, place: accession.rang, places: ACCESSION_PLACES },
       'board');
   }
   presenterResumeSaison({ rank: rank, n: n, basePrize: basePrize }, {
@@ -5537,7 +5552,10 @@ function endSeason() {
     const statLine = p.careerGoals > 0
       ? ` Il quitte le club avec ${p.careerGoals} but(s) inscrit(s) en ${p.careerGames} match(s) sous le maillot de ${me.name}.`
       : ` Il quitte le club après ${p.careerGames} match(s) sous le maillot de ${me.name}.`;
-    pushInbox('🎽 Fin de carrière nationale', `<img src="${portraitFor(p.id)}" class="portrait-thumb sm" alt="">${p.nom} (${p.age} ans) quitte le championnat national.${statLine} Il compte bien continuer à patiner en régionale, plus tranquillement. Merci pour tout !`, 'contrat');
+    pushInbox('courrier.carriere.titre', 'courrier.carriere.corps',
+      { nom: p.nom, age: p.age,
+        portraitHtml: `<img src="${portraitFor(p.id)}" class="portrait-thumb sm" alt="">`,
+        statsHtml: statLine }, 'contrat');
   });
   // Pôle Espoir : forme régulièrement de jeunes recrues qui rejoignent directement l'effectif —
   // compense en partie les départs à la retraite. Le niveau détermine clairement leur qualité de
@@ -5561,17 +5579,26 @@ function endSeason() {
       prospect.contractYears = irnd(3, 5); // premier contrat pro, plus long
       prospect.salaire = playerSalary(prospect);
       me.players.push(prospect);
-      pushInbox('🌟 Nouvel espoir', `<img src="${portraitFor(prospect.id)}" class="portrait-thumb sm" alt="">${prospect.nom} (${prospect.age} ans, ${prospect.pos}) sort du Pôle Espoir et signe son premier contrat professionnel avec le club.`, 'contrat');
+      pushInbox('courrier.espoir.titre', 'courrier.espoir.corps',
+        { nom: prospect.nom, age: prospect.age, poste: prospect.pos,
+          portraitHtml: `<img src="${portraitFor(prospect.id)}" class="portrait-thumb sm" alt="">` },
+        'contrat');
     }
   }
   // fin de contrat : renouvellement automatique si le joueur est content (moral correct), sinon il part libre
   departs.forEach(p => {
     if (p.moral >= 55 && Math.random() < 0.75) {
       p.contractYears = irnd(2, 4);
-      pushInbox('Prolongation', `<img src="${portraitFor(p.id)}" class="portrait-thumb sm" alt="">${p.nom} a prolongé son contrat pour ${p.contractYears} saison(s).`, 'contrat');
+      pushInbox('courrier.prolongation.titre', 'courrier.prolongation.corps',
+        { nom: p.nom, n: p.contractYears,
+          portraitHtml: `<img src="${portraitFor(p.id)}" class="portrait-thumb sm" alt="">` },
+        'contrat');
     } else {
       me.players = me.players.filter(x => x.id !== p.id);
-      pushInbox('Fin de contrat', `<img src="${portraitFor(p.id)}" class="portrait-thumb sm" alt="">${p.nom} a quitté le club, contrat arrivé à échéance (parti libre).`, 'contrat');
+      pushInbox('courrier.finContrat.titre', 'courrier.finContrat.corps',
+        { nom: p.nom,
+          portraitHtml: `<img src="${portraitFor(p.id)}" class="portrait-thumb sm" alt="">` },
+        'contrat');
     }
   });
   if (me.players.filter(p => p.pos === 'G').length < 1 || me.players.filter(p => p.pos !== 'G').length < 8) {
@@ -5606,7 +5633,8 @@ function endSeason() {
       p[stat] = Math.round(clampV(p[stat] + irnd(0, 2), 30, cap));
       p.forme = irnd(80, 100);
       me.players.push(p);
-      pushInbox('🔄 Retour de prêt', `${p.nom} revient de prêt.`, 'transfert');
+      pushInbox('courrier.retourPret.titre', 'courrier.retourPret.corps',
+        { nom: p.nom }, 'transfert');
     });
     G.loanedOut = [];
   }
@@ -6077,7 +6105,7 @@ async function loanPlayer(playerId) {
   p.starter = false;
   if (!G.loanedOut) G.loanedOut = [];
   G.loanedOut.push(p);
-  pushInbox('🔄 Prêt', `${p.nom} est prêté pour le reste de la saison. Il reviendra à l'intersaison.`, 'transfert');
+  pushInbox('courrier.pret.titre', 'courrier.pret.corps', { nom: p.nom }, 'transfert');
   autoLineupIfBroken();
   renderAll();
 }
@@ -7698,13 +7726,10 @@ function startCup() {
   };
   const mySeed = allTeams.findIndex(t => t.human) + 1;
   const jEntreAu = SEUIL_ENTREE[G.divIdx];
-  pushInbox('🏆 Coupe de France',
-    `Tirage au sort effectué : <b>${allTeams.length} clubs engagés</b>, du Régional à l'Élite —
-     un par association, comme le veut le règlement.
-     ${jEntreAu
-       ? `Ton niveau te fait entrer plus tard, quand il ne restera que ${jEntreAu} équipes.`
-       : `Tu entres dès le premier tour${G.cup.byes.includes(myTeam().cupId) ? ', et tu en es exempté' : ''}.`}
-     Tête de série n°${mySeed}.`, 'cup');
+  pushInbox('courrier.coupe.titre',
+    jEntreAu ? 'courrier.coupe.tirage.tard' : (G.cup.byes.includes(myTeam().cupId)
+      ? 'courrier.coupe.tirage.exempt' : 'courrier.coupe.tirage.premier'),
+    { clubs: allTeams.length, entree: jEntreAu || 0, tete: mySeed }, 'cup');
   renderAll();
 }
 
@@ -7788,9 +7813,10 @@ function cupBuildNextRound() {
     const champ = cupTeam(cup.champion);
     const bonus = champ.human ? Math.round(4000 * (1 + DIVISIONS[G.divIdx].prestige)) : 0;
     if (champ.human) G.budget += bonus;
-    pushInbox('🏆 Coupe de France terminée', champ.human
-      ? `Ton équipe remporte la Coupe de France, face à ${allCupTeamsCount()} équipes engagées ! Prime : ${euros(bonus)}.`
-      : `${champ.name} (${champ.cupOrigin || DIVISIONS[G.divIdx].label}) remporte la Coupe de France cette saison.`, 'cup');
+    pushInbox('courrier.coupe.fin.titre',
+      champ.human ? 'courrier.coupe.fin.gagnee' : 'courrier.coupe.fin.autre',
+      { equipes: allCupTeamsCount(), prime: euros(bonus), nom: champ.name,
+        origine: champ.cupOrigin || DIVISIONS[G.divIdx].label }, 'cup');
     return;
   }
   const compose = cupComposerTour(nextTeams);
@@ -7954,9 +7980,9 @@ function renderInbox() {
     <div class="msg t-${m.type || 'info'}">
       <span class="ic">${typeIcon[m.type] || 'ℹ️'}</span>
       <div class="tx">
-        <b>${m.title}</b>
-        <p>${m.body}</p>
-        <span class="q">Saison ${m.season} · journée ${m.day}</span>
+        <b>${messageTitre(m)}</b>
+        <p>${messageCorps(m)}</p>
+        <span class="q">${T('courrier.date', { saison: m.season, journee: m.day })}</span>
       </div>
     </div>`).join('');
 
