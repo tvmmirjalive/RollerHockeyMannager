@@ -3099,18 +3099,18 @@ async function effacerSlot(s, ev) {
   const quoi = r.illisible
     ? `la sauvegarde illisible de l'emplacement ${s} (${r.octets} octets)`
     : `la partie de ${r.nom} (${r.divLabel}, saison ${r.saison})`;
-  if (!(await ask({ title: 'Effacer cet emplacement', ico: '🗑️', danger: true, okLabel: 'Effacer',
-    text: `Effacer définitivement ${quoi} ?` }))) return;
+  if (!(await ask({ title: T('dlg.effacer.titre'), ico: '🗑️', danger: true, okLabel: T('dlg.effacer.ok'),
+      text: T('dlg.effacer.texte', { quoi }) }))) return;
   clearLocal(s);
   refreshMenu();
-  toast('Emplacement effacé.', 'info');
+  toast(T('toast.emplacementEfface'), 'info');
 }
 
 // Version du jeu. Source unique dans le HTML, tenue en phase avec `versionCode` et
 // `versionName` du build Android par 4-outils/patch-version.py, qui refuse de s'appliquer
 // si les deux divergent. Le mode d'échec évité est réel : l'APK a annoncé « 1.0 » pendant
 // soixante-dix-sept versions parce que rien ne reliait le jeu à son numéro.
-const VERSION_JEU = '114';
+const VERSION_JEU = '115';
 
 function refreshMenu() {
   const vers = document.getElementById('menuVersion');
@@ -3169,7 +3169,7 @@ function refreshMenu() {
 
 function continueGame() {
   const lu = lireSauvegarde();
-  if (lu.etat === 'vide') { toast("Aucune partie sauvegardée à cet emplacement.", 'warn'); refreshMenu(); return; }
+  if (lu.etat === 'vide') { toast(T('toast.aucuneSauvegarde'), 'warn'); refreshMenu(); return; }
   if (lu.etat === 'illisible') {
     // Le diagnostic vient tôt : c'est ce qu'on copie pour signaler le problème. La
     // réassurance — rien n'est effacé — vient après, une fois le fait établi.
@@ -3202,8 +3202,8 @@ function initMenu() {
   document.getElementById('menuNew').addEventListener('click', async () => {
     const saved = loadLocalRaw();
     if (saved && !(await ask({
-      title: "Nouvelle partie", ico: '⚠️', danger: true, okLabel: "Écraser et continuer",
-      text: "Une partie est déjà en cours.\n\nDémarrer une nouvelle partie effacera définitivement la sauvegarde automatique. Pense à l'exporter d'abord si tu veux la garder."
+      title: T('dlg.nouvelle.titre'), ico: '⚠️', danger: true, okLabel: T('dlg.nouvelle.ok'),
+      text: T('dlg.nouvelle.texte')
     }))) return;
     openTeamSelect();
   });
@@ -3674,9 +3674,7 @@ function basculerConsigne(id) {
   const p = myTeam().players.find(x => x.id === id);
   if (!p) return;
   p.consigne = (p.consigne === 'prudent') ? null : 'prudent';
-  toast(p.consigne
-    ? `${p.nom} est sous consigne de prudence : moins de fautes, moins de rendement.`
-    : `${p.nom} retrouve sa liberté de jeu.`, 'info');
+  toast(p.consigne ? T('toast.consigneOn', { nom: p.nom }) : T('toast.consigneOff', { nom: p.nom }), 'info');
   renderEffectif();
   flushSave();
 }
@@ -4186,7 +4184,7 @@ async function upgradeInfra(kind) {
   const nextLevel = G.club[kind] + 1;
   const reqDiv = infraLevelDivRequirement(nextLevel);
   if (G.divIdx < reqDiv) {
-    toast(`Le niveau ${nextLevel} exige d'évoluer au moins en ${DIVISIONS[reqDiv].label}.`);
+    toast(T('toast.niveauExige', { n: nextLevel, division: DIVISIONS[reqDiv].label }));
     return;
   }
   if (G.upgradesThisSeason >= MAX_UPGRADES_PER_SEASON) {
@@ -4208,7 +4206,7 @@ async function buyLoge() {
   const nextLoge = G.club.loges + 1;
   const reqDiv = logeDivRequirement(nextLoge);
   if (G.divIdx < reqDiv) {
-    toast(`Cette loge VIP (${nextLoge}e) exige d'évoluer au moins en ${DIVISIONS[reqDiv].label}.`);
+    toast(T('toast.logeExige', { n: nextLoge, division: DIVISIONS[reqDiv].label }));
     return;
   }
   if (G.upgradesThisSeason >= MAX_UPGRADES_PER_SEASON) {
@@ -4217,8 +4215,8 @@ async function buyLoge() {
   }
   const cost = 4000 + G.club.loges * 800;
   if (G.budget < cost) { toast("Budget insuffisant.", 'bad'); return; }
-  if (!(await ask({ title: "Loge VIP", ico: '🏗️', okLabel: "Construire",
-    text: `Construire une loge VIP supplémentaire pour ${euros(cost)} ?` }))) return;
+  if (!(await ask({ title: T('infra.loges.label'), ico: '🏗️', okLabel: T('dlg.loge.ok'),
+      text: T('dlg.loge.texte', { prix: euros(cost) }) }))) return;
   G.budget -= cost;
   G.club.loges++;
   G.upgradesThisSeason++;
@@ -4233,12 +4231,12 @@ async function toggleSponsor(idx) {
   if (!G.club.sponsors) G.club.sponsors = [];
   if (sponsorSigned(idx)) {
     // résilier ce sponsor
-    if (!(await ask({ title: "Résilier un sponsor", ico: '📝', danger: true, okLabel: "Résilier",
-      text: `Résilier le contrat avec ${nomSponsor(idx)} ?\n\nTu perds ${euros(tier.income)} par match.` }))) return;
+    if (!(await ask({ title: T('dlg.sponsor.titre'), ico: '📝', danger: true, okLabel: T('club.sponsor.resilier'),
+      text: T('dlg.sponsor.texte', { nom: nomSponsor(idx), montant: euros(tier.income) }) }))) return;
     G.club.sponsors = G.club.sponsors.filter(i => i !== idx);
   } else {
     if (!sponsorUnlocked(tier)) {
-      toast(`Prérequis non remplis pour ${nomSponsor(idx)} : ${sponsorRequirementText(tier)}.`);
+      toast(T('toast.prerequis', { quoi: nomSponsor(idx), detail: sponsorRequirementText(tier) }));
       return;
     }
     G.club.sponsors.push(idx);
@@ -4318,7 +4316,7 @@ function computeMatchFinance(isHome) {
 }
 
 function playDay() {
-  if (G.day >= G.schedule.length) { toast("La saison est terminée — lance la suivante depuis le Classement.", 'info'); return; }
+  if (G.day >= G.schedule.length) { toast(T('toast.saisonTerminee'), 'info'); return; }
   const round = G.schedule[G.day];
   let myResult = null;
   round.forEach(m => {
@@ -5756,7 +5754,7 @@ function fillMarket() {
 // indemnité de départ est ajoutée au coût (pas besoin de le licencier au préalable).
 async function hireStaff(role, coachId) {
   if (!roleUnlocked(role)) {
-    toast(`Prérequis non remplis pour ${ROLES[role].label} : ${roleRequirementText(role)}.`);
+    toast(T('toast.prerequis', { quoi: roleLabel(role), detail: roleRequirementText(role) }));
     return;
   }
   const cand = G.market[role].find(c => c.id === coachId);
@@ -5784,9 +5782,9 @@ async function fireStaff(role) {
   const c = G.staff[role];
   if (!c) return;
   const indemnite = coachSeverance(c);
-  if (!(await ask({ title: "Licencier", ico: '🧢', danger: true, okLabel: "Licencier",
-    text: `Licencier ${c.nom} ?\n\nIndemnité de départ : ${euros(indemnite)}. Il retournera sur le marché.` }))) return;
-  if (G.budget < indemnite) { toast("Budget insuffisant pour payer l'indemnité.", 'bad'); return; }
+  if (!(await ask({ title: T('dlg.licencier.titre'), ico: '🧢', danger: true, okLabel: T('dlg.licencier.titre'),
+      text: T('dlg.licencier.texte', { nom: c.nom, montant: euros(indemnite) }) }))) return;
+  if (G.budget < indemnite) { toast(T('toast.budgetIndemnite'), 'bad'); return; }
   G.budget -= indemnite;
   G.market[role].push(c); // il reste disponible sur le marché
   G.staff[role] = null;
@@ -5797,7 +5795,7 @@ async function fireStaff(role) {
 async function trainCoach(role) {
   const c = G.staff[role];
   if (!c) return;
-  if (c.note >= 95) { toast("Ce coach a atteint son plafond de compétence.", 'info'); return; }
+  if (c.note >= 95) { toast(T('toast.coachPlafond'), 'info'); return; }
   const cost = coachTrainCost(c.note);
   if (G.budget < cost) { toast("Budget insuffisant pour cette formation.", 'bad'); return; }
   if (!(await ask({ title: "Formation", ico: '📈', okLabel: "Financer",
@@ -5854,13 +5852,13 @@ function applyTraining(mode) {
 // Séance d'entraînement hors match : utilisable une fois entre deux journées, fait progresser
 // en priorité les joueurs laissés au repos (la ligne complète qui ne joue pas).
 function runTrainingSession() {
-  if (!G.trainingAvailable) { toast("Séance déjà menée cette semaine — la prochaine sera disponible après le prochain match.", 'info'); return; }
+  if (!G.trainingAvailable) { toast(T('toast.seanceDeja'), 'info'); return; }
   if (Object.values(G.staff).every(v => !v)) { toast("Aucun coach en poste : recrute au moins un membre du staff.", 'warn'); return; }
   applyTraining('session');
   renderAll();
   const gains = G.lastSessionTraining;
   if (!gains.length) {
-    toast("Séance terminée — aucune progression cette fois-ci.", 'info');
+    toast(T('toast.seanceSansGain'), 'info');
   } else {
     notify({
       title: "Séance d'entraînement", ico: '🏋️',
@@ -5971,14 +5969,14 @@ function signNewContract(p) {
 }
 
 async function buyPlayer(teamId, playerId) {
-  if (G.season < 2) { toast("Le marché des transferts n'ouvre qu'à partir de la saison 2.", 'info'); return; }
+  if (G.season < 2) { toast(T('toast.marcheFerme'), 'info'); return; }
   const seller = G.teams[teamId];
   const p = seller.players.find(x => x.id === playerId);
   if (!p) return;
   if (!canSell(seller, p)) { toast("Ce club refuse de vendre : son effectif est trop court.", 'warn'); return; }
   const basePrice = playerValue(p) * 1.1;
   const neg = negotiatePrice(p, basePrice);
-  if (!neg.ok) { toast(`${seller.name} refuse catégoriquement de vendre ${p.nom}.`, 'bad'); return; }
+  if (!neg.ok) { toast(T('toast.refuseVendre', { club: seller.name, nom: p.nom }), 'bad'); return; }
   if (G.budget < neg.price) { toast("Budget insuffisant." + (neg.countered ? ` ${seller.name} demandait ${euros(neg.price)} (contre-offre).` : ''), 'bad'); return; }
   const msg = neg.countered
     ? `${seller.name} refuse le prix affiché et demande ${euros(neg.price)} pour ${p.nom}. Accepter ?`
@@ -6009,14 +6007,14 @@ function buildScoutPool() {
   return pool;
 }
 async function buyScoutPlayer(scoutId) {
-  if (G.season < 2) { toast("Le marché des transferts n'ouvre qu'à partir de la saison 2.", 'info'); return; }
+  if (G.season < 2) { toast(T('toast.marcheFerme'), 'info'); return; }
   const entry = G.scoutPool.find(e => e.p.id === scoutId);
   if (!entry) return;
   const { p, divIdx, clubName } = entry;
   const premium = divIdx < G.divIdx ? 1.25 : 0.95; // débaucher d'une division supérieure coûte plus cher
   const basePrice = playerValue(p) * 1.1 * premium;
   const neg = negotiatePrice(p, basePrice);
-  if (!neg.ok) { toast(`${clubName} refuse catégoriquement de laisser partir ${p.nom}.`, 'bad'); return; }
+  if (!neg.ok) { toast(T('toast.refusePartir', { club: clubName, nom: p.nom }), 'bad'); return; }
   if (G.budget < neg.price) { toast("Budget insuffisant." + (neg.countered ? ` ${clubName} demandait ${euros(neg.price)} (contre-offre).` : ''), 'bad'); return; }
   const msg = neg.countered
     ? `${clubName} (${DIVISIONS[divIdx].label}) refuse le prix affiché et demande ${euros(neg.price)} pour ${p.nom}. Accepter ?`
@@ -6051,10 +6049,10 @@ async function loanPlayer(playerId) {
   const me = myTeam();
   const p = me.players.find(x => x.id === playerId);
   if (!p) return;
-  if (p.injured) { toast("Un joueur blessé ne peut pas être prêté.", 'warn'); return; }
-  if (!canSell(me, p)) { toast("Il faut garder assez de joueurs pour prêter celui-ci.", 'warn'); return; }
-  if (!(await ask({ title: "Prêter un joueur", ico: '🔄', okLabel: "Prêter",
-    text: `Prêter ${p.nom} pour le reste de la saison ?\n\nIl reviendra à l'intersaison, avec un peu d'expérience en plus.` }))) return;
+  if (p.injured) { toast(T('toast.blesseNonPrete'), 'warn'); return; }
+  if (!canSell(me, p)) { toast(T('toast.effectifTropCourt'), 'warn'); return; }
+  if (!(await ask({ title: T('dlg.pret.titre'), ico: '🔄', okLabel: T('effectif.preter'),
+    text: T('dlg.pret.texte', { nom: p.nom }) }))) return;
   me.players = me.players.filter(x => x.id !== playerId);
   p.starter = false;
   if (!G.loanedOut) G.loanedOut = [];
@@ -6074,7 +6072,7 @@ function toggleStarter(playerId) {
   const me = myTeam();
   const p = me.players.find(x => x.id === playerId);
   if (!p) return;
-  if (p.injured) { toast(`${p.nom} est blessé — ${p.injuryWeeks} journée(s) avant son retour.`, 'warn'); return; }
+  if (p.injured) { toast(T('toast.blesse', { nom: p.nom, n: p.injuryWeeks }), 'warn'); return; }
   // Le gardien reste un simple titulaire : il ne tourne pas.
   if (p.pos === 'G') {
     if (p.starter) { p.starter = false; p.ligne = 0; }
@@ -6543,7 +6541,7 @@ function basculerEcran(t) {
   const r = reglages();
   const i = r.navActifs.indexOf(t);
   if (i >= 0) {
-    if (r.navActifs.length <= 1) { toast("Il faut garder au moins un écran dans la barre.", 'warn'); return; }
+    if (r.navActifs.length <= 1) { toast(T('toast.barreVide'), 'warn'); return; }
     r.navActifs.splice(i, 1);
   } else {
     r.navActifs.push(t);
@@ -7632,7 +7630,7 @@ const CUP_MIN_DIV_IDX = 0; // plus aucune division exclue
 // retrouver le plus tôt possible un nombre de participants adéquat ».
 function startCup() {
   if (G.day < cupRoundUnlockDay(0)) {
-    toast(`Tirage au sort de la Coupe disponible à partir de la journée ${cupRoundUnlockDay(0) + 1}.`, 'info');
+    toast(T('toast.tirageCoupe', { n: cupRoundUnlockDay(0) + 1 }), 'info');
     return;
   }
   const teamsById = {};
@@ -7815,11 +7813,11 @@ function cupHasPendingAction() {
 // la coupe continue de suivre le rythme du calendrier, tour par tour.
 function advanceCupStep() {
   if (!G.cup || G.cup.season !== G.season) { startCup(); return; }
-  if (cupIsDone()) { toast("La Coupe de France de cette saison est terminée.", 'info'); return; }
+  if (cupIsDone()) { toast(T('toast.coupeTerminee'), 'info'); return; }
 
   const unlockDay = cupRoundUnlockDay(G.cup.roundIdx);
   if (G.day < unlockDay) {
-    toast(`Ce tour de Coupe se débloque à la journée ${unlockDay + 1} (actuelle : ${G.day + 1}).`, 'info');
+    toast(T('toast.tourCoupe', { n: unlockDay + 1, actuelle: G.day + 1 }), 'info');
     return;
   }
   const round = cupCurrentRound();
@@ -8044,8 +8042,8 @@ async function exportSaveFile() {
         dialogTitle: 'Exporter la sauvegarde'
       });
     } else {
-      notify({ title: "Sauvegarde exportée", ico: '💾', kind: 'good',
-        text: "Le fichier a été écrit ici :\n\n" + res.uri });
+      notify({ title: T('dlg.exportOk.titre'), ico: '💾', kind: 'good',
+        text: T('dlg.exportOk.texte', { chemin: res.uri }) });
     }
     return;
   }
@@ -8063,8 +8061,8 @@ async function exportSaveFile() {
 document.getElementById('btnSave').addEventListener('click', () => {
   exportSaveFile().catch(err => {
     console.error(err);
-    notifyError("Export impossible",
-      "La sauvegarde n'a pas pu être exportée.\n\nDétail technique : " + err.message);
+    notifyError(T('dlg.exportImpossible.titre'),
+      T('dlg.exportImpossible.texte', { detail: err.message }));
   });
 });
 
@@ -8212,15 +8210,15 @@ function handleSaveFile(file, onDone) {
       if (onDone) onDone();
     } catch (err) {
       console.error(err);
-      notifyError("Fichier invalide",
-      "Ce fichier n'est pas une sauvegarde Roller Hockey Manager exploitable.\n\nDétail technique : " + err.message);
+      notifyError(T('dlg.fichierInvalide.titre'),
+      T('dlg.fichierInvalide.texte', { detail: err.message }));
     }
   };
   reader.readAsText(file);
 }
 
 document.getElementById('fileLoad').addEventListener('change', e => {
-  handleSaveFile(e.target.files[0], () => toast("Sauvegarde chargée !", 'good'));
+  handleSaveFile(e.target.files[0], () => toast(T('toast.sauvegardeChargee'), 'good'));
   e.target.value = '';
 });
 document.getElementById('btnNew').addEventListener('click', async () => {
