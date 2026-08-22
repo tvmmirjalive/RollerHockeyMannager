@@ -1133,7 +1133,7 @@
   <div class="menu-inner">
     <div class="ts-tagline">Roller in line hockey · Saison 2026-2027</div>
     <h1 class="menu-title">ROLLER HOCKEY <span>MANAGER</span></h1>
-    <p class="menu-sub">Prends un club au plancher de la pyramide et fais-le monter jusqu'à l'Élite.</p>
+    <p class="menu-sub" id="menuSub"></p>
     <p class="menu-version" id="menuVersion"></p>
     <div class="menu-actions">
       <div id="menuSlots"></div>
@@ -1146,8 +1146,8 @@
         <span class="menu-btn-detail">Choisis ton club</span>
       </button>
       <label class="menu-btn" for="menuFileLoad">
-        <span class="menu-btn-label">📂 Charger une sauvegarde</span>
-        <span class="menu-btn-detail">Depuis un fichier .json</span>
+        <span class="menu-btn-label" id="menuLoadLabel">📂</span>
+        <span class="menu-btn-detail" id="menuLoadDetail"></span>
         <input type="file" id="menuFileLoad" accept=".json" style="display:none">
       </label>
     </div>
@@ -3110,9 +3110,16 @@ async function effacerSlot(s, ev) {
 // `versionName` du build Android par 4-outils/patch-version.py, qui refuse de s'appliquer
 // si les deux divergent. Le mode d'échec évité est réel : l'APK a annoncé « 1.0 » pendant
 // soixante-dix-sept versions parce que rien ne reliait le jeu à son numéro.
-const VERSION_JEU = '115';
+const VERSION_JEU = '116';
 
 function refreshMenu() {
+  // Les textes de l'écran titre sont écrits ICI et non en HTML statique : sinon ils
+  // resteraient en français après un changement de langue, comme la barre du bas l'a fait.
+  const poserMenu = (id, cle) => { const e = document.getElementById(id); if (e) e.textContent = T(cle); };
+  poserMenu('menuSub', 'menu.sousTitre');
+  poserMenu('menuLoadDetail', 'menu.charger.detail');
+  const chargerLbl = document.getElementById('menuLoadLabel');
+  if (chargerLbl) chargerLbl.textContent = '📂 ' + T('menu.charger');
   const vers = document.getElementById('menuVersion');
   if (vers) vers.textContent = 'version ' + VERSION_JEU;
   const btn = document.getElementById('menuContinue');
@@ -3132,22 +3139,22 @@ function refreshMenu() {
       b.onclick = () => choisirSlot(s);
       const label = document.createElement('span');
       label.className = 'menu-btn-label';
-      label.textContent = abime ? `⚠️ Emplacement ${s} — sauvegarde illisible`
-        : r ? `▶ ${r.nom}` : `⚡ Emplacement ${s} — libre`;
+      label.textContent = abime ? '⚠️ ' + T('menu.slot.illisible', { n: s })
+        : r ? `▶ ${r.nom}` : '⚡ ' + T('menu.slot.libre', { n: s });
       const detail = document.createElement('span');
       detail.className = 'menu-btn-detail';
       // Une sauvegarde abîmée n'est pas effacée d'office : elle reste là, signalée, et
       // c'est au joueur de décider — il peut vouloir la récupérer autrement.
       detail.textContent = abime
-        ? `${r.octets} octets illisibles — clique pour en savoir plus, ou efface-la`
-        : r ? `${r.divLabel} · saison ${r.saison}, journée ${r.journee}${r.when ? ' — ' + r.when : ''}`
-        : 'Démarrer une nouvelle partie ici';
+        ? T('menu.slot.illisible.detail', { n: r.octets })
+        : r ? `${r.divLabel} · ${T('menu.slot.detail', { saison: r.saison, journee: r.journee })}${r.when ? ' — ' + r.when : ''}`
+        : T('menu.slot.demarrer');
       b.appendChild(label); b.appendChild(detail);
       if (r) {
         const del = document.createElement('span');
         del.className = 'menu-slot-del';
         del.textContent = '🗑️';
-        del.title = 'Effacer cet emplacement';
+        del.title = T('dlg.effacer.titre');
         del.onclick = (ev) => effacerSlot(s, ev);
         b.appendChild(del);
       }
@@ -3162,9 +3169,7 @@ function refreshMenu() {
     localStorage.removeItem('rhm_test');
     storageOk = true;
   } catch (e) {}
-  foot.textContent = storageOk
-    ? "La partie est sauvegardée automatiquement dans ce navigateur. Pense à exporter un fichier depuis l'onglet Sauvegarde pour la garder ailleurs."
-    : "⚠ Ce navigateur bloque le stockage local : l'option Continuer est indisponible. Utilise l'export/import de fichier depuis l'onglet Sauvegarde.";
+  foot.textContent = storageOk ? T('menu.pied.ok') : '⚠ ' + T('menu.pied.bloque');
 }
 
 function continueGame() {
@@ -3174,10 +3179,7 @@ function continueGame() {
     // Le diagnostic vient tôt : c'est ce qu'on copie pour signaler le problème. La
     // réassurance — rien n'est effacé — vient après, une fois le fait établi.
     notifyError("Sauvegarde illisible",
-      `L'emplacement ${SLOT} contient une sauvegarde qui n'a pas pu être relue.\n\n`
-      + `Détail technique : ${lu.erreur} (${lu.octets} octets)\n\n`
-      + `Elle est corrompue, ou issue d'une version trop ancienne. Elle n'a pas été `
-      + `effacée : tu peux l'effacer depuis le menu, ou jouer sur un autre emplacement.`);
+      T('dlg.illisible.emplacement', { n: SLOT, erreur: lu.erreur, octets: lu.octets }));
     refreshMenu();
     return;
   }
@@ -3187,8 +3189,7 @@ function continueGame() {
   } catch (e) {
     console.error(e);
     notifyError("Sauvegarde illisible",
-      "La sauvegarde automatique n'a pas pu être relue. Elle est peut-être corrompue ou issue d'une version trop ancienne.\n\n"
-      + "Détail technique : " + e.message);
+      T('dlg.illisible.auto', { detail: e.message }));
   }
 }
 
@@ -4511,6 +4512,13 @@ function playoffTeam(id) {
   return undefined;
 }
 
+// Libellé d'une série. Accepte les deux formes : les parties en cours portent une phrase.
+function serieLabel(label) {
+  if (!label) return '';
+  if (typeof label === 'string') return label;
+  return T(label.cle, { n: label.n });
+}
+
 function makeSeries(homeId, awayId, label) {
   // homeId = mieux classe en saison reguliere : recoit le match aller et l'eventuel match d'appui
   return { home: homeId, away: awayId, games: [], winsHome: 0, winsAway: 0, winner: null, label };
@@ -4847,21 +4855,21 @@ let stage, quarts = null, demis = null, finale = null;
     quarts = [0, 1, 2, 3]
       .map(r => [p1[r], p2[3 - r]])
       .filter(([a, b]) => a && b)
-      .map(([a, b], i) => makeSeries(a.id, b.id, `Quart de finale ${i + 1}`));
+      .map(([a, b], i) => makeSeries(a.id, b.id, { cle: 'playoffs.serie.quart', n: i + 1 }));
     tableDemies = [[0, 2], [1, 3]];
     stage = 'quarts';
   } else if (nQual === 8) {
     // bracket classique : 1v8, 4v5, 3v6, 2v7
     quarts = [[0, 7], [3, 4], [2, 5], [1, 6]]
-      .map(([a, b], i) => makeSeries(seeds[a].id, seeds[b].id, `Quart de finale ${i + 1}`));
+      .map(([a, b], i) => makeSeries(seeds[a].id, seeds[b].id, { cle: 'playoffs.serie.quart', n: i + 1 }));
     stage = 'quarts';
   } else if (nQual === 4) {
     // 1v4 et 2v3, comme le règlement le prévoit en N3, N2 et N1 (art. 4.4 G, 3.5 E, 2.6 C)
     demis = [[0, 3], [1, 2]]
-      .map(([a, b], i) => makeSeries(seeds[a].id, seeds[b].id, `Demi-finale ${i + 1}`));
+      .map(([a, b], i) => makeSeries(seeds[a].id, seeds[b].id, { cle: 'playoffs.serie.demi', n: i + 1 }));
     stage = 'demis';
   } else {
-    finale = [makeSeries(seeds[0].id, seeds[1].id, 'Finale')];
+    finale = [makeSeries(seeds[0].id, seeds[1].id, { cle: 'playoffs.serie.finale' })];
     stage = 'finale';
   }
   G.playoff = { stage, seedRank, quarts, demis, finale, tableDemies, champion: null, finalists: [], humanOut: false, nQual };
@@ -5011,11 +5019,11 @@ function buildNextRound() {
     // Les sauvegardes d'avant cette version n'en ont pas : on retombe sur l'ancien appariement.
     const table = po.tableDemies || [[0, 1], [2, 3]];
     po.demis = table.map(([a, b], i) =>
-      makeSeries(betterSeed(w[a], w[b]), worseSeed(w[a], w[b]), `Demi-finale ${i + 1}`));
+      makeSeries(betterSeed(w[a], w[b]), worseSeed(w[a], w[b]), { cle: 'playoffs.serie.demi', n: i + 1 }));
     po.stage = 'demis';
   } else if (po.stage === 'demis') {
     const w = roundArr.map(s => s.winner);
-    po.finale = [makeSeries(betterSeed(w[0], w[1]), worseSeed(w[0], w[1]), 'Finale')];
+    po.finale = [makeSeries(betterSeed(w[0], w[1]), worseSeed(w[0], w[1]), { cle: 'playoffs.serie.finale' })];
     po.stage = 'finale';
   } else if (po.stage === 'finale') {
     po.champion = roundArr[0].winner;
@@ -5075,10 +5083,11 @@ function advancePlayoffs() {
 
   if (humanSeries.winner === null) {
     const { home, away, res, game } = runSeriesGame(humanSeries);
-    const scoreLine = `${playoffTeam(humanSeries.home).name} mène ${humanSeries.winsHome}-${humanSeries.winsAway} face à ${playoffTeam(humanSeries.away).name}`;
+    const scoreLine = T('playoffs.mene', { meneur: playoffTeam(humanSeries.home).name,
+      a: humanSeries.winsHome, b: humanSeries.winsAway, adversaire: playoffTeam(humanSeries.away).name });
     G.lastReport = {
       m: game, res, home, away, playoff: true,
-      title: `${humanSeries.label} — match ${game.num}${humanSeries.winner ? ' (série remportée)' : ''} — ${scoreLine}`
+      title: `${serieLabel(humanSeries.label)} — ${T('playoffs.match', { n: game.num })}${humanSeries.winner ? ' ' + T('playoffs.serieRemportee') : ''} — ${scoreLine}`
     };
     if (humanSeries.winner !== null && humanSeries.winner !== myTeam().id) po.humanOut = true;
 
@@ -5171,9 +5180,9 @@ function alerterDirectionDebutSaison() {
   // Le chiffrage n'apparaît qu'à partir du premier refus : avant, le joueur a d'autres
   // priorités légitimes et l'assommer de calculs serait contre-productif.
   const chiffrage = refus === 0 ? '' :
-    (ans === 0 ? ` Nous avons déjà de quoi payer le prochain palier (${euros(cout)}) : il n'y a plus qu'à décider.`
-     : ans === null ? ` Le prochain palier coûte ${euros(cout)}, et nous ne dégageons rien cette saison. Il faut trouver des recettes.`
-     : ` Le prochain palier coûte ${euros(cout)} : <b>${ans} saison${ans > 1 ? 's' : ''} d'épargne</b> au rythme actuel.`);
+    ' ' + (ans === 0 ? T('stade.chiffrage.pret', { montant: euros(cout) })
+     : ans === null ? T('stade.chiffrage.rien', { montant: euros(cout) })
+     : T('stade.chiffrage.epargne', { montant: euros(cout), n: ans }));
 
   if (refus === 0) {
     pushInbox('courrier.stade.point.titre', 'courrier.stade.point.corps',
@@ -5293,9 +5302,9 @@ function endSeason() {
   if (iAmChampion) {
     const trophy = 5000 * (1 + div.prestige);
     G.budget += trophy;
-    trophyMsg = `<div class="modal-flash good"><b>🏆 Champion des playoffs ${escHtml(div.label)}</b>Prime de titre : ${euros(trophy)}.</div>`;
+    trophyMsg = `<div class="modal-flash good"><b>🏆 ${T('fin.champion', { division: escHtml(div.label) })}</b>${T('fin.primeTitre', { montant: euros(trophy) })}</div>`;
   } else if (iAmFinalist) {
-    trophyMsg = `<div class="modal-flash warn"><b>🥈 Finaliste des playoffs ${escHtml(div.label)}</b>Battu en finale, mais la saison reste réussie.</div>`;
+    trophyMsg = `<div class="modal-flash warn"><b>🥈 ${T('fin.finaliste', { division: escHtml(div.label) })}</b>${T('fin.finaliste.note')}</div>`;
   }
 
   // ---- Barrage Élite/N1 (art. 1.8.2 et 2.10 A) ----
@@ -5322,9 +5331,9 @@ function endSeason() {
       const b = jouerBarrage(advDef, IDX_N1, true);
       barrageGagne = b.gagne;
       barrageMsg = `<div class="modal-flash ${b.gagne ? 'good' : 'bad'}">
-        <b>${b.gagne ? '🛡️ Barrage remporté — maintien en Élite' : '⚠️ Barrage perdu — descente en Nationale 1'}</b>
-        9ᵉ de la phase de qualification, tu recevais ${escHtml(b.adv.name)}, 2ᵉ de Nationale 1.
-        Score : ${b.mesButs} — ${b.sesButs}${b.ot ? ' après prolongation' : ''}.</div>`;
+        <b>${b.gagne ? '🛡️ ' + T('fin.barrage.maintien') : '⚠️ ' + T('fin.barrage.descente')}</b>
+        ${T('fin.barrage.recevait', { adversaire: escHtml(b.adv.name) })}
+        ${T('fin.score', { mes: b.mesButs, ses: b.sesButs, prol: b.ot ? T('fin.apresProlongation') : '' })}</div>`;
     }
   } else if (G.divIdx === IDX_N1 && po && iAmFinalist && !iAmChampion) {
     // 2e de N1 : barrage à l'extérieur, chez le club de l'Élite
@@ -5333,9 +5342,9 @@ function endSeason() {
       const b = jouerBarrage(advDef, IDX_ELITE, false);
       barrageGagne = b.gagne;
       barrageMsg = `<div class="modal-flash ${b.gagne ? 'good' : 'warn'}">
-        <b>${b.gagne ? '🎉 Barrage remporté — montée en Élite' : '🥈 Barrage perdu — maintien en Nationale 1'}</b>
-        Finaliste des playoffs, tu te déplaçais chez ${escHtml(b.adv.name)}, 9ᵉ de l'Élite —
-        le règlement donne le terrain au club de l'Élite. Score : ${b.mesButs} — ${b.sesButs}${b.ot ? ' après prolongation' : ''}.</div>`;
+        <b>${b.gagne ? '🎉 ' + T('fin.barrage.montee') : '🥈 ' + T('fin.barrage.maintienN1')}</b>
+        ${T('fin.barrage.deplacait', { adversaire: escHtml(b.adv.name) })}
+        ${T('fin.score', { mes: b.mesButs, ses: b.sesButs, prol: b.ot ? T('fin.apresProlongation') : '' })}</div>`;
     }
   }
 
@@ -5353,10 +5362,10 @@ function endSeason() {
       const mes = jeRecois ? res.gH : res.gA, siens = jeRecois ? res.gA : res.gH;
       playdownSauve = mes > siens;
       playdownMsg = `<div class="modal-flash ${playdownSauve ? 'good' : 'bad'}">
-        <b>${playdownSauve ? '🛡️ Play-down remporté — maintien en Nationale 1'
-                           : '⚠️ Play-down perdu — descente en Nationale 2'}</b>
-        ${rank + 1}ᵉ de la poule, tu ${jeRecois ? 'recevais' : 'te déplaçais chez'}
-        ${escHtml(adverse.name)}. Score : ${mes} — ${siens}${res.wentOT ? ' après prolongation' : ''}.</div>`;
+        <b>${playdownSauve ? '🛡️ ' + T('fin.playdown.maintien') : '⚠️ ' + T('fin.playdown.descente')}</b>
+        ${T(jeRecois ? 'fin.playdown.recevait' : 'fin.playdown.deplacait',
+            { rang: rank + 1, adversaire: escHtml(adverse.name) })}
+        ${T('fin.score', { mes: mes, ses: siens, prol: res.wentOT ? T('fin.apresProlongation') : '' })}</div>`;
     }
   }
 
@@ -5384,10 +5393,9 @@ function endSeason() {
   let montreeRefusee = null;
   if (promote && G.divIdx < DIVISIONS.length - 1 && !stadeSuffisantPour(G.divIdx + 1)) {
     const req = classeRequise(G.divIdx + 1);
-    montreeRefusee = `<div class="modal-flash bad"><b>⚠️ Montée refusée — installation non classée</b>
-      Sportivement, la montée en ${escHtml(DIVISIONS[G.divIdx + 1].label)} était acquise. Mais cette
-      division exige une salle de <b>classe ${req.classe}</b>, soit un stade de niveau ${req.stade} :
-      le tien est au niveau ${G.club.stade}. Fais les travaux, et la place sera à toi.</div>`;
+    montreeRefusee = `<div class="modal-flash bad"><b>⚠️ ${T('fin.montee.refusee')}</b>
+      ${T('fin.montee.refusee.detail', { division: escHtml(DIVISIONS[G.divIdx + 1].label),
+          classe: req.classe, requis: req.stade, niveau: G.club.stade })}</div>`;
     promote = false;
     // Compteur de refus : il gradue les alertes des saisons suivantes.
     G.refusStade = (G.refusStade || 0) + 1;
@@ -5412,7 +5420,7 @@ function endSeason() {
         if (p.pos === 'G') p.gar = Math.round(clampV(p.gar + boost, 30, cap));
       });
     }
-    moveMsg = `<div class="modal-flash good"><b>🎉 Montée en ${escHtml(DIVISIONS[G.divIdx].label)}</b>Chèque de montée : ${euros(bonus)}. L'effectif progresse pour encaisser le niveau supérieur.</div>`;
+    moveMsg = `<div class="modal-flash good"><b>🎉 ${T('fin.montee', { division: escHtml(DIVISIONS[G.divIdx].label) })}</b>${T('fin.montee.detail', { montant: euros(bonus) })}</div>`;
   } else if (estRelegable(rank, n) && G.divIdx > 0
              && !(G.divIdx === IDX_ELITE && rank === n - 2 && barrageGagne === true)
              && !(G.divIdx === IDX_N1 && playdownSauve === true)) {
@@ -5422,11 +5430,10 @@ function endSeason() {
     const quota = DESCENTES_DIVISION[G.divIdx + 1];
     const surDivision = quota && G.poules && G.poules.length > 1;
     const posNat = surDivision ? classementNational().findIndex(e => e.t === myTeam()) + 1 : 0;
-    moveMsg = `<div class="modal-flash bad"><b>⚠️ Descente en ${escHtml(DIVISIONS[G.divIdx].label)}</b>
+    moveMsg = `<div class="modal-flash bad"><b>⚠️ ${T('fin.descente', { division: escHtml(DIVISIONS[G.divIdx].label) })}</b>
       ${surDivision
-        ? `${posNat}<sup>e</sup> sur ${classementNational().length} au classement de division : les ${quota} derniers descendent.
-           Ce n'est pas ta poule qui t'a condamné, c'est l'ensemble de la division.`
-        : `Il faudra remonter la pente la saison prochaine.`}</div>`;
+        ? T('fin.descente.division', { rang: posNat, total: classementNational().length, quota: quota })
+        : T('fin.descente.simple')}</div>`;
   }
 
   if (wasPromoted || iAmChampion) jouerJingle('montee');
@@ -5442,12 +5449,12 @@ function endSeason() {
       'board');
   }
   presenterResumeSaison({ rank: rank, n: n, basePrize: basePrize }, {
-    title: `Fin de saison ${seasonLabel(G.season)}`, ico: '📅',
+    title: T('fin.titre', { annees: seasonLabel(G.season) }), ico: '📅',
     html: `${trophyMsg}${barrageMsg || ''}${playdownMsg || ''}${montreeRefusee || ''}${moveMsg}
-      <div class="modal-sub">Bilan de la saison régulière</div>
-      <div class="modal-stat"><span>Division</span><span>${escHtml(div.label)}</span></div>
-      <div class="modal-stat"><span>Classement</span><span>${rank + 1}<sup>e</sup> sur ${n}</span></div>
-      <div class="modal-stat"><span>Prime de classement</span><span>${euros(basePrize)}</span></div>`
+      <div class="modal-sub">${T('fin.bilanRegulier')}</div>
+      <div class="modal-stat"><span>${T('intro.division')}</span><span>${escHtml(div.label)}</span></div>
+      <div class="modal-stat"><span>${T('ecran.classement.label')}</span><span>${T('classement.rang', { n: rank + 1 })} ${T('resume.sur', { n: n })}</span></div>
+      <div class="modal-stat"><span>${T('resume.prime')}</span><span>${euros(basePrize)}</span></div>`
   });
   evaluateBoardObjective(rank, iAmChampion, n);
   G.lastSeasonRank = rank;
@@ -5502,7 +5509,7 @@ function endSeason() {
     me.players = me.players.filter(x => x.id !== p.id);
     const statLine = p.careerGoals > 0
       ? ` Il quitte le club avec ${p.careerGoals} but(s) inscrit(s) en ${p.careerGames} match(s) sous le maillot de ${me.name}.`
-      : ` Il quitte le club après ${p.careerGames} match(s) sous le maillot de ${me.name}.`;
+      : ' ' + T('fin.quitteClub', { n: p.careerGames, club: me.name });
     pushInbox('courrier.carriere.titre', 'courrier.carriere.corps',
       { nom: p.nom, age: p.age,
         portraitHtml: `<img src="${portraitFor(p.id)}" class="portrait-thumb sm" alt="">`,
@@ -5805,6 +5812,15 @@ async function trainCoach(role) {
   renderAll();
 }
 
+// Compose une ligne de progression. Accepte les deux formes : les sauvegardes d'avant cette
+// version portent déjà des phrases toutes faites, qu'on affiche telles quelles.
+function ligneGain(g) {
+  if (typeof g === 'string') return g;
+  const libelle = g.stat === 'agr' ? T('stat.agr') : T('stat.' + g.stat);
+  return T('entrainement.gain', { nom: g.nom, signe: g.sens > 0 ? '+1' : '−1',
+                                  stat: libelle, valeur: g.valeur });
+}
+
 function applyTraining(mode) {
   mode = mode || 'match';
   const me = myTeam();
@@ -5834,14 +5850,16 @@ function applyTraining(mode) {
         if (p.agr <= 40) return;
         if (Math.random() < prob) {
           p.agr--;
-          gains.push(`${p.nom} : −1 Agressivité (${p.agr})`);
+          // On range de la DONNÉE, pas une phrase : `G.lastTraining` est sauvegardé, et une
+          // phrase y serait figée dans la langue du jour — comme le courrier avant la v109.
+          gains.push({ nom: p.nom, stat: 'agr', valeur: p.agr, sens: -1 });
         }
         return;
       }
       if (p[stat] >= (p.potentiel || 97)) return;
       if (Math.random() < prob) {
         p[stat]++;
-        gains.push(`${p.nom} : +1 ${stat === 'tir' ? 'Tir' : stat === 'def' ? 'Déf' : stat === 'vit' ? 'Vit' : 'Gardien'} (${p[stat]})`);
+        gains.push({ nom: p.nom, stat: stat, valeur: p[stat], sens: 1 });
       }
     });
   });
@@ -5920,10 +5938,10 @@ function renderEntrainement() {
     </div>`;
   }).join('');
   const lastGains = (G.lastTraining && G.lastTraining.length)
-    ? `<div class="card"><b>${T('entrainement.derniereSeance')}</b><ul>${G.lastTraining.map(g => `<li>${g}</li>`).join('')}</ul></div>`
+    ? `<div class="card"><b>${T('entrainement.derniereSeance')}</b><ul>${G.lastTraining.map(g => `<li>${ligneGain(g)}</li>`).join('')}</ul></div>`
     : `<p class="note">${Object.values(G.staff).every(v => !v) ? T('entrainement.aucune.sansCoach') : T('entrainement.aucune')}</p>`;
   const sessionGains = (G.lastSessionTraining && G.lastSessionTraining.length)
-    ? `<div class="card"><b>${T('entrainement.derniereHorsMatch')}</b><ul>${G.lastSessionTraining.map(g => `<li>${g}</li>`).join('')}</ul></div>` : '';
+    ? `<div class="card"><b>${T('entrainement.derniereHorsMatch')}</b><ul>${G.lastSessionTraining.map(g => `<li>${ligneGain(g)}</li>`).join('')}</ul></div>` : '';
   document.getElementById('tab-entrainement').innerHTML = `
     ${bandeau('entrainement', myTeam().name, T('ecran.entrainement.label'),
               G.trainingAvailable ? T('entrainement.dispo') : T('entrainement.deja'))}
@@ -7532,7 +7550,7 @@ function showReport() {
     .map(x => `${G.teams[x.home].short} ${x.score[0]}–${x.score[1]} ${G.teams[x.away].short}`)
     .join(' &nbsp;•&nbsp; ') + `</p>`;
   const training = (!isPlayoff && G.lastTraining && G.lastTraining.length)
-    ? `<p class="tag" style="color:var(--vert)">${T('ecran.entrainement.label')} : ${G.lastTraining.join(' • ')}</p>` : '';
+    ? `<p class="tag" style="color:var(--vert)">${T('ecran.entrainement.label')} : ${G.lastTraining.map(ligneGain).join(' • ')}</p>` : '';
   const injuries = (!isPlayoff && G.lastInjuries && G.lastInjuries.length)
     ? `<p class="tag" style="color:var(--rouge)">🤕 ${G.lastInjuries.join(' • ')}</p>` : '';
   const fin = isPlayoff ? null : G.lastFinance;
@@ -8223,8 +8241,8 @@ document.getElementById('fileLoad').addEventListener('change', e => {
 });
 document.getElementById('btnNew').addEventListener('click', async () => {
   if (await ask({
-    title: "Retour au menu", ico: '🏠', okLabel: "Revenir au menu",
-    text: "Revenir au menu principal ?\n\nLa partie reste sauvegardée automatiquement. Pense à l'exporter depuis l'onglet Sauvegarde si tu veux la garder ailleurs."
+    title: T('dlg.menu.titre'), ico: '🏠', okLabel: T('dlg.menu.ok'),
+    text: T('dlg.menu.texteLong')
   })) backToMenu();
 });
 
@@ -8247,17 +8265,9 @@ const mSLOT_L = mGL_L + 95, mSLOT_R = mGL_R - 95; // limite avant du slot de cha
 const mSLOT_HALF = 70; // demi-hauteur du slot
 const MV_BODY_R = 10.5;
 
-const FLAVOR = [
-  "Beau duel à la crosse le long de la balustrade.",
-  "Le gardien s'interpose du bouclier.",
-  "Passe derrière la cage, ça circule bien.",
-  "Tir dévissé, la crosse a vibré.",
-  "Récupération au cercle d'engagement.",
-  "Contre-attaque rapide, ça patine fort !",
-  "Protection de balle physique dans le coin.",
-  "Lancer frappé... au-dessus de la cage !",
-  "Belle interception au marquage individuel."
-];
+// Des indices, pas des phrases : le commentaire est tiré au sort à chaque passage et se
+// compose à l'affichage, donc dans la langue du moment.
+const FLAVOR_N = 9;
 
 // Comme dans roller-hockey.html : le palet garde son élan (vitesse + friction + rebonds sur bande arrondie)
 // une fois l'impulsion donnée, il n'a plus besoin d'être "tenu" par un joueur pour continuer à bouger.
@@ -8799,7 +8809,7 @@ function mvLoop(now) {
 
   // lignes d'ambiance
   if (mv.t >= mv.flavor) {
-    feedLine(`${Math.floor(mv.t)}' — ${pick(FLAVOR)}`);
+    feedLine(`${Math.floor(mv.t)}' — ${T('direct.ambiance.' + irnd(0, FLAVOR_N - 1))}`);
     mv.flavor += irnd(5, 9);
   }
 
@@ -8964,8 +8974,8 @@ function initNative() {
       }
       if (document.body.classList.contains('game-started')) {
         flushSave();
-        if (await ask({ title: "Retour au menu", ico: '🏠', okLabel: "Revenir au menu",
-          text: "Revenir au menu principal ?\n\nLa partie est sauvegardée." })) backToMenu();
+        if (await ask({ title: T('dlg.menu.titre'), ico: '🏠', okLabel: T('dlg.menu.ok'),
+          text: T('dlg.menu.texteCourt') })) backToMenu();
         return;
       }
       if (document.body.classList.contains('ts-open')) {
