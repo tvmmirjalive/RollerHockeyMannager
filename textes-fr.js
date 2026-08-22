@@ -83,8 +83,6 @@ Object.assign(TEXTES.fr, {
   // ---- courrier
   "courrier.date": "Saison {saison} · journée {journee}",
   "courrier.ta-reponse": "Ta réponse : {dit}",
-  "courrier.brut.titre": "{titreHtml}",
-  "courrier.brut.corps": "{corpsHtml}",
   "courrier.brouille.deplace": "Ta réponse : {dit} {nom} passe en ligne {ligne}.",
   "courrier.brouille.impossible": "Aucune ligne ne peut l'accueillir. Il reste où il est.",
   "courrier.vestiaire.partir.titre": "🚪 {nom} veut partir",

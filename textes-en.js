@@ -83,8 +83,6 @@ Object.assign(TEXTES.en, {
   // ---- courrier
   "courrier.date": "Season {saison} · matchday {journee}",
   "courrier.ta-reponse": "Your answer: {dit}",
-  "courrier.brut.titre": "{titreHtml}",
-  "courrier.brut.corps": "{corpsHtml}",
   "courrier.brouille.deplace": "Your answer: {dit} {nom} moves to line {ligne}.",
   "courrier.brouille.impossible": "No line can take him. He stays where he is.",
   "courrier.vestiaire.partir.titre": "🚪 {nom} wants out",
