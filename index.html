@@ -871,7 +871,12 @@
     padding-bottom: calc(16px + env(safe-area-inset-bottom, 0px));
     animation: drawerUp .22s cubic-bezier(.2,.8,.3,1) both; }
   @keyframes drawerUp { from { transform: translateY(100%); } to { transform: none; } }
-  .drawer-grab { width: 38px; height: 4px; border-radius: 2px; background: #2c313a; margin: 4px auto 12px; }
+  .drawer-grab { width: 38px; height: 4px; border-radius: 2px; background: #2c313a;
+    margin: 4px auto 12px; position: relative; cursor: pointer; touch-action: manipulation; }
+  /* La poignée ne mesure que 4 px de haut ; sa zone tactile en fait 44, comme l'exige
+     Apple. Une poignée qu'on ne peut pas viser est une fausse promesse. */
+  .drawer-grab::after { content: ''; position: absolute; left: -60px; right: -60px;
+    top: -20px; bottom: -20px; }
   .drawer-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
   .drawer-grid button { min-height: 76px; display: flex; flex-direction: column;
     align-items: center; justify-content: center; gap: 5px; background: var(--panel);
@@ -1686,6 +1691,18 @@ function tutoElements() {
   // Le voile avale tout, SAUF le trou dont il relaie le clic : une ombre portée ne capte
   // pas les événements, c'est donc au voile de faire le travail.
   voile.addEventListener('click', e => {
+    // Ce qui se trouve VRAIMENT sous le voile à cet endroit. Sans cette mesure, le relais
+    // travaillait sur un simple rectangle et cliquait une cible recouverte : relevé sur
+    // Android, le tiroir « Plus » masquait « Jouer la journée » et le clic partait quand
+    // même. Un rectangle n'est pas une visibilité.
+    const reel = elementSousLeVoile(e.clientX, e.clientY);
+    if (!reel) return;
+
+    // Tant que le tiroir est ouvert, c'est lui la couche du dessus et c'est lui qui répond.
+    // Sinon le correctif ci-dessus enfermerait le joueur : le voile avalerait aussi le clic
+    // qui sert à refermer, et plus rien ne répondrait à l'écran.
+    if (typeof tiroirOuvert === 'function' && tiroirOuvert()) { reel.click(); return; }
+
     // La cible mise en avant, PLUS les éléments déclarés libres par l'étape. Guider ne doit
     // pas enfermer : le tutoriel montre le coach le moins cher, mais laisse prendre un autre.
     const candidats = [];
@@ -1694,11 +1711,36 @@ function tutoElements() {
     for (const el of candidats) {
       const r = el.getBoundingClientRect();
       if (!r.width || !r.height) continue;
+      if (el === reel || el.contains(reel)) { el.click(); return; }
+      // Tolérance de 6 px sur les bords, conservée pour le doigt qui vise court — mais
+      // seulement si le centre de la cible est lui aussi dégagé.
       if (e.clientX >= r.left - 6 && e.clientX <= r.right + 6
-       && e.clientY >= r.top - 6 && e.clientY <= r.bottom + 6) { el.click(); return; }
+       && e.clientY >= r.top - 6 && e.clientY <= r.bottom + 6 && cibleDegagee(el)) {
+        el.click(); return;
+      }
     }
   });
   return { voile, trou, bulle };
+}
+
+// Quel élément recevrait le clic si le voile n'était pas là. On neutralise le voile le temps
+// de la mesure : il couvre tout l'écran, il répondrait toujours lui-même.
+function elementSousLeVoile(x, y) {
+  const voile = document.getElementById('tutoVoile');
+  const avant = voile ? voile.style.pointerEvents : null;
+  if (voile) voile.style.pointerEvents = 'none';
+  const el = document.elementFromPoint(x, y);
+  if (voile) voile.style.pointerEvents = avant || '';
+  return el;
+}
+
+// La cible est-elle réellement atteignable, ou quelque chose la recouvre-t-il ? On regarde
+// son centre : c'est le point le moins susceptible d'être rogné par un arrondi ou une bordure.
+function cibleDegagee(el) {
+  const r = el.getBoundingClientRect();
+  if (!r.width || !r.height) return false;
+  const dessus = elementSousLeVoile(r.left + r.width / 2, r.top + r.height / 2);
+  return !!dessus && (dessus === el || el.contains(dessus));
 }
 
 function fermerProjecteur() {
@@ -1922,9 +1964,16 @@ function tutoEtapes() {
       texte: () => document.querySelector('#mainNav button[data-nav="__plus"]')
         ? `Touche <b>Plus</b> : transferts, calendrier, Coupe de France, messages, historique, aide et options y sont rangés.`
         : `Ton écran est large : tous les écrans tiennent dans la barre — transferts, calendrier, Coupe de France, messages, historique, aide et options. Sur téléphone, les derniers passent dans un tiroir « Plus ».` },
+    // Refermer d'abord, jouer ensuite. En une seule étape, le tutoriel demandait deux gestes
+    // dans une phrase tout en pointant le second : sur téléphone le cadre vert désignait un
+    // bouton caché derrière le tiroir. Un geste, une consigne.
+    { titre: 'Referme le tiroir', si: () => tiroirOuvert(),
+      cible: () => document.querySelector('#drawer .drawer-grab'),
+      condition: () => !tiroirOuvert(),
+      texte: `Referme le tiroir : tire la poignée vers le bas, ou touche n'importe où au-dessus du panneau.` },
     { titre: 'À l\'eau', cible: () => document.getElementById('btnPlay'),
       condition: () => G.day >= 1,
-      texte: `Ferme le tiroir et touche <b>Jouer la journée</b>. Tu peux regarder le match se dérouler, ou passer directement au résultat.` },
+      texte: `Touche <b>Jouer la journée</b>. Tu peux regarder le match se dérouler, ou passer directement au résultat.` },
     { titre: 'À toi de jouer maintenant !', bouton: 'Terminer',
       condition: null,
       attendreCalme: true,
@@ -1941,6 +1990,10 @@ async function lancerTutoriel() {
     if (tutorielCoupe) break;
     G.tuto.etape = i;
     const e = etapes[i];
+    // Une étape peut ne pas avoir lieu d'être. `si` la retire complètement au lieu de la
+    // dégrader en bulle « Continuer » : demander de refermer un tiroir qui n'existe pas sur
+    // grand écran ferait lire une consigne sans objet.
+    if (e.si && !e.si()) continue;
     // Dernière étape : on laisse retomber le match et le courrier avant de conclure.
     if (e.attendreCalme) {
       const calme = () => !document.querySelector('#modalOverlay.show') && !visionneuseOuverte();
@@ -3040,7 +3093,7 @@ async function effacerSlot(s, ev) {
 // `versionName` du build Android par 4-outils/patch-version.py, qui refuse de s'appliquer
 // si les deux divergent. Le mode d'échec évité est réel : l'APK a annoncé « 1.0 » pendant
 // soixante-dix-sept versions parce que rien ne reliait le jeu à son numéro.
-const VERSION_JEU = '103';
+const VERSION_JEU = '104';
 
 function refreshMenu() {
   const vers = document.getElementById('menuVersion');
@@ -3907,6 +3960,19 @@ function simulateMatch(home, away) {
   lA = lA * (1 + 0.030 * ppMinVsHome * stA.pp) * (1 - 0.012 * ppMinVsAway * stA.pk);
   let gH = poisson(lH), gA = poisson(lA); // `let` : la prolongation ajoute un but
 
+  // Prolongation résolue AVANT l'attribution des buteurs, comme le fait déjà
+  // `simulatePlayoffMatch`. Auparavant le but en or entrait au score sans auteur : la
+  // visionneuse, qui rejoue `res.scorers` but par but, terminait sur un score différent de
+  // celui du rapport (mesuré : 2-2 affiché pour un 2-3 réel). Le meilleur buteur de la
+  // saison perdait un but par match à prolongation, et la presse ne voyait pas le but
+  // décisif. Format éliminatoire (Règlement sportif FFRS 5.4.3) : pas de match nul.
+  let wentOT = false, coteButEnOr = null;
+  if (gH === gA) {
+    wentOT = true;
+    if (Math.random() < chanceProlongation(sh.atk, sa.atk)) { gH++; coteButEnOr = 'home'; }
+    else { gA++; coteButEnOr = 'away'; }
+  }
+
   // buteurs
   const scorers = [];
   function addScorers(team, goals, side) {
@@ -3916,11 +3982,16 @@ function simulateMatch(home, away) {
     for (let i = 0; i < goals; i++) {
       let r = Math.random() * tot, idx = 0;
       while (r > weights[idx]) { r -= weights[idx]; idx++; }
-      const minute = irnd(1, 50);
+      // Le but en or est le dernier de l'équipe qui l'a inscrit, et il tombe APRÈS le temps
+      // réglementaire : 51-55, jamais dans les 50 minutes. Le tri le place ainsi en dernier
+      // de lui-même, et la visionneuse peut l'annoncer pour ce qu'il est.
+      const enOr = (side === coteButEnOr && i === goals - 1);
+      const minute = enOr ? irnd(51, 55) : irnd(1, 50);
       // but en supériorité si l'adversaire a une prison 2'/5' active à cette minute
       const oppPens = side === 'home' ? pensA : pensH;
-      const pp = oppPens.some(p => p.shorthand && minute >= p.minute && minute < p.minute + p.dur);
-      scorers.push({ side, minute, nom: field[idx].nom, id: field[idx].id, team: team.short, pp });
+      const pp = !enOr && oppPens.some(p => p.shorthand && minute >= p.minute && minute < p.minute + p.dur);
+      scorers.push({ side, minute, nom: field[idx].nom, id: field[idx].id, team: team.short,
+                     pp, prolongation: enOr });
       field[idx].seasonGoals = (field[idx].seasonGoals || 0) + 1;
     }
   }
@@ -3929,19 +4000,9 @@ function simulateMatch(home, away) {
   scorers.sort((a, b) => a.minute - b.minute);
   trackGamePlayed(home); trackGamePlayed(away);
 
-  // maj classement
-  home.bp += gH; home.bc += gA; away.bp += gA; away.bc += gH; // score du temps réglementaire ; le but de prolongation est ajouté plus bas
-  // Format éliminatoire (Règlement sportif FFRS 5.4.3) : pas de match nul. À égalité,
-  // prolongation en mort subite de 5 min, puis tirs de pénalité. On tranche ici selon la
-  // force offensive respective, comme le fait déjà simulatePlayoffMatch — le détail des
-  // tirs au but n'apporterait rien à un match simulé.
-  let wentOT = false;
-  if (gH === gA) {
-    wentOT = true;
-    if (Math.random() < chanceProlongation(sh.atk, sa.atk)) gH++; else gA++;
-    home.bp += (gH > gA) ? 1 : 0; home.bc += (gA > gH) ? 1 : 0;
-    away.bp += (gA > gH) ? 1 : 0; away.bc += (gH > gA) ? 1 : 0;
-  }
+  // maj classement — `gH`/`gA` portent déjà le but en or, résolu plus haut. Un seul endroit
+  // met le goal-average à jour, au lieu de deux dont l'un rattrapait l'autre.
+  home.bp += gH; home.bc += gA; away.bp += gA; away.bc += gH;
 
   // Barème art. 11.3.1.3 : 3-0 dans le temps réglementaire, 2-1 après prolongation.
   const vainqueur = gH > gA ? home : away;
@@ -6646,6 +6707,8 @@ window.addEventListener('resize', () => {
 document.querySelectorAll('#subnav button[data-tab]').forEach(b => {
   b.addEventListener('click', () => { ouvrirTiroir(false); showTab(b.dataset.tab); });
 });
+// La poignée referme, comme le fond. Elle en a l'air depuis toujours ; elle ne le faisait pas.
+document.querySelector('#drawer .drawer-grab').addEventListener('click', () => ouvrirTiroir(false));
 document.getElementById('drawer').addEventListener('click', e => {
   if (e.target.id === 'drawer') ouvrirTiroir(false);
 });
@@ -8040,7 +8103,9 @@ function mvKickPuck(tx, ty, power) {
 function mvTriggerGoal(e) {
   if (!e) return;
   if (e.side === 'home') mv.gH++; else mv.gA++;
-  feedLine(`${Math.floor(mv.t)}' — <b>BUT !</b> ${e.nom} (${e.team})${e.pp ? ' <span class="tag">(supériorité numérique)</span>' : ''}`, true);
+  feedLine(`${Math.floor(mv.t)}' — <b>BUT !</b> ${e.nom} (${e.team})`
+    + (e.pp ? ' <span class="tag">(supériorité numérique)</span>' : '')
+    + (e.prolongation ? ' <span class="tag">(but en or)</span>' : ''), true);
   mv.goalFlash = 1.2;
   if (mv.activePP && mv.activePP.endsOnGoal && mv.activePP.against === (e.side === 'home' ? 'away' : 'home')) mv.activePP = null;
   mv.puck.x = MW/2; mv.puck.y = mCY; mv.puck.vx = 0; mv.puck.vy = 0;
