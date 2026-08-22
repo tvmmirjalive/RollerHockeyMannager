@@ -3210,7 +3210,7 @@ async function effacerSlot(s, ev) {
 // `versionName` du build Android par 4-outils/patch-version.py, qui refuse de s'appliquer
 // si les deux divergent. Le mode d'échec évité est réel : l'APK a annoncé « 1.0 » pendant
 // soixante-dix-sept versions parce que rien ne reliait le jeu à son numéro.
-const VERSION_JEU = '111';
+const VERSION_JEU = '112';
 
 function refreshMenu() {
   const vers = document.getElementById('menuVersion');
@@ -3964,15 +3964,25 @@ function poisson(lambda) {
   return k - 1;
 }
 
-const FAUTES_MINEURES = ["retenir", "accrocher", "faire trébucher", "obstruction", "cinglage", "crosse haute", "piquage", "retard de jeu", "surnombre"];
+// Des CLÉS, pas des phrases : le motif est rangé dans `res.penalties`, qui vit dans la
+// sauvegarde. Une chaîne française y serait figée, et le rapport d'un match anglais
+// afficherait ses fautes en français pour toujours.
+const FAUTES_MINEURES = ["retenir", "accrocher", "trebucher", "obstruction", "cinglage", "crosseHaute", "piquage", "retardJeu", "surnombre"];
 // Art. 10.1.7 C : ces quatre-là comptent ensemble. Trois dans le même match, et le joueur
 // est exclu — quelle que soit leur gravité individuelle. C'est le seul cumul du règlement
 // qui vise un TYPE de faute plutôt qu'un nombre.
-const FAUTES_CROSSE = ["cinglage", "crosse haute", "piquage", "charge avec la crosse", "cinglage avec blessure"];
+const FAUTES_CROSSE = ["cinglage", "crosseHaute", "piquage", "chargeCrosse", "cinglageBlessure"];
 function estFauteDeCrosse(faute) { return FAUTES_CROSSE.indexOf(faute) >= 0; }
-const FAUTES_MAJEURES = ["charge violente", "dureté excessive", "charge contre la balustrade", "charge avec la crosse", "cinglage avec blessure"];
-const FAUTES_MEC = ["attitude antisportive", "contestation de décision", "conduite antisportive"];
-const FAUTES_GRAVES = ["blessure intentionnelle", "agression physique", "coup de crosse dangereux à la tête"];
+const FAUTES_MAJEURES = ["chargeViolente", "dureteExcessive", "chargeBalustrade", "chargeCrosse", "cinglageBlessure"];
+const FAUTES_MEC = ["antisportive", "contestation", "conduiteAntisportive"];
+const FAUTES_GRAVES = ["blessureIntentionnelle", "agression", "coupCrosseTete"];
+
+// Libellé d'un motif de faute. Repli sur la valeur brute : les sauvegardes d'avant cette
+// version portent la phrase française, et elle reste lisible telle quelle.
+function fauteLabel(cle) {
+  const t = T('faute.' + cle);
+  return t === 'faute.' + cle ? cle : t;
+}
 const PENALTY_LABEL = { mineure: "🟨 2'", majeure: "🟧 5'", mec: "⬛ 10'", pm: "🟥 PM", exc: "⛔ EXC" };
 
 // Bareme officiel FFRS Roller Hockey (patins en ligne, art. 10.1 du Reglement Sportif - Dispositions Particulieres) :
@@ -7633,7 +7643,7 @@ function showReport() {
   const finTag = fin ? `<p class="tag">${T('rapport.recette', { montantHtml: `<b style="color:${fin.total>=0?'var(--vert)':'var(--rouge)'}">${euros(fin.total)}</b>` })}</p>` : '';
   const cardsHtml = (res.penalties && res.penalties.length)
     ? `<p class="tag"><b>${T('colonne.penalites')} :</b> ` + res.penalties.map(p =>
-        `${p.minute}' ${PENALTY_LABEL[p.type]} ${p.nom} (${p.team}, ${p.faute}, ${p.dur}')`
+        `${p.minute}' ${PENALTY_LABEL[p.type]} ${p.nom} (${p.team}, ${fauteLabel(p.faute)}, ${p.dur}')`
       ).join(' • ') + `</p>`
     : `<p class="tag">${T('rapport.aucunePenalite')}</p>`;
   box.innerHTML = `
@@ -7693,13 +7703,22 @@ function teamSeedScore(t) {
     .reduce((s, p) => s + overall(p), 0);
 }
 
-function cupRoundLabelFor(nTeams) {
-  if (nTeams <= 2) return 'Finale';
-  if (nTeams <= 4) return 'Demi-finale';
-  if (nTeams <= 8) return 'Quart de finale';
-  if (nTeams <= 16) return 'Seizième de finale';
-  if (nTeams <= 32) return 'Trente-deuxième de finale';
-  return 'Tour préliminaire';
+// Une CLÉ, posée sur chaque match du tour et conservée toute la saison dans la sauvegarde.
+// Un libellé y serait figé dans la langue du jour, comme le reste.
+function cupRoundKeyFor(nTeams) {
+  if (nTeams <= 2) return 'finale';
+  if (nTeams <= 4) return 'demi';
+  if (nTeams <= 8) return 'quart';
+  if (nTeams <= 16) return 'seizieme';
+  if (nTeams <= 32) return 'trentedeuxieme';
+  return 'preliminaire';
+}
+
+// Libellé d'un tour. Repli sur la valeur brute : les sauvegardes d'avant portent la phrase.
+function cupRoundLabel(cle) {
+  if (!cle) return '';
+  const t = T('coupe.tour.' + cle);
+  return t === 'coupe.tour.' + cle ? cle : t;
 }
 
 // La Coupe de France engage TOUTES les équipes, de la Régionale à l'Élite.
@@ -7831,7 +7850,7 @@ function cupComposerTour(ids) {
   const nExempts = ids.length - 2 * nMatchs;
   const exempts = ids.slice(0, nExempts);
   const joueurs = ids.slice(nExempts);
-  const label = cupRoundLabelFor(cible * 2);
+  const label = cupRoundKeyFor(cible * 2);
   const matchs = [];
   for (let i = 0; i < nMatchs; i++) {
     matchs.push({ home: joueurs[i], away: joueurs[joueurs.length - 1 - i],
@@ -7911,7 +7930,7 @@ function advanceCupStep() {
     // ton équipe est éliminée : on résout SEULEMENT ce tour-ci et on affiche un résumé,
     // les tours suivants resteront verrouillés jusqu'à leur propre journée de déblocage.
     round.forEach(m => { if (m.winner === null) runCupMatch(m); });
-    const label = round[0].label;
+    const label = cupRoundLabel(round[0].label);
     const summary = round.map(m => {
       const h = cupTeam(m.home).name, a = cupTeam(m.away).name;
       const hw = m.winner === m.home, aw = m.winner === m.away;
@@ -7960,42 +7979,39 @@ function renderCoupe() {
     const unlockDay0 = cupRoundUnlockDay(0);
     const locked = G.day < unlockDay0;
     box.innerHTML = `
-      ${bandeau('coupe', `Saison ${seasonLabel(G.season)}`, 'Coupe de France',
+      ${bandeau('coupe', `${T('bandeau.saison')} ${seasonLabel(G.season)}`, T('coupe.nom'),
                 DIVISIONS[G.divIdx].label)}
-      <p class="note">Une compétition à élimination directe qui engage <b>toutes les équipes de toutes les divisions nationales</b>,
-      de la N3 à l'Élite — ta division au complet (classement réel de la saison), et les autres générées pour l'occasion.
-      Les meilleures têtes de série sont exemptées du tour préliminaire. Pas de match nul possible.</p>
-      <p class="note">Les tours se débloquent progressivement au fil des journées de championnat — la coupe est toujours
-      terminée bien avant les demi-finales des playoffs.</p>
+      <p class="note">${T('coupe.presentation')}</p>
+      <p class="note">${T('coupe.rythme')}</p>
       ${locked
-        ? `<p class="note">🔒 Tirage au sort disponible à partir de la journée ${unlockDay0 + 1} (actuellement journée ${G.day + 1}).</p>`
-        : `<button class="btn buy" onclick="startCup()">🏆 Lancer le tirage au sort</button>`}`;
+        ? `<p class="note">🔒 ${T('coupe.tirageVerrouille', { journee: unlockDay0 + 1, actuelle: G.day + 1 })}</p>`
+        : `<button class="btn buy" onclick="startCup()">🏆 ${T('coupe.lancerTirage')}</button>`}`;
     return;
   }
   const c = G.cup;
   const mbox = (m) => {
     const h = cupTeam(m.home), a = cupTeam(m.away);
-    const score = m.res ? `<b>${m.res.gH} — ${m.res.gA}</b>${m.res.wentOT ? ' (OT)' : ''}` : 'à jouer';
+    const score = m.res ? `<b>${m.res.gH} — ${m.res.gA}</b>${m.res.wentOT ? ' ' + T('coupe.prolongationCourte') : ''}` : T('coupe.aJouer');
     const line = (t) => `<div class="bteam ${m.winner === t.cupId ? 'win' : (m.winner !== null && m.winner !== undefined) ? 'lose' : ''} ${t.human ? 'me' : ''}">${t.name}${t.cupOrigin ? ` <span class="tag">${t.cupOrigin}</span>` : ''}</div>`;
     return `<div class="card">${line(h)}${line(a)}<div class="tag">${score}</div></div>`;
   };
   const byesHtml = c.roundIdx === 0 && c.byes.length
-    ? `<div class="card"><b>Têtes de série exemptées du tour préliminaire :</b><br>
+    ? `<div class="card"><b>${T('coupe.exemptes')}</b><br>
        ${c.byes.map(id => `<span class="tag">${cupTeam(id).name}</span>`).join(' ')}</div>` : '';
   const roundsHtml = c.rounds.map((round, i) => `
-    <h3 style="color:var(--tan);font-size:14px">${round[0] ? round[0].label : ''} ${i === c.roundIdx && !cupIsDone() ? '— en cours' : ''}</h3>
+    <h3 style="color:var(--tan);font-size:14px">${round[0] ? cupRoundLabel(round[0].label) : ''} ${i === c.roundIdx && !cupIsDone() ? '— ' + T('coupe.enCours') : ''}</h3>
     <div class="grid2">${round.map(mbox).join('')}</div>`).join('');
   box.innerHTML = `
-    <h2>🏆 Coupe de France — Saison ${seasonLabel(G.season)}</h2>
-    <p class="note">${allCupTeamsCount()} équipes engagées, de la N3 à l'Élite.</p>
+    <h2>🏆 ${T('coupe.nom')} — ${T('bandeau.saison')} ${seasonLabel(G.season)}</h2>
+    <p class="note">${T('coupe.engagees', { n: allCupTeamsCount() })}</p>
     ${byesHtml}
     ${roundsHtml}
-    ${c.champion !== null && c.champion !== undefined ? `<div class="card"><b>🏆 Vainqueur :</b> ${cupTeam(c.champion).name}</div>` : ''}
+    ${c.champion !== null && c.champion !== undefined ? `<div class="card"><b>🏆 ${T('coupe.vainqueur')}</b> ${cupTeam(c.champion).name}</div>` : ''}
     ${!cupIsDone() ? (
-      c.humanOut ? `<button class="btn buy" onclick="advanceCup()">▶ Voir le résultat final</button>`
+      c.humanOut ? `<button class="btn buy" onclick="advanceCup()">▶ ${T('coupe.resultatFinal')}</button>`
       : G.day < cupRoundUnlockDay(c.roundIdx)
-        ? `<p class="note">🔒 Prochain tour disponible à partir de la journée ${cupRoundUnlockDay(c.roundIdx) + 1} (actuellement journée ${G.day + 1}).</p>`
-        : `<button class="btn buy" onclick="advanceCup()">▶ Jouer le prochain match</button>`
+        ? `<p class="note">🔒 ${T('coupe.tourVerrouille', { journee: cupRoundUnlockDay(c.roundIdx) + 1, actuelle: G.day + 1 })}</p>`
+        : `<button class="btn buy" onclick="advanceCup()">▶ ${T('coupe.jouerProchain')}</button>`
     ) : ''}`;
 }
 
@@ -8034,20 +8050,20 @@ function renderInbox() {
 
   const vide = `<div class="vide">
       <div class="rond">✉</div>
-      <h3>Aucun message pour l'instant</h3>
-      <p>La direction, le staff et les autres clubs t'écriront au fil de la saison.</p>
+      <h3>${T('messages.vide.titre')}</h3>
+      <p>${T('messages.vide.note')}</p>
       <div class="apercu">
-        <div class="apercu-l">🎯 <b>Objectifs</b> — ce que la direction attend de toi</div>
-        <div class="apercu-l">🏥 <b>Blessures</b> — qui est indisponible, et pour combien de temps</div>
-        <div class="apercu-l">📝 <b>Contrats</b> — les fins de contrat à anticiper</div>
-        <div class="apercu-l">💰 <b>Sponsors</b> — les offres qui se débloquent</div>
+        <div class="apercu-l">🎯 ${T('messages.vide.objectifs')}</div>
+        <div class="apercu-l">🏥 ${T('messages.vide.blessures')}</div>
+        <div class="apercu-l">📝 ${T('messages.vide.contrats')}</div>
+        <div class="apercu-l">💰 ${T('messages.vide.sponsors')}</div>
       </div>
     </div>`;
 
   const nb = items.filter(m => !m.read).length;
   box.innerHTML = `
-    ${bandeau('inbox', myTeam().name, 'Messages',
-              items.length ? `${items.length} message${items.length > 1 ? 's' : ''}${nb ? ` · ${nb} non lu${nb > 1 ? 's' : ''}` : ''}` : 'Boîte vide')}
+    ${bandeau('inbox', myTeam().name, T('ecran.inbox.label'),
+              items.length ? `${T('messages.compte', { n: items.length })}${nb ? ` · ${T('messages.nonLus', { n: nb })}` : ''}` : T('messages.boiteVide'))}
     ${rows || vide}`;
 }
 
@@ -8061,11 +8077,11 @@ function renderHistorique() {
   };
   const rows = hist.slice().reverse().map(h => {
     const trophee = h.champion ? '🏆' : h.finalist ? '🥈' : h.promoted ? '🎉' : h.relegated ? '⚠️' : '';
-    const mouv = h.promoted ? 'Montée' : h.relegated ? 'Descente' : 'Maintien';
+    const mouv = h.promoted ? T('palmares.montee') : h.relegated ? T('palmares.descente') : T('palmares.maintien');
     const an = seasonLabel(h.season).split('-');
     return `<div class="saison" style="--sc:${couleurDiv(h.division)}">
       <div class="an"><b>${an[0]}</b><span>${an[1]}</span></div>
-      <div class="de">${h.rank}<sup>e</sup>${h.champion ? ' · champion' : h.finalist ? ' · finaliste' : ''}
+      <div class="de">${T('classement.rang', { n: h.rank })}${h.champion ? ' · ' + T('palmares.champion') : h.finalist ? ' · ' + T('palmares.finaliste') : ''}
         <span>${h.division} · ${mouv}${h.topScorer ? ' · ' + h.topScorer : ''}</span></div>
       <div class="tr">${trophee}</div>
     </div>`;
@@ -8073,21 +8089,21 @@ function renderHistorique() {
 
   const vide = `<div class="vide">
       <div class="rond">🗓</div>
-      <h3>Ta première saison est en cours</h3>
-      <p>Le palmarès se remplit à la fin de chaque saison. Voici ce qui y sera consigné.</p>
+      <h3>${T('palmares.vide.titre')}</h3>
+      <p>${T('palmares.vide.note')}</p>
       <div class="apercu">
-        <div class="apercu-l">🏁 <b>Classement final</b> — ta place en saison régulière</div>
-        <div class="apercu-l">🏆 <b>Playoffs</b> — jusqu'où tu es allé</div>
-        <div class="apercu-l">↕ <b>Mouvement</b> — montée, maintien ou descente</div>
-        <div class="apercu-l">⭐ <b>Meilleur buteur</b> — celui qui aura porté la saison</div>
+        <div class="apercu-l">🏁 ${T('palmares.vide.classement')}</div>
+        <div class="apercu-l">🏆 ${T('palmares.vide.playoffs')}</div>
+        <div class="apercu-l">↕ ${T('palmares.vide.mouvement')}</div>
+        <div class="apercu-l">⭐ ${T('palmares.vide.buteur')}</div>
       </div>
     </div>`;
 
   const montees = hist.filter(h => h.promoted).length;
   box.innerHTML = `
-    ${bandeau('historique', myTeam().name, 'Palmarès',
-              hist.length ? `${hist.length} saison${hist.length > 1 ? 's' : ''}${montees ? ` · ${montees} montée${montees > 1 ? 's' : ''}` : ''}`
-                          : `Saison ${G.season} en cours`)}
+    ${bandeau('historique', myTeam().name, T('ecran.historique.label'),
+              hist.length ? `${T('palmares.saisons', { n: hist.length })}${montees ? ` · ${T('palmares.montees', { n: montees })}` : ''}`
+                          : T('palmares.saisonEnCours', { n: G.season }))}
     ${rows || vide}`;
 }
 
@@ -8863,9 +8879,8 @@ function mvLoop(now) {
   while (mv.nextPen < mv.pens.length && mv.t >= mv.pens[mv.nextPen].minute) {
     const p = mv.pens[mv.nextPen];
     const icon = PENALTY_LABEL[p.type];
-    const typeLabel = p.type === 'mineure' ? 'Pénalité mineure' : p.type === 'majeure' ? 'Pénalité majeure'
-      : p.type === 'mec' ? 'Pénalité de méconduite (pas d\'infériorité, joueur remplacé)' : 'Pénalité de match — expulsion';
-    feedLine(`${p.minute}' — ${icon} <b>${typeLabel}</b> — ${p.nom} (${p.team}) : ${p.faute}.${p.shorthand ? ` Infériorité ${p.dur}'.` : ''}`);
+    const typeLabel = T('penalite.' + p.type);
+    feedLine(`${p.minute}' — ${icon} <b>${typeLabel}</b> — ${p.nom} (${p.team}) : ${fauteLabel(p.faute)}.${p.shorthand ? ` ${T('penalite.inferiorite', { n: p.dur })}` : ''}`);
     if (p.shorthand) mv.activePP = { against: p.side, until: mv.t + p.dur, endsOnGoal: p.endsOnGoal };
     mv.nextPen++;
   }
