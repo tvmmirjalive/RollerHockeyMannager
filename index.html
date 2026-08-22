@@ -1925,7 +1925,7 @@ function tutoEtapes() {
       texte: `Tu y es déjà : c'est ta feuille de match. Tu y choisis ton gardien et tes joueurs de champ, et tu vois qui est en forme.` },
     { titre: 'Composer son équipe', bouton: 'Compris',
       cible: () => document.querySelector('#tab-effectif .card'),
-      texte: `Un gardien et quatre joueurs de champ sur la piste — c'est du roller in line hockey, pas du hockey sur glace. Les autres tournent : plus tu fais tourner, moins tes joueurs s'usent.` },
+      texte: `Un gardien et quatre joueurs de champ sur la piste, comme le veut le roller in line hockey. Les autres tournent : plus tu fais tourner, moins tes joueurs s'usent.` },
     { titre: 'L\'entraînement', cible: () => tutoCibleEcran('entrainement'),
       condition: () => ongletCourant === 'entrainement',
       texte: `Touche <b>Entraînement</b>. C'est ici que ton effectif progresse — ou stagne, si tu n'as personne pour l'encadrer.` },
@@ -3093,7 +3093,7 @@ async function effacerSlot(s, ev) {
 // `versionName` du build Android par 4-outils/patch-version.py, qui refuse de s'appliquer
 // si les deux divergent. Le mode d'échec évité est réel : l'APK a annoncé « 1.0 » pendant
 // soixante-dix-sept versions parce que rien ne reliait le jeu à son numéro.
-const VERSION_JEU = '104';
+const VERSION_JEU = '105';
 
 function refreshMenu() {
   const vers = document.getElementById('menuVersion');
@@ -3763,7 +3763,7 @@ function lineupOf(team) {
 // Part du temps de jeu par ligne. Un entraîneur qui raccourcit son banc fait jouer ses
 // meilleurs davantage : c'est ce que ces poids traduisent, et c'est ce qui rend le choix du
 // nombre de lignes réellement arbitrable.
-const PART_TEMPS_DE_GLACE = { 1: [1], 2: [0.55, 0.45], 3: [0.40, 0.35, 0.25] };
+const PART_TEMPS_DE_JEU = { 1: [1], 2: [0.55, 0.45], 3: [0.40, 0.35, 0.25] };
 
 function teamStrength(team) {
   const { gk, field } = lineupOf(team);
@@ -3778,7 +3778,7 @@ function teamStrength(team) {
     (parLigne[l - 1] || (parLigne[l - 1] = [])).push(p);
   });
   const lignes = parLigne.filter(l => l && l.length);
-  const parts = PART_TEMPS_DE_GLACE[lignes.length] || PART_TEMPS_DE_GLACE[1];
+  const parts = PART_TEMPS_DE_JEU[lignes.length] || PART_TEMPS_DE_JEU[1];
 
   const moyenne = (bonus) => {
     let total = 0, poids = 0;
