@@ -3,6 +3,17 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1">
+<!-- Politique de sécurité du contenu. Elle rend mécanique la règle « zéro réseau » du
+     projet : `connect-src 'self'` interdit toute sortie vers un hôte tiers, et le reste
+     ferme greffons, cadres, fils d'exécution et détournement d'URL relatives.
+
+     `'unsafe-inline'` est inévitable — tout le JS et tout le CSS sont en ligne, et le rendu
+     produit des attributs `onclick`. `script-src` ne protège donc de rien ici : c'est
+     `nettoyerImport()` qui tient ce rôle, et les deux corrections sont indépendantes.
+
+     `file:` partout : le jeu doit pouvoir s'ouvrir par double-clic. Vérifié par mesure —
+     84 images sur 84, aucune violation. -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'self' file:; script-src 'self' 'unsafe-inline' file:; style-src 'self' 'unsafe-inline' file:; img-src 'self' data: blob: file:; media-src 'self' data: blob: file:; font-src 'self' data: file:; connect-src 'self'; form-action 'none'; base-uri 'none'; object-src 'none'; frame-src 'none'; worker-src 'none'">
 <title>Roller Hockey Manager</title>
 <style>
   /* ==================== Police embarquée ====================
@@ -3093,7 +3104,7 @@ async function effacerSlot(s, ev) {
 // `versionName` du build Android par 4-outils/patch-version.py, qui refuse de s'appliquer
 // si les deux divergent. Le mode d'échec évité est réel : l'APK a annoncé « 1.0 » pendant
 // soixante-dix-sept versions parce que rien ne reliait le jeu à son numéro.
-const VERSION_JEU = '105';
+const VERSION_JEU = '106';
 
 function refreshMenu() {
   const vers = document.getElementById('menuVersion');
@@ -7920,7 +7931,48 @@ document.getElementById('btnSave').addEventListener('click', () => {
 });
 
 // ---------------- Chargement d'une sauvegarde (fichier ou stockage local) ----------------
+// Ce qu'une lettre a le droit de contenir : un portrait, du gras, des notes. On ne peut donc
+// pas échapper le corps des messages — ce serait afficher les balises en clair. On retire
+// ce qui EXÉCUTE, et on laisse le reste.
+const IMPORT_BALISES = /<\s*\/?\s*(script|iframe|object|embed|link|meta|base|form|svg|math|applet|frame|frameset)\b[^>]*>/gi;
+const IMPORT_EVENEMENTS = /\son[a-z]+\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/gi;
+const IMPORT_URL_ACTIVE = /(?:javascript|vbscript)\s*:/gi;
+// Profondeur maximale d'un objet importé. Une sauvegarde saine ne dépasse pas cinq niveaux ;
+// au-delà, c'est une structure fabriquée, et on ne lui doit pas une descente infinie.
+const IMPORT_PROFONDEUR_MAX = 12;
+
+function nettoyerChaineImportee(s) {
+  let avant, tours = 0;
+  // Jusqu'à stabilité : retirer une balise peut en reformer une. `<scr<script>ipt>` devient
+  // `<script>` après un seul passage — un seul remplacement ne suffit donc jamais.
+  do {
+    avant = s;
+    s = s.replace(IMPORT_BALISES, '').replace(IMPORT_EVENEMENTS, '').replace(IMPORT_URL_ACTIVE, '');
+  } while (s !== avant && ++tours < 8);
+  return s;
+}
+
+function nettoyerImport(v, profondeur) {
+  const p = profondeur || 0;
+  if (typeof v === 'string') return nettoyerChaineImportee(v);
+  if (!v || typeof v !== 'object') return v;          // nombres, booléens, null : intacts
+  if (p >= IMPORT_PROFONDEUR_MAX) return Array.isArray(v) ? [] : {};
+  if (Array.isArray(v)) return v.map(x => nettoyerImport(x, p + 1));
+  const out = {};
+  Object.keys(v).forEach(k => {
+    // `__proto__` et consorts ne peuvent rien polluer via JSON.parse, mais les recopier
+    // dans un objet neuf n'a aucun intérêt non plus.
+    if (k === '__proto__' || k === 'constructor' || k === 'prototype') return;
+    out[k] = nettoyerImport(v[k], p + 1);
+  });
+  return out;
+}
+
 function hydrateSave(data) {
+  // Point de passage unique de toutes les sauvegardes — fichier importé, stockage local,
+  // Preferences natives. Le nettoyage est ici plutôt qu'à chaque appelant : un point d'entrée
+  // qu'on peut oublier est un point d'entrée qui sera oublié.
+  data = nettoyerImport(data);
   G = data.G; nextPlayerId = data.nextPlayerId || 10000;
   relierPoules();   // avant tout le reste : myTeam() lit G.teams
   if (!G.coaches) G.coaches = { tir: 0, def: 0, vit: 0, gar: 0 };
