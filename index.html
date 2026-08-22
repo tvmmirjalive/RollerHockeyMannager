@@ -1206,15 +1206,16 @@
     <div class="hd-crest" id="uiCrest">MOR</div>
     <div class="hd-txt">
       <div class="hd-club" id="uiClubName">Les Outlaws</div>
-      <div class="hd-sub"><span id="uiRank">—</span> · saison <span id="uiSeason">1</span>
-        · journée <span id="uiDay">1</span>/<span id="uiDayTotal">26</span></div>
+      <div class="hd-sub"><span id="uiRank">—</span> · <span id="uiSeasonLabel">saison</span>
+        <span id="uiSeason">1</span> · <span id="uiDayLabel">journée</span>
+        <span id="uiDay">1</span>/<span id="uiDayTotal">26</span></div>
     </div>
-    <button class="hd-btn" id="hdInbox" title="Messages">✉<b id="hdInboxCount"></b></button>
+    <button class="hd-btn" id="hdInbox">✉<b id="hdInboxCount"></b></button>
   </div>
   <div class="hd-stats">
-    <div class="hd-stat"><span>Budget</span><b id="uiBudget">—</b></div>
-    <div class="hd-stat"><span>Objectif</span><b id="uiObjective">—</b></div>
-    <div class="hd-stat"><span>Direction</span><b id="uiBoardConf">—</b></div>
+    <div class="hd-stat"><span id="uiBudgetLabel">Budget</span><b id="uiBudget">—</b></div>
+    <div class="hd-stat"><span id="uiObjectiveLabel">Objectif</span><b id="uiObjective">—</b></div>
+    <div class="hd-stat"><span id="uiBoardLabel">Direction</span><b id="uiBoardConf">—</b></div>
   </div>
 </header>
 <nav id="mainNav"><!-- construit par construireBarre() : le contenu dépend de la
@@ -1405,10 +1406,24 @@
 // pièce, dans le premier bloc de la page, pour qu'aucune ne trouve porte close.
 var PIECES_CHARGEES = {};
 
+// Dictionnaires de texte, remplis par les pièces `textes-fr.js` et `textes-en.js`. Déclarés
+// ICI, à l'amorçage : les pièces se chargent avant le script principal, et une déclaration
+// posée plus bas arriverait trop tard pour recevoir quoi que ce soit.
+var TEXTES = { fr: {}, en: {} };
+
 // `critique: true` = le jeu s'arrête plutôt que de tourner amputé et d'abîmer une
 // sauvegarde. Les icônes n'en sont pas : le code retombe sur des emojis depuis toujours.
 var PIECES_REQUISES = {
-  icones: { critique: false, quoi: 'les icônes de navigation', repli: 'des emojis les remplacent' }
+  icones: { fichier: 'icones.js', critique: false,
+            quoi: 'les icônes de navigation', repli: 'des emojis les remplacent' },
+  // Le français est la langue de repli de toutes les autres : sans lui, le jeu afficherait
+  // ses clés à la place de ses phrases. Inutilisable, donc critique.
+  textesfr: { fichier: 'textes-fr.js', critique: true,
+              quoi: 'les textes français', repli: '' },
+  // L'anglais, lui, n'est pas indispensable : `T()` retombe sur le français, ce qui reste
+  // parfaitement jouable. On prévient, on ne condamne pas.
+  textesen: { fichier: 'textes-en.js', critique: false,
+              quoi: 'les textes anglais', repli: 'le jeu reste en français' }
 };
 
 // ---------------- Filet de sécurité : affiche toute erreur JS directement sur la page ----------------
@@ -1448,6 +1463,8 @@ window.addEventListener('unhandledrejection', function(e) {
      sous file://, et le jeu doit pouvoir s'ouvrir par double-clic. Chargées AVANT le script
      principal pour que leurs tables existent quand il s'exécute. -->
 <script src="icones.js"></script>
+<script src="textes-fr.js"></script>
+<script src="textes-en.js"></script>
 <script>
 // ---------------- Données de base ----------------
 // ==================== Clubs réels — relevé FFRS 2025-2026 ====================
@@ -3124,7 +3141,7 @@ async function effacerSlot(s, ev) {
 // `versionName` du build Android par 4-outils/patch-version.py, qui refuse de s'appliquer
 // si les deux divergent. Le mode d'échec évité est réel : l'APK a annoncé « 1.0 » pendant
 // soixante-dix-sept versions parce que rien ne reliait le jeu à son numéro.
-const VERSION_JEU = '107';
+const VERSION_JEU = '108';
 
 function refreshMenu() {
   const vers = document.getElementById('menuVersion');
@@ -6169,19 +6186,26 @@ function checkUnlockNotifications() {
 // est absente, l'emoji sert de repli — le jeu marche donc avec zéro, trois ou onze
 // icônes fournies. Voir prompts-icones-navigation.md pour les générer.
 
+// Les libellés ont quitté ce tableau : ils vivent dans `textes-fr.js` / `textes-en.js`
+// sous les clés `ecran.<nom>.label` et `ecran.<nom>.court`. L'emoji reste — il ne se traduit
+// pas, et il sert de repli quand une icône manque.
 const ECRANS = {
-  effectif:     { label: 'Effectif',     court: 'Effectif',  emoji: '👥' },
-  club:         { label: 'Club',         court: 'Club',      emoji: '🏟' },
-  entrainement: { label: 'Entraînement', court: 'Entraîn.',  emoji: '🏋️' },
-  classement:   { label: 'Classement',   court: 'Classem.',  emoji: '📊' },
-  calendrier:   { label: 'Calendrier',   court: 'Calend.',   emoji: '📅' },
-  transferts:   { label: 'Transferts',   court: 'Transf.',   emoji: '🔁' },
-  inbox:        { label: 'Messages',     court: 'Messages',  emoji: '✉' },
-  historique:   { label: 'Historique',   court: 'Histor.',   emoji: '📜' },
-  coupe:        { label: 'Coupe',        court: 'Coupe',     emoji: '🏆' },
-  aide:         { label: 'Aide',         court: 'Aide',      emoji: '❓' },
-  options:      { label: 'Réglages',     court: 'Réglages',  emoji: '⚙️' }
+  effectif:     { emoji: '👥' },
+  club:         { emoji: '🏟' },
+  entrainement: { emoji: '🏋️' },
+  classement:   { emoji: '📊' },
+  calendrier:   { emoji: '📅' },
+  transferts:   { emoji: '🔁' },
+  inbox:        { emoji: '✉' },
+  historique:   { emoji: '📜' },
+  coupe:        { emoji: '🏆' },
+  aide:         { emoji: '❓' },
+  options:      { emoji: '⚙️' }
 };
+
+// Libellé long (tiroir, réglages) et court (barre du bas, où la place manque).
+function ecranLabel(t) { return T('ecran.' + t + '.label'); }
+function ecranCourt(t) { return T('ecran.' + t + '.court'); }
 
 // Ordre par défaut : le rythme réel d'une journée. On regarde son effectif, on
 // l'entraîne, on voit où on en est au classement, puis on gère le club. Les transferts
@@ -6197,6 +6221,7 @@ function reglagesDefaut() {
   return {
     audio: { actif: true, volume: 0.6 },
     popupMessages: true,
+    langue: 'fr',
     navOrdre: NAV_DEFAUT_ORDRE.slice(),
     navActifs: NAV_DEFAUT_ACTIFS.slice()
   };
@@ -6204,6 +6229,91 @@ function reglagesDefaut() {
 
 // Répare et complète les réglages : une sauvegarde d'avant cette version n'en a pas,
 // et une liste peut avoir été écrite avec un écran qui n'existe plus.
+// ==================== Langues ====================
+// Chantier 1 du plan de version anglaise. Le socle est posé avant toute traduction : si la
+// mécanique est bancale, on le voit sur dix lignes de test plutôt que sur huit mille lignes
+// de remplacement.
+
+const LANGUES = { fr: 'Français', en: 'English' };
+
+// `TEXTES` n'est PAS déclaré ici : il l'est dans le bloc d'amorçage, en tête de page, avec
+// le registre des pièces. Raison mesurée — les fichiers `textes-*.js` se chargent AVANT ce
+// script, et un `const TEXTES` posé ici arriverait trop tard : leur `Object.assign` ne
+// trouverait rien et serait sauté EN SILENCE. Le dictionnaire restait vide, le jeu affichait
+// ses clés, et aucune erreur ne le signalait.
+
+// Le pluriel n'est pas un détail cosmétique. Le français met 0 ET 1 au singulier
+// (« 0 point »), l'anglais met 0 au pluriel (« 0 points »). Une règle unique se tromperait
+// une fois sur deux sur tous les compteurs du jeu — scores, journées, buts.
+const REGLE_PLURIEL = {
+  fr: n => (Math.abs(n) < 2 ? 'un' : 'autres'),
+  en: n => (Math.abs(n) === 1 ? 'un' : 'autres')
+};
+
+function langue() {
+  const l = (typeof G !== 'undefined' && G && G.settings && G.settings.langue) || null;
+  if (l && LANGUES[l]) return l;
+  const m = langueLireMiroir();
+  return LANGUES[m] ? m : 'fr';
+}
+
+// Substitution nommée : `{nom}` et `{n}`. Un paramètre absent laisse son marqueur en place
+// plutôt que d'écrire « undefined » — un trou visible se corrige, un « undefined » se
+// discute.
+function interpolerTexte(s, params) {
+  if (!params) return s;
+  return s.replace(/\{(\w+)\}/g, (marqueur, cle) =>
+    (params[cle] !== undefined && params[cle] !== null) ? params[cle] : marqueur);
+}
+
+// `T(cle, params)` — le seul point d'accès au texte du jeu.
+//
+// L'échappement reste à l'appelant : `T('cle', { nom: escHtml(p.nom) })`. Échapper d'office
+// casserait les messages qui contiennent volontairement du HTML (portraits, gras, notes).
+function T(cle, params) {
+  const l = langue();
+  let v = TEXTES[l] ? TEXTES[l][cle] : undefined;
+  // Repli sur le français : une traduction incomplète doit laisser voir du français, jamais
+  // un trou blanc.
+  if (v === undefined && l !== 'fr') v = TEXTES.fr ? TEXTES.fr[cle] : undefined;
+  // Dernier repli : la clé. Visible immédiatement, en test comme à l'écran.
+  if (v === undefined) return cle;
+  if (typeof v === 'object' && v !== null) {
+    const n = params && params.n !== undefined ? Number(params.n) : 0;
+    const forme = (REGLE_PLURIEL[l] || REGLE_PLURIEL.fr)(n);
+    v = v[forme] !== undefined ? v[forme] : (v.autres !== undefined ? v.autres : v.un);
+  }
+  return interpolerTexte(String(v), params);
+}
+
+// L'écran titre existe avant qu'une sauvegarde soit chargée, et il doit déjà parler la bonne
+// langue. Même mécanisme qu'`AUDIO_MIROIR`, écrit pour la même raison — on suit le précédent
+// plutôt que d'en inventer un second.
+const LANGUE_MIROIR = 'rhm_langue';
+function langueMiroirLocal(l) {
+  try { localStorage.setItem(LANGUE_MIROIR, l); } catch (e) {}
+}
+function langueLireMiroir() {
+  try { return localStorage.getItem(LANGUE_MIROIR) || 'fr'; } catch (e) { return 'fr'; }
+}
+
+// Applique un choix de langue : réglage de la partie, miroir pour l'écran titre, attribut
+// `lang` de la page (c'est lui que lisent les lecteurs d'écran), puis re-rendu complet.
+function choisirLangue(l) {
+  if (!LANGUES[l]) return;
+  if (typeof G !== 'undefined' && G) reglages().langue = l;
+  langueMiroirLocal(l);
+  document.documentElement.setAttribute('lang', l);
+  // `construireBarre(true)` en plus de `renderAll()` : la barre du bas et le tiroir sont
+  // construits UNE FOIS au démarrage et ne font pas partie du rendu courant. Sans ce forçage,
+  // les onglets restaient en français après un changement de langue — visible au premier
+  // coup d'œil, et pourtant facile à manquer en écrivant le code.
+  if (typeof construireBarre === 'function') construireBarre(true);
+  if (typeof renderAll === 'function' && typeof G !== 'undefined' && G) renderAll();
+  if (typeof refreshMenu === 'function') refreshMenu();
+  if (typeof renderOptions === 'function') renderOptions();
+}
+
 function normaliserReglages(s) {
   const d = reglagesDefaut();
   s = s || {};
@@ -6217,6 +6327,9 @@ function normaliserReglages(s) {
              volume: typeof a.volume === 'number' ? Math.min(1, Math.max(0, a.volume)) : 0.6 },
     // Absent des sauvegardes d'avant cette version : on active, c'est le comportement neuf.
     popupMessages: s.popupMessages !== false,
+    // Absent des sauvegardes d'avant la v108, et une valeur inconnue retombe sur le français.
+    // Une langue absurde venue d'un fichier importé ne doit pas vider tous les écrans.
+    langue: LANGUES[s.langue] ? s.langue : 'fr',
     navOrdre: ordre,
     navActifs: actifs
   };
@@ -6370,7 +6483,7 @@ function renderOptions() {
   if (!box) return;
   // Pied des Réglages : c'est l'écran où l'on va chercher un numéro pour signaler un défaut.
   const piedVersion = `<p class="rg-info" style="text-align:center;margin-top:15px">
-    Roller Hockey Manager — <b>version ${VERSION_JEU}</b></p>`;
+    Roller Hockey Manager — <b>${T('reglages.version', { n: VERSION_JEU })}</b></p>`;
   const r = reglages();
   const capacite = navCapacite();
   const rep = navRepartition();
@@ -6380,53 +6493,58 @@ function renderOptions() {
     const dansBarre = rep.barre.includes(t);
     return `<div class="rg-item ${on ? '' : 'off'}">
       <span class="ic">${iconeHtml(t)}</span>
-      <span class="nm">${ECRANS[t].label}</span>
+      <span class="nm">${escHtml(ecranLabel(t))}</span>
       ${dansBarre ? '<span class="pos">barre</span>' : ''}
       <button class="btn" onclick="deplacerEcran('${t}',-1)" ${i === 0 ? 'disabled' : ''} title="Monter">▲</button>
       <button class="btn" onclick="deplacerEcran('${t}',1)" ${i === r.navOrdre.length - 1 ? 'disabled' : ''} title="Descendre">▼</button>
       <button class="sw ${on ? 'on' : ''}" onclick="basculerEcran('${t}')"
-              aria-label="${on ? 'Retirer' : 'Ajouter'} ${ECRANS[t].label} de la barre"></button>
+              aria-label="${escHtml(T(on ? 'reglages.barre.retirer' : 'reglages.barre.ajouter', { ecran: ecranLabel(t) }))}"></button>
     </div>`;
   }).join('');
 
   box.innerHTML = `
     <div class="rg-bloc">
-      <h3>🔊 Son</h3>
-      <p class="note">La musique change selon l'écran. Elle se coupe toute seule quand tu quittes l'application.</p>
+      <h3>🌐 ${T('reglages.langue.titre')}</h3>
+      <p class="note">${T('reglages.langue.note')}</p>
       <div class="rg-son">
-        <button class="btn ${r.audio.actif ? 'buy' : ''}" onclick="basculerSon()">${r.audio.actif ? '🔊 Activée' : '🔇 Coupée'}</button>
+        ${Object.keys(LANGUES).map(l =>
+          `<button class="btn ${langue() === l ? 'buy' : ''}" data-langue="${l}"
+                   onclick="choisirLangue('${l}')">${escHtml(LANGUES[l])}</button>`).join('')}
+      </div>
+    </div>
+    <div class="rg-bloc">
+      <h3>🔊 ${T('reglages.son.titre')}</h3>
+      <p class="note">${T('reglages.son.note')}</p>
+      <div class="rg-son">
+        <button class="btn ${r.audio.actif ? 'buy' : ''}" onclick="basculerSon()">${r.audio.actif ? '🔊 ' + T('reglages.son.active') : '🔇 ' + T('reglages.son.coupee')}</button>
         <input type="range" min="0" max="100" value="${Math.round(r.audio.volume * 100)}"
-               oninput="reglerVolume(this.value)" aria-label="Volume">
+               oninput="reglerVolume(this.value)" aria-label="${escHtml(T('reglages.son.volume'))}">
         <span class="val">${Math.round(r.audio.volume * 100)} %</span>
       </div>
     </div>
 
     <div class="rg-bloc">
-      <h3>🏠 Partie en cours</h3>
-      <p class="note">Reviens à l'écran titre pour changer d'emplacement ou démarrer une
-        autre partie. La tienne est sauvegardée automatiquement, tu la retrouveras telle quelle.</p>
-      <button class="btn" onclick="quitterVersTitre()">← Retour à l'écran titre</button>
+      <h3>🏠 ${T('reglages.partie.titre')}</h3>
+      <p class="note">${T('reglages.partie.note')}</p>
+      <button class="btn" onclick="quitterVersTitre()">← ${T('reglages.partie.retour')}</button>
     </div>
 
     <div class="rg-bloc">
-      <h3>📱 Barre du bas</h3>
-      <p class="note">Choisis les écrans qui apparaissent directement, et leur ordre. Les autres
-        restent accessibles par le bouton « Plus ».</p>
+      <h3>📱 ${T('reglages.barre.titre')}</h3>
+      <p class="note">${T('reglages.barre.note')}</p>
       <div class="rg-liste">${lignes}</div>
       <hr class="rg-sep">
-      <p class="rg-info">Cet écran affiche <b>${capacite} entrées</b> à sa largeur actuelle
-        (${window.innerWidth} px). ${rep.plus
-          ? `Les ${rep.tiroir.length} écrans restants sont dans « Plus ».`
-          : `Tout tient dans la barre, le bouton « Plus » disparaît.`}
-        Élargis la fenêtre et la barre s'étoffe d'elle-même.</p>
+      <p class="rg-info">${T('reglages.barre.capacite', { n: capacite, largeur: window.innerWidth })}
+        ${rep.plus ? T('reglages.barre.reste', { n: rep.tiroir.length }) : T('reglages.barre.tout')}
+        ${T('reglages.barre.elargis')}</p>
     </div>
     ${piedVersion}`;
 }
 
 // Quitter une partie en cours mérite qu'on le demande — même si rien n'est perdu.
 async function quitterVersTitre() {
-  if (!(await ask({ title: 'Retour à l\'écran titre', ico: '🏠', okLabel: 'Revenir au titre',
-    text: 'Revenir à l\'écran titre ?\n\nTa partie est sauvegardée, tu la retrouveras à cet emplacement.' }))) return;
+  if (!(await ask({ title: T('reglages.partie.retour'), ico: '🏠', okLabel: T('reglages.partie.confirmer'),
+    text: T('reglages.partie.question') }))) return;
   flushSave();
   backToMenu();
 }
@@ -6686,12 +6804,12 @@ function construireBarre(force) {
   derniereBarre = signature;
 
   nav.innerHTML = rep.barre.map(t => `
-    <button data-nav="${t}"><span class="ic">${iconeHtml(t)}</span><span class="lb">${ECRANS[t].court}</span></button>`
+    <button data-nav="${t}"><span class="ic">${iconeHtml(t)}</span><span class="lb">${escHtml(ecranCourt(t))}</span></button>`
   ).join('') + (rep.plus ? `
-    <button data-nav="__plus"><span class="ic">${iconeHtml('__plus', '⋯')}</span><span class="lb">Plus</span></button>` : '');
+    <button data-nav="__plus"><span class="ic">${iconeHtml('__plus', '⋯')}</span><span class="lb">${escHtml(T('nav.plus'))}</span></button>` : '');
 
   grid.innerHTML = rep.tiroir.map(t => `
-    <button data-tab="${t}"><span class="ic">${iconeHtml(t)}</span>${ECRANS[t].label}</button>`
+    <button data-tab="${t}"><span class="ic">${iconeHtml(t)}</span>${escHtml(ecranLabel(t))}</button>`
   ).join('') || '<p class="rg-info" style="grid-column:1/-1;text-align:center;padding:14px 0">Tous les écrans tiennent dans la barre.</p>';
 
   nav.querySelectorAll('button[data-nav]').forEach(b => {
@@ -6760,12 +6878,22 @@ function seasonLabel(n) {
 
 function renderTop() {
   majCouleurDivision();
+  // Les libellés du bandeau sont écrits ici, avec leurs valeurs. En HTML statique, ils
+  // resteraient en français après un changement de langue en cours de partie.
+  const poser = (id, cle) => { const e = document.getElementById(id); if (e) e.textContent = T(cle); };
+  poser('uiSeasonLabel', 'bandeau.saison');
+  poser('uiDayLabel', 'bandeau.journee');
+  poser('uiBudgetLabel', 'bandeau.budget');
+  poser('uiObjectiveLabel', 'bandeau.objectif');
+  poser('uiBoardLabel', 'bandeau.direction');
+  const boiteLettres = document.getElementById('hdInbox');
+  if (boiteLettres) boiteLettres.setAttribute('title', T('ecran.inbox.label'));
   document.getElementById('uiDay').textContent = Math.min(G.day + 1, G.schedule.length);
   document.getElementById('uiDayTotal').textContent = G.schedule.length;
   document.getElementById('uiBudget').textContent = euros(G.budget);
   const rank = sortedTeams().indexOf(myTeam()) + 1;
   document.getElementById('uiRank').textContent =
-    DIVISIONS[G.divIdx].label + ' · ' + rank + 'e/' + G.teams.length;
+    DIVISIONS[G.divIdx].label + ' · ' + T('bandeau.rang', { rang: rank, total: G.teams.length });
   document.getElementById('uiSeason').textContent = seasonLabel(G.season);
   document.getElementById('uiObjective').textContent = G.boardObjective ? G.boardObjective.label : '—';
   const bc = G.boardConfidence ?? 60;
@@ -6773,16 +6901,16 @@ function renderTop() {
   document.getElementById('uiBoardConf').style.color = bc >= 60 ? 'var(--vert)' : bc >= 35 ? 'var(--tan)' : 'var(--rouge)';
   let label;
   if (cupHasPendingAction()) {
-    if (!G.cup || G.cup.season !== G.season) label = '🏆 Lancer le tirage de la Coupe de France';
-    else if (G.cup.humanOut) label = '🏆 Résultats de la Coupe de France';
-    else label = '🏆 Jouer le match de Coupe de France';
-  } else if (G.day < G.schedule.length) label = '▶ Jouer la journée ' + (G.day + 1);
-  else if (!G.playoff) label = '▶ Lancer les playoffs (Top 8)';
-  else if (G.playoff.humanOut) label = '▶ Voir le résultat final des playoffs';
-  else if (G.playoff.stage === 'quarts') label = '▶ Jouer un match de quart de finale';
-  else if (G.playoff.stage === 'demis') label = '▶ Jouer un match de demi-finale';
-  else if (G.playoff.stage === 'finale') label = '▶ Jouer un match de la finale';
-  else label = '▶ Bilan de fin de saison';
+    if (!G.cup || G.cup.season !== G.season) label = '🏆 ' + T('action.coupe.tirage');
+    else if (G.cup.humanOut) label = '🏆 ' + T('action.coupe.resultats');
+    else label = '🏆 ' + T('action.coupe.jouer');
+  } else if (G.day < G.schedule.length) label = '▶ ' + T('action.journee', { n: G.day + 1 });
+  else if (!G.playoff) label = '▶ ' + T('action.playoffs.lancer');
+  else if (G.playoff.humanOut) label = '▶ ' + T('action.playoffs.final');
+  else if (G.playoff.stage === 'quarts') label = '▶ ' + T('action.playoffs.quart');
+  else if (G.playoff.stage === 'demis') label = '▶ ' + T('action.playoffs.demi');
+  else if (G.playoff.stage === 'finale') label = '▶ ' + T('action.playoffs.finale');
+  else label = '▶ ' + T('action.bilan');
   // le libellé seul est remplacé : l'icône du bouton survit au rafraîchissement
   const lbl = document.getElementById('btnPlayLabel');
   if (lbl) lbl.textContent = label.replace(/^▶\s*/, '');
@@ -8894,7 +9022,8 @@ function verifierPieces() {
       '-webkit-user-select:text;user-select:text;';
     boite.innerHTML = '<b style="font-size:17px">⚠️ Le jeu est incomplet — il ne démarrera pas.</b>'
       + '<br><br>Des fichiers manquent à côté d\'index.html :<br><br>'
-      + critiques.map(function (c) { return '· ' + c + '.js — ' + PIECES_REQUISES[c].quoi; }).join('<br>')
+      + critiques.map(function (c) {
+          return '· ' + PIECES_REQUISES[c].fichier + ' — ' + PIECES_REQUISES[c].quoi; }).join('<br>')
       + '<br><br>Le jeu s\'arrête volontairement plutôt que de tourner à moitié : '
       + 'une partie amputée écraserait ta sauvegarde.';
     document.body.appendChild(boite);
@@ -8904,7 +9033,7 @@ function verifierPieces() {
   // Non critiques : on prévient sans condamner.
   manquantes.forEach(function (c) {
     if (typeof console !== 'undefined') {
-      console.warn('[pièce absente] ' + c + '.js — ' + PIECES_REQUISES[c].quoi
+      console.warn('[pièce absente] ' + PIECES_REQUISES[c].fichier + ' — ' + PIECES_REQUISES[c].quoi
         + ' (' + PIECES_REQUISES[c].repli + ')');
     }
   });
