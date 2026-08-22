@@ -714,7 +714,10 @@ Object.assign(TEXTES.en, {
   "playoffs.serie.finale": "Final",
   "playoffs.mene": "{meneur} lead {a}-{b} against {adversaire}",
   "playoffs.match": "game {n}",
-  "playoffs.serieRemportee": "(series won)"
+  "playoffs.serieRemportee": "(series won)",
+  "direct.prolongation": "Overtime — sudden death.",
+  "direct.finMatch": "Full time!",
+  "direct.scoreFinal": "Final score {a} — {b}."
 });
 
 if (typeof PIECES_CHARGEES === 'object') PIECES_CHARGEES.textesen = true;
