@@ -506,7 +506,38 @@ Object.assign(TEXTES.en, {
   "messages.vide.objectifs": "<b>Targets</b> — what the board expects of you",
   "messages.vide.blessures": "<b>Injuries</b> — who is out, and for how long",
   "messages.vide.contrats": "<b>Contracts</b> — expiries to plan for",
-  "messages.vide.sponsors": "<b>Sponsors</b> — the offers that unlock"
+  "messages.vide.sponsors": "<b>Sponsors</b> — the offers that unlock",
+
+  // ---- tutoriel guidé
+  "tuto.passer": "Skip the tutorial",
+  "tuto.continuer": "Continue",
+  "tuto.commencer": "Start",
+  "tuto.compris": "Got it",
+  "tuto.terminer": "Finish",
+  "tuto.aller": "Tap <b>{ecran}</b>.",
+  "tuto.tour.titre": "A quick look around",
+  "tuto.tour.texte": "I will walk you through the screens one by one, up to your first game. It is short, and you can skip whenever you like.",
+  "tuto.effectif.texte": "You are already here: this is your team sheet. You pick your keeper and your outfield players, and you see who is in form.",
+  "tuto.composer.titre": "Picking your team",
+  "tuto.composer.texte": "One keeper and four outfield players on the court, as roller in line hockey demands. The others rotate: the more you rotate, the less your players wear down.",
+  "tuto.entrainement.texte": "Tap <b>{ecran}</b>. This is where your squad improves — or stalls, if you have nobody to coach them.",
+  "tuto.coach.titre": "Your first coach",
+  "tuto.coach.texte": "Hire a coach. With no staff, <b>nobody improves</b>: the session is even refused. I am showing you the cheapest, but you can pick another.",
+  "tuto.seance.titre": "The first session",
+  "tuto.seance.texte": "Run the session. One a week, between matchdays — it mostly benefits the players <b>left out</b>, who turn up fresh.",
+  "tuto.lireClassement.titre": "Reading the table",
+  "tuto.lireClassement.texte": "FFRS scale: <b>3</b> points for a win, <b>2</b> for an overtime win, <b>1</b> for an overtime loss, <b>0</b> for a defeat. Level on points, goal difference decides.",
+  "tuto.construire.titre": "Building your club",
+  "tuto.construire.texte": "Stands, comfort, refreshments, training centre, sponsors. Careful: <b>going up a division requires a rated venue</b> — without the building work, promotion is denied even if you win. Two projects a season, no more.",
+  "tuto.reste.titre": "Everything else",
+  "tuto.reste.tiroir": "Tap <b>{plus}</b>: transfers, fixtures, Coupe de France, messages, history, help and settings are kept there.",
+  "tuto.reste.large": "Your screen is wide: every screen fits in the bar — transfers, fixtures, Coupe de France, messages, history, help and settings. On a phone, the last ones move into a « More » drawer.",
+  "tuto.tiroir.titre": "Close the drawer",
+  "tuto.tiroir.texte": "Close the drawer: pull the handle down, or tap anywhere above the panel.",
+  "tuto.jouer.titre": "Off you go",
+  "tuto.jouer.texte": "Tap <b>{bouton}</b>. You can watch the game unfold, or go straight to the result.",
+  "tuto.fin.titre": "Over to you!",
+  "tuto.fin.texte": "You have everything you need: pick, train, build, recruit. Start in Régional and climb as high as you can — Élite is five divisions up."
 });
 
 if (typeof PIECES_CHARGEES === 'object') PIECES_CHARGEES.textesen = true;

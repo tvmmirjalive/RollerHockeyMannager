@@ -506,7 +506,38 @@ Object.assign(TEXTES.fr, {
   "messages.vide.objectifs": "<b>Objectifs</b> — ce que la direction attend de toi",
   "messages.vide.blessures": "<b>Blessures</b> — qui est indisponible, et pour combien de temps",
   "messages.vide.contrats": "<b>Contrats</b> — les fins de contrat à anticiper",
-  "messages.vide.sponsors": "<b>Sponsors</b> — les offres qui se débloquent"
+  "messages.vide.sponsors": "<b>Sponsors</b> — les offres qui se débloquent",
+
+  // ---- tutoriel guidé
+  "tuto.passer": "Passer le tutoriel",
+  "tuto.continuer": "Continuer",
+  "tuto.commencer": "Commencer",
+  "tuto.compris": "Compris",
+  "tuto.terminer": "Terminer",
+  "tuto.aller": "Touche <b>{ecran}</b>.",
+  "tuto.tour.titre": "Petit tour du propriétaire",
+  "tuto.tour.texte": "Je te montre les écrans un par un, jusqu'à ton premier match. C'est court, et tu peux passer quand tu veux.",
+  "tuto.effectif.texte": "Tu y es déjà : c'est ta feuille de match. Tu y choisis ton gardien et tes joueurs de champ, et tu vois qui est en forme.",
+  "tuto.composer.titre": "Composer son équipe",
+  "tuto.composer.texte": "Un gardien et quatre joueurs de champ sur la piste, comme le veut le roller in line hockey. Les autres tournent : plus tu fais tourner, moins tes joueurs s'usent.",
+  "tuto.entrainement.texte": "Touche <b>{ecran}</b>. C'est ici que ton effectif progresse — ou stagne, si tu n'as personne pour l'encadrer.",
+  "tuto.coach.titre": "Ton premier coach",
+  "tuto.coach.texte": "Embauche un coach. Sans staff, <b>aucune progression</b> : la séance est même refusée. Je te montre le moins cher, mais tu peux en choisir un autre.",
+  "tuto.seance.titre": "La première séance",
+  "tuto.seance.texte": "Lance la séance. Une par semaine, entre deux journées — ce sont surtout les joueurs <b>laissés au repos</b> qui en profitent, ils arrivent frais.",
+  "tuto.lireClassement.titre": "Lire le classement",
+  "tuto.lireClassement.texte": "Barème FFRS : <b>3</b> points la victoire, <b>2</b> une victoire en prolongation, <b>1</b> une défaite en prolongation, <b>0</b> une défaite. À égalité, c'est la différence de buts qui départage.",
+  "tuto.construire.titre": "Construire son club",
+  "tuto.construire.texte": "Stade, confort, buvette, centre d'entraînement, sponsors. Attention : <b>monter de division exige une salle classée</b> — sans les travaux, la montée est refusée même en gagnant. Deux chantiers par saison, pas plus.",
+  "tuto.reste.titre": "Tout le reste",
+  "tuto.reste.tiroir": "Touche <b>{plus}</b> : transferts, calendrier, Coupe de France, messages, historique, aide et options y sont rangés.",
+  "tuto.reste.large": "Ton écran est large : tous les écrans tiennent dans la barre — transferts, calendrier, Coupe de France, messages, historique, aide et options. Sur téléphone, les derniers passent dans un tiroir « Plus ».",
+  "tuto.tiroir.titre": "Referme le tiroir",
+  "tuto.tiroir.texte": "Referme le tiroir : tire la poignée vers le bas, ou touche n'importe où au-dessus du panneau.",
+  "tuto.jouer.titre": "À l'eau",
+  "tuto.jouer.texte": "Touche <b>{bouton}</b>. Tu peux regarder le match se dérouler, ou passer directement au résultat.",
+  "tuto.fin.titre": "À toi de jouer maintenant !",
+  "tuto.fin.texte": "Tu as tout ce qu'il faut : composer, entraîner, construire, recruter. Pars du Régional et monte aussi haut que tu peux — l'Élite est à cinq divisions."
 });
 
 if (typeof PIECES_CHARGEES === 'object') PIECES_CHARGEES.textesfr = true;
