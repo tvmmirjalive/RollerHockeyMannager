@@ -2001,7 +2001,7 @@ async function effacerSlot(s, ev) {
 // `versionName` du build Android par 4-outils/patch-version.py, qui refuse de s'appliquer
 // si les deux divergent. Le mode d'échec évité est réel : l'APK a annoncé « 1.0 » pendant
 // soixante-dix-sept versions parce que rien ne reliait le jeu à son numéro.
-const VERSION_JEU = '127';
+const VERSION_JEU = '128';
 
 function refreshMenu() {
   // Les textes de l'écran titre sont écrits ICI et non en HTML statique : sinon ils
@@ -3230,8 +3230,91 @@ function computeMatchFinance(isHome) {
   return finance;
 }
 
+// ==================== Lignes complètes avant match ====================
+// Voir 4-outils/patch-lignes-completes.py.
+//
+// Une ligne engagée à trois, c'est un joueur de moins sur la piste pendant tout son temps de
+// jeu. Rien ne l'empêchait : `playDay()` simulait sans regarder la composition, et la seule
+// réparation existante intervient APRÈS les matchs.
+
+function lignesPartielles(team) {
+  const out = [];
+  for (let n = 1; n <= LIGNES_MAX; n++) {
+    const t = joueursDeLigne(team, n).length;
+    if (t > 0 && t < PAR_LIGNE) out.push(n);
+  }
+  return out;
+}
+
+// Complète les lignes engagées en puisant dans la réserve. On préfère le poste qui manque
+// pour tenir la norme 2/2, mais on prend le meilleur disponible plutôt que de laisser un
+// trou : la parité est une norme de confort, être quatre est une nécessité de jeu.
+function completerLignes(team) {
+  const ajouts = [];
+  const reserve = () => team.players
+    .filter(p => p.pos !== 'G' && !p.injured && ligneDe(p) === 0)
+    .sort((a, b) => effOv(b) - effOv(a));
+
+  lignesPartielles(team).forEach(n => {
+    while (joueursDeLigne(team, n).length < PAR_LIGNE) {
+      const banc = reserve();
+      if (!banc.length) break;
+      const cur = joueursDeLigne(team, n);
+      const manque = cur.filter(x => x.pos === 'D').length < PAR_POSTE_AUTO ? 'D'
+        : (cur.filter(x => x.pos === 'A').length < PAR_POSTE_AUTO ? 'A' : null);
+      const voulu = manque ? banc.find(x => x.pos === manque) : null;
+      const choisi = voulu || banc[0];
+      choisi.ligne = n;
+      choisi.starter = true;
+      ajouts.push({ nom: choisi.nom, ligne: n, horsNorme: !voulu });
+    }
+  });
+  return ajouts;
+}
+
+// Une ligne qu'on n'a pas pu compléter est dissoute — SAUF s'il ne reste rien d'autre. Un
+// club réduit à trois joueurs valides doit pouvoir jouer : refuser la journée enfermerait
+// la saison, puisque l'effectif ne se reconstitue qu'en faisant passer les semaines.
+function dissoudreLignesPartielles(team) {
+  const dissoutes = [];
+  lignesPartielles(team).forEach(n => {
+    const completes = [];
+    for (let k = 1; k <= LIGNES_MAX; k++) {
+      if (k !== n && joueursDeLigne(team, k).length === PAR_LIGNE) completes.push(k);
+    }
+    if (!completes.length) return;
+    joueursDeLigne(team, n).forEach(p => { p.ligne = 0; p.starter = false; });
+    dissoutes.push(n);
+  });
+  return dissoutes;
+}
+
+function preparerLignesAvantMatch() {
+  const me = myTeam();
+  if (!me) return;
+  const ajouts = completerLignes(me);
+  const dissoutes = dissoudreLignesPartielles(me);
+  const restantes = lignesPartielles(me);
+
+  if (ajouts.length) {
+    const horsNorme = ajouts.filter(a => a.horsNorme).length;
+    toast(T(horsNorme ? 'compo.completeHorsNorme' : 'compo.complete', { n: ajouts.length }), 'info');
+  }
+  if (dissoutes.length) {
+    toast(T('compo.dissoute', { n: dissoutes.length }), 'warn');
+  }
+  if (restantes.length) {
+    // Dernier cas : plus personne en réserve et aucune autre ligne complète. On joue quand
+    // même, mais on le dit — le joueur doit comprendre pourquoi il patine à trois.
+    toast(T('compo.effectifCourt', { n: joueursDeLigne(me, restantes[0]).length }), 'warn');
+  }
+}
+
 function playDay() {
   if (G.day >= G.schedule.length) { toast(T('toast.saisonTerminee'), 'info'); return; }
+  // On ne part jamais avec une ligne engagée à trois : on complète depuis la réserve, quitte
+  // à sacrifier la parité 2/2. Doit rester AVANT toute simulation.
+  preparerLignesAvantMatch();
   const round = G.schedule[G.day];
   let myResult = null;
   round.forEach(m => {
@@ -3512,13 +3595,6 @@ function qualifiesDivision(divIdx) {
       .forEach(t => { if (out.length < 8) out.push(t); });
   }
   return out;
-}
-
-function autoLineupIfBroken() {
-  const me = myTeam();
-  const gk = me.players.filter(p => p.pos === 'G' && p.starter && !p.injured).length;
-  const field = me.players.filter(p => p.pos !== 'G' && p.starter && !p.injured).length;
-  if (gk !== 1 || field < 4) autoLineup(me);
 }
 
 function toggleStarter(playerId) {
@@ -4710,7 +4786,7 @@ function rangDeLigne(team, n) {
   return `<div class="ligne-bloc cliquable ${l.length ? '' : 'vide'}" onclick="ouvrirLigne(${n})"
     role="button" tabindex="0" title="${escHtml(T('ligne.editer.info'))}">
     <div class="ligne-tete"><span class="ligne-nom">${T('lignes.ligne', { n })}</span>${compo}
-      <span class="ligne-compte">${l.length}/${PAR_LIGNE}</span><span class="ligne-crayon">✎</span></div>
+      <span class="ligne-compte ${l.length > 0 && l.length < PAR_LIGNE ? 'court' : ''}">${l.length}/${PAR_LIGNE}</span><span class="ligne-crayon">✎</span></div>
     <div class="ligne-slots">${slots}</div>${verdict}</div>`;
 }
 

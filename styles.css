@@ -469,6 +469,9 @@
   .ligne-nom { font-weight: 800; font-size: 12px; letter-spacing: .5px; }
   .ligne-compo { font-size: 10px; color: var(--muted); }
   .ligne-compte { font-size: 10px; color: var(--muted); margin-left: auto; }
+  /* Une ligne engagée mais incomplète se voit avant le match, pas après : elle sera
+     complétée d'office, autant que le joueur sache d'où vient le remplaçant. */
+  .ligne-compte.court { color: var(--rouge); font-weight: 700; }
   /* QUATRE colonnes à toutes les largeurs : une ligne compte quatre joueurs, et la voir sur
      un seul rang est ce qui fait qu'on lit un tableau et non une liste. Deux rangées en
      téléphone trahissaient la demande d'origine — « genre tableau ». */
