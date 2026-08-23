@@ -66,6 +66,11 @@ const mCY = MH / 2, mGoalHalf = 45, mGoalDepth = 18;
 const mSLOT_L = mGL_L + 95, mSLOT_R = mGL_R - 95; // limite avant du slot de chaque camp
 const mSLOT_HALF = 70; // demi-hauteur du slot
 const MV_BODY_R = 10.5;
+// Au-delà de ce temps de jeu, un palet libre et immobile est remis en mouvement. Deux
+// minutes : assez long pour ne jamais interrompre une phase de jeu réelle — la relance
+// naturelle par passe intervient toutes les 0,7 à 1,4 minute — assez court pour qu'un
+// blocage ne soit jamais visible à l'écran.
+const MV_PALET_DORT = 2.0;
 
 // Des indices, pas des phrases : le commentaire est tiré au sort à chaque passage et se
 // compose à l'affichage, donc dans la langue du moment.
@@ -277,6 +282,20 @@ function updateMvPuck(simDt) {
       mv.skaters.forEach(s => { const d = mvDist(s, p); if (d < closestD) { closestD = d; closest = s; } });
       if (closest && closestD < MV_BODY_R + 13) p.owner = closest;
     }
+    // Filet de sécurité. La correction ci-dessus supprime le point fixe CONNU ; elle ne
+    // prouve pas qu'il n'en existe aucun autre. Un palet libre, immobile et que personne ne
+    // ramasse depuis plus de MV_PALET_DORT minutes de jeu est remis en mouvement vers le
+    // centre. Comme le garde-fou à 56' de la prolongation : il ne devrait jamais servir.
+    if (!p.owner && Math.hypot(p.vx, p.vy) < 4) {
+      p.dort = (p.dort || 0) + simDt;
+      if (p.dort > MV_PALET_DORT) {
+        mvKickPuck(rnd(mxMin + 70, mxMax - 70), rnd(myMin + 60, myMax - 60), 120);
+        p.dort = 0;
+        p.ownerCooldown = 0.2;
+      }
+    } else {
+      p.dort = 0;
+    }
   }
 }
 
@@ -368,8 +387,12 @@ function updateMvSkaters(simDt) {
     } else if (attacking && s.role === 'fwd') {
       // ----- AVANT SANS PALET (équipe en attaque) -----
       if (s.isLead && (!carrier || carrier.role === 'def')) {
-        // le meneur va chercher/soutenir le palet
-        tx = p.x + forward * 30; ty = p.y;
+        // Avec un porteur, on se place en SOUTIEN devant lui : le décalage de 30 px a du
+        // sens. Sans porteur, il faut aller SUR le palet — viser 30 px au-delà garait le
+        // meneur entre 24 et 36 px, alors que le ramassage exige 23,5 px. Un demi-pixel
+        // d'écart, et la patinoire se figeait jusqu'au coup de sifflet.
+        if (carrier) { tx = p.x + forward * 30; ty = p.y; }
+        else { tx = p.x; ty = p.y; }
       } else {
         // le coupeur : coupe à la cage adverse, décalé du côté opposé au palet (démarquage)
         const side = p.y >= mCY ? -1 : 1; // côté opposé au palet
