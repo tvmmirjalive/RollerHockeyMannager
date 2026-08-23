@@ -482,6 +482,15 @@
   .ligne-tete { display: flex; align-items: baseline; gap: 8px; margin-bottom: 6px; }
   .ligne-nom { font-weight: 800; font-size: 12px; letter-spacing: .5px; }
   .ligne-compo { font-size: 10px; color: var(--muted); }
+  .cal-date { display: block; font-size: 11px; color: var(--muted); margin-top: 2px;
+    text-transform: capitalize; }
+  /* On NE touche pas à la largeur des tableaux du calendrier. J'avais cru à un débordement
+     — les noms de clubs longs semblaient rognés à droite — et j'allais imposer
+     `table-layout: fixed`. Mesure faite : en dessous de 480 px, `table:not(.responsive-cards)`
+     passe en `display: block; overflow-x: auto; white-space: nowrap`. Ces tableaux DÉFILENT
+     horizontalement, c'est le motif voulu et celui que CLAUDE.md recommande. Une table en
+     `display: block` n'est plus une table : `table-layout` n'y signifie plus rien, ce qui
+     explique que ma correction n'ait rien corrigé. */
   .ligne-compte { font-size: 10px; color: var(--muted); margin-left: auto; }
   /* Une ligne engagée mais incomplète se voit avant le match, pas après : elle sera
      complétée d'office, autant que le joueur sache d'où vient le remplaçant. */

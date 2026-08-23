@@ -212,14 +212,18 @@ function applyTraining(mode) {
       }
     });
   });
-  if (mode === 'session') { G.lastSessionTraining = gains; G.trainingAvailable = false; }
+  if (mode === 'session') {
+    G.lastSessionTraining = gains;
+    G.seancesRestantes = Math.max(0, (G.seancesRestantes || 0) - 1);
+    G.trainingAvailable = G.seancesRestantes > 0;
+  }
   else G.lastTraining = gains;
 }
 
 // Séance d'entraînement hors match : utilisable une fois entre deux journées, fait progresser
 // en priorité les joueurs laissés au repos (la ligne complète qui ne joue pas).
 function runTrainingSession() {
-  if (!G.trainingAvailable) { toast(T('toast.seanceDeja'), 'info'); return; }
+  if (!(G.seancesRestantes > 0)) { toast(T('toast.seanceDeja'), 'info'); return; }
   if (Object.values(G.staff).every(v => !v)) { toast("Aucun coach en poste : recrute au moins un membre du staff.", 'warn'); return; }
   applyTraining('session');
   renderAll();
@@ -293,11 +297,13 @@ function renderEntrainement() {
     ? `<div class="card"><b>${T('entrainement.derniereHorsMatch')}</b><ul>${G.lastSessionTraining.map(g => `<li>${ligneGain(g)}</li>`).join('')}</ul></div>` : '';
   document.getElementById('tab-entrainement').innerHTML = `
     ${bandeau('entrainement', myTeam().name, T('ecran.entrainement.label'),
-              G.trainingAvailable ? T('entrainement.dispo') : T('entrainement.deja'))}
+              G.seancesRestantes > 0
+                ? T('entrainement.dispoN', { n: G.seancesRestantes, date: formatDateJournee(dateJournee(G.day), false) })
+                : T('entrainement.deja'))}
     <div class="card">
       <p class="note">${T('entrainement.info')}</p>
-      <button class="btn buy" ${!G.trainingAvailable ? 'disabled' : ''} onclick="runTrainingSession()">
-        ${G.trainingAvailable ? '🏋️ ' + T('entrainement.lancer') : '✔️ ' + T('entrainement.deja')}
+      <button class="btn buy" ${!(G.seancesRestantes > 0) ? 'disabled' : ''} onclick="runTrainingSession()">
+        ${G.seancesRestantes > 0 ? '🏋️ ' + T('entrainement.lancer') : '✔️ ' + T('entrainement.deja')}
       </button>
     </div>
     ${sessionGains}

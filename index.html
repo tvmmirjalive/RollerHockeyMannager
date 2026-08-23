@@ -2013,7 +2013,7 @@ async function effacerSlot(s, ev) {
 // `versionName` du build Android par 4-outils/patch-version.py, qui refuse de s'appliquer
 // si les deux divergent. Le mode d'échec évité est réel : l'APK a annoncé « 1.0 » pendant
 // soixante-dix-sept versions parce que rien ne reliait le jeu à son numéro.
-const VERSION_JEU = '131';
+const VERSION_JEU = '132';
 
 function refreshMenu() {
   // Les textes de l'écran titre sont écrits ICI et non en HTML statique : sinon ils
@@ -2498,6 +2498,7 @@ function newGame() {
     lastReport: null,
     lastTraining: [],
     trainingAvailable: true,
+    seancesRestantes: 1,
     lastSessionTraining: [],
     upgradesThisSeason: 0,
     lastFinance: null,
@@ -3243,6 +3244,131 @@ function computeMatchFinance(isHome) {
   return finance;
 }
 
+// ==================== Dates réelles des journées ====================
+// Voir 4-outils/patch-calendrier-dates.py.
+//
+// Le règlement ne fixe AUCUNE date : « le calendrier officiel des compétitions est établi
+// avant chaque saison sportive par la Commission Technique Sportive » (Particulier 0.3.2.1).
+// Ce qui suit est donc une reconstruction plausible, calée sur trois faits du règlement :
+// inscription au plus tard le 15 octobre (10.4.1 A), Pré-Nationale le dimanche (art. 9),
+// samedi soir ou dimanche autorisés en N2 et N3 (3.4, 4.3).
+
+// 0 = dimanche, 6 = samedi. Régional et Pré-Nationale jouent le dimanche ; à partir de la
+// N3 l'usage est le samedi, que le règlement autorise au même titre.
+const JOUR_MATCH = { Regional: 0, PreNat: 0, N3: 6, N2: 6, N1: 6, Elite: 6 };
+const SAISON_DEBUT = { mois: 9, jour: 18 };    // 18 octobre (mois 0-indexé)
+const SAISON_FIN = { mois: 3, jour: 12 };      // 12 avril de l'année suivante
+const TREVE_DEBUT = { mois: 11, jour: 20 };    // 20 décembre
+const TREVE_FIN = { mois: 0, jour: 4 };        // 4 janvier
+
+function jourDeMatch(divIdx) {
+  const d = DIVISIONS[divIdx];
+  return d && JOUR_MATCH[d.key] !== undefined ? JOUR_MATCH[d.key] : 0;
+}
+
+// Tous les créneaux possibles d'une saison, trêve exclue.
+function creneauxSaison(saison, divIdx) {
+  const an = FIRST_SEASON_YEAR + (saison - 1);
+  const veut = jourDeMatch(divIdx);
+  const d = new Date(an, SAISON_DEBUT.mois, SAISON_DEBUT.jour);
+  while (d.getDay() !== veut) d.setDate(d.getDate() + 1);
+  const fin = new Date(an + 1, SAISON_FIN.mois, SAISON_FIN.jour);
+  const treveA = new Date(an, TREVE_DEBUT.mois, TREVE_DEBUT.jour);
+  const treveB = new Date(an + 1, TREVE_FIN.mois, TREVE_FIN.jour);
+  const out = [];
+  while (d <= fin) {
+    if (d < treveA || d > treveB) out.push(new Date(d));
+    d.setDate(d.getDate() + 7);
+  }
+  return out;
+}
+
+// Répartit n journées sur les créneaux disponibles, aussi régulièrement que possible. S'il y
+// a moins de créneaux que de journées — cas théorique — on prend tous les créneaux et on
+// prolonge d'une semaine par journée restante plutôt que d'empiler deux matchs le même jour.
+function genererDatesSaison(nbJournees, saison, divIdx) {
+  const creneaux = creneauxSaison(saison, divIdx);
+  const dates = [];
+  if (nbJournees <= creneaux.length) {
+    const pas = creneaux.length / nbJournees;
+    for (let i = 0; i < nbJournees; i++) dates.push(creneaux[Math.floor(i * pas)]);
+  } else {
+    creneaux.forEach(c => dates.push(c));
+    const dernier = new Date(creneaux[creneaux.length - 1] || new Date());
+    while (dates.length < nbJournees) {
+      dernier.setDate(dernier.getDate() + 7);
+      dates.push(new Date(dernier));
+    }
+  }
+  return dates.map(isoLocal);
+}
+
+function datesJournees() {
+  if (!G.datesJournees || G.datesJournees.length !== G.schedule.length) {
+    G.datesJournees = genererDatesSaison(G.schedule.length, G.season, G.divIdx);
+  }
+  return G.datesJournees;
+}
+
+function dateJournee(i) {
+  const d = datesJournees();
+  return d[Math.max(0, Math.min(i, d.length - 1))];
+}
+
+// `toISOString()` convertirait en UTC : un dimanche à minuit heure de Paris y devient samedi
+// 22 h, et la date enregistrée reculerait d'un jour — le Régional se serait retrouvé à jouer
+// le samedi. On formate donc à partir des composantes LOCALES.
+function isoLocal(d) {
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const j = String(d.getDate()).padStart(2, '0');
+  return `${d.getFullYear()}-${m}-${j}`;
+}
+
+const MS_PAR_JOUR = 86400000;
+
+// Semaines entre la journée `i` et la précédente. La toute première journée vaut une semaine :
+// on ne part pas d'un repos infini sous prétexte qu'il n'y a rien avant elle.
+// `new Date('2026-10-18')` se lit en UTC : même piège qu'à l'écriture. On reconstruit la
+// date à partir de ses composantes pour rester dans le fuseau local de bout en bout.
+function dateLocale(iso) {
+  const [a, m, j] = String(iso).split('-').map(Number);
+  return new Date(a, (m || 1) - 1, j || 1);
+}
+
+function semainesAvantJournee(i) {
+  if (i <= 0) return 1;
+  const a = dateLocale(dateJournee(i - 1)), b = dateLocale(dateJournee(i));
+  return Math.max(1, Math.round((b - a) / MS_PAR_JOUR / 7));
+}
+
+// Jours calendaires jusqu'au prochain match, comptés depuis la journée qu'on vient de jouer.
+function joursAvantProchaineJournee() {
+  if (G.day >= G.schedule.length) return null;
+  if (G.day === 0) return null;   // la saison n'a pas commencé : pas de « depuis »
+  const a = dateLocale(dateJournee(G.day - 1)), b = dateLocale(dateJournee(G.day));
+  return Math.round((b - a) / MS_PAR_JOUR);
+}
+
+function formatDateJournee(iso, longue) {
+  const d = dateLocale(iso);
+  const loc = langue() === 'en' ? 'en-GB' : 'fr-FR';
+  return d.toLocaleDateString(loc, longue
+    ? { weekday: 'long', day: 'numeric', month: 'long' }
+    : { day: 'numeric', month: 'short' });
+}
+
+// Date de retour d'un joueur blessé : sa dernière journée d'indisponibilité, plus une.
+function dateRetour(p) {
+  if (!p.injured) return null;
+  const dates = datesJournees();
+  let restant = p.injuryWeeks;
+  for (let i = G.day; i < dates.length; i++) {
+    restant -= semainesAvantJournee(i);
+    if (restant <= 0) return dates[i];
+  }
+  return dates[dates.length - 1];
+}
+
 // ==================== Effectif minimum et forfait ====================
 // Voir 4-outils/patch-forfait.py. Règlement Sportif 6.1.1 A et 11.3.1.4.
 
@@ -3424,6 +3550,9 @@ function playDay(forfait) {
   });
 
   // fatigue : l'usure dépend du nombre de lignes utilisées (rotation) et de l'intervalle de changement
+  // Semaines de repos AVANT la prochaine journée. C'est cet intervalle qui doit compter,
+  // sinon la date affichée promettrait un repos que le moteur ne donnerait pas.
+  const semainesRepos = semainesAvantJournee(G.day + 1);
   G.teams.forEach(t => {
     const { field } = lineupOf(t);
     const playingIds = new Set(field.map(p => p.id));
@@ -3436,11 +3565,17 @@ function playDay(forfait) {
     const intervalMult = clampV(G.lineChangeInterval / 2, 0.7, 1.4);
     const wear = (9 / numLines) * intervalMult;
     t.players.forEach(p => {
-      if (p.injured) { p.injuryWeeks = Math.max(0, p.injuryWeeks - 1); if (p.injuryWeeks === 0) { p.injured = false; p.forme = 65; } return; }
+      // Une blessure se compte en SEMAINES, pas en journées : deux semaines d'écart en
+      // guérissent deux, et c'est précisément ce que la date rend lisible.
+      if (p.injured) { p.injuryWeeks = Math.max(0, p.injuryWeeks - semainesRepos); if (p.injuryWeeks === 0) { p.injured = false; p.forme = 65; } return; }
       if (playingIds.has(p.id)) {
         p.forme = Math.round(clampV(p.forme - wear + rnd(-2, 1), 35, 105));
       } else {
-        p.forme = Math.round(clampV(p.forme + rnd(4, 8), 35, 105));
+        // La récupération est HEBDOMADAIRE. Une seule addition multipliée donnerait le même
+        // total moyen mais supprimerait la variance ; on tire une fois par semaine.
+        let gain = 0;
+        for (let s = 0; s < semainesRepos; s++) gain += rnd(4, 8);
+        p.forme = Math.round(clampV(p.forme + gain, 35, 105));
       }
     });
   });
@@ -3471,7 +3606,10 @@ function playDay(forfait) {
 
   // entraînement (staff technique)
   applyTraining();
-  G.trainingAvailable = true; // une nouvelle séance hors match est disponible avant la prochaine journée
+  // Autant de séances que de semaines jusqu'au prochain match. Le booléen d'avant ne pouvait
+  // pas exprimer « deux semaines, deux séances ».
+  G.seancesRestantes = semainesRepos;
+  G.trainingAvailable = G.seancesRestantes > 0;   // conservé : d'anciens écrans le lisent
 
   // finances du club (le jour de match)
   let finance = null;
@@ -4569,7 +4707,9 @@ function playerRow(p, opts = {}) {
   const ov = overall(p);
   const f = p.forme;
   const fStyle = f >= 98 ? 'background:#1d4d31' : f >= 88 ? 'background:#3a3a1e' : 'background:#4d1f1f';
-  const injBadge = p.injured ? ` <span class="tag" style="color:var(--rouge)">🤕 ${T('joueur.indisponible.semaines', { n: p.injuryWeeks })}</span>` : '';
+  // Une date de retour est arbitrable ; « indisponible 3j » ne l'est pas — trois journées,
+  // c'est six semaines en Régional et trois en Élite.
+  const injBadge = p.injured ? ` <span class="tag" style="color:var(--rouge)">🤕 ${T('joueur.retourLe', { date: formatDateJournee(dateRetour(p), false) })}</span>` : '';
   const clubBadge = opts.club ? `<span class="tag">${opts.club}</span> ` : '';
   const stars = '⭐'.repeat(potentialStars(p));
   const moral = p.moral ?? 70;
@@ -4622,7 +4762,7 @@ function playerCard(p) {
       <div class="card-overall-label">${T('stat.general')}</div>
       <div class="card-overall">${ov}</div>
       <div class="card-stats">${statLine}</div>
-      <div class="card-injured-tag">🤕 ${T('joueur.indisponible.semaines', { n: p.injuryWeeks })}</div>
+      <div class="card-injured-tag">🤕 ${T('joueur.retourLe', { date: formatDateJournee(dateRetour(p), false) })}</div>
     </div>`;
   }
   return `<div class="player-card ${p.starter ? 'selected' : ''}" onclick="toggleStarter(${p.id});renderEffectif();">
@@ -5204,6 +5344,16 @@ function renderCalendrier() {
                      T('ecran.calendrier.label'),
                      T('calendrier.sousTitre', { n: G.schedule.length }));
 
+  // Combien de jours et combien de séances : les deux chiffres que Mirja voulait pouvoir
+  // arbitrer. Ils n'ont de sens qu'entre deux journées, donc pas avant la première.
+  if (G.day < G.schedule.length) {
+    const jours = joursAvantProchaineJournee();
+    html += `<p class="note">${T('calendrier.prochain', {
+      date: formatDateJournee(dateJournee(G.day), true) })}`
+      + (jours !== null ? ` · ${T('calendrier.dansJours', { n: jours })}` : '')
+      + ` · ${T('calendrier.seances', { n: G.seancesRestantes || 0 })}</p>`;
+  }
+
   // Avant-match : aperçu du prochain adversaire
   if (G.day < G.schedule.length) {
     const round = G.schedule[G.day];
@@ -5229,6 +5379,7 @@ function renderCalendrier() {
     const isNext = r === G.day;
     html += `<div class="card" ${isNext ? 'style="border-color:var(--bleu)"' : ''}>
       <b style="color:${isNext ? 'var(--bleu)' : 'var(--muted)'}">${T('calendrier.journee', { n: r + 1 })} ${r < half ? T('calendrier.aller') : T('calendrier.retour')}${isNext ? ' — ' + T('calendrier.aVenir') : ''}</b>
+      <span class="cal-date">${formatDateJournee(dateJournee(r), true)}</span>
       <table>` +
       round.map(m => {
         const h = G.teams[m.home], a = G.teams[m.away];
@@ -6187,6 +6338,12 @@ function hydrateSave(data) {
   if (!G.lineChangeInterval) G.lineChangeInterval = 2;
   if (!G.lastFinance) G.lastFinance = null;
   if (G.trainingAvailable === undefined) G.trainingAvailable = true;
+  // Parties d'avant cette version : un booléen devient un compte, et les dates se génèrent
+  // depuis la longueur du calendrier et la division. On ne réécrit pas le passé, on complète.
+  if (G.seancesRestantes === undefined) G.seancesRestantes = G.trainingAvailable ? 1 : 0;
+  if (!G.datesJournees || G.datesJournees.length !== G.schedule.length) {
+    G.datesJournees = genererDatesSaison(G.schedule.length, G.season, G.divIdx);
+  }
   if (!G.lastSessionTraining) G.lastSessionTraining = [];
   if (!G.upgradesThisSeason) G.upgradesThisSeason = 0;
   if (G.playoff === undefined) G.playoff = null;
