@@ -2013,7 +2013,7 @@ async function effacerSlot(s, ev) {
 // `versionName` du build Android par 4-outils/patch-version.py, qui refuse de s'appliquer
 // si les deux divergent. Le mode d'échec évité est réel : l'APK a annoncé « 1.0 » pendant
 // soixante-dix-sept versions parce que rien ne reliait le jeu à son numéro.
-const VERSION_JEU = '130';
+const VERSION_JEU = '131';
 
 function refreshMenu() {
   // Les textes de l'écran titre sont écrits ICI et non en HTML statique : sinon ils
@@ -2506,6 +2506,7 @@ function newGame() {
     history: [],
     cup: null,
     tabNotify: {},
+    ententesVues: {},
     knownUnlockedRoles: [],
     transferUnlockNotified: false,
     cupKnownUnlockedRound: -1,
@@ -4898,6 +4899,50 @@ function tableauDesLignes(team) {
   return `<div class="lignes-tab">${rangs.join('')}</div>`;
 }
 
+// ---- Ententes : ce que le joueur a déjà lu ----
+// `G.ententesVues` va dans la SAUVEGARDE, contrairement à l'état de dépliage : ce qu'on a lu
+// est un fait de la partie, l'ouverture d'un panneau n'en est pas un.
+let ententesDepliees = false;
+
+function memoriserDepliageEntentes(el) {
+  // Garde de RÉENTRANCE, et elle est indispensable : `renderEffectif()` reconstruit le
+  // <details> avec son attribut `open`, ce qui refait tirer `toggle` sur l'élément neuf.
+  // Sans ce garde, une seule ouverture déclenchait une boucle de rendu sans fin — mesuré à
+  // 60 rendus avant plafonnement, et les tests ne la voyaient pas puisque chaque rendu
+  // produit exactement le même HTML.
+  const etaitOuvert = ententesDepliees;
+  ententesDepliees = !!el.open;
+  if (el.open && !etaitOuvert) { marquerEntentesLues(); renderEffectif(); }
+}
+
+// La mémoire est POSÉE au chargement de la partie, jamais ici. L'initialiser paresseusement
+// au premier accès la remplissait APRÈS l'ajout d'une affinité : plus rien n'était jamais
+// neuf, et la surbrillance ne s'allumait pas une seule fois. Défaut mesuré, pas supposé.
+function ententesVues() { return G.ententesVues || {}; }
+
+function marquerEntentesLues() { G.ententesVues = Object.assign({}, G.affinites || {}); }
+
+// Une entente est nouvelle si sa paire n'a jamais été lue, elle a bougé si sa valeur diffère
+// de celle mémorisée.
+function etatEntente(a, b) {
+  const cle = cleAffinite(a, b);
+  const vues = ententesVues();
+  if (!(cle in vues)) return 'neuve';
+  if (vues[cle] !== affiniteEntre(a, b)) return 'bougee';
+  return '';
+}
+
+function nbEntentesNouvelles(team) {
+  if (!G.affinites) return 0;
+  let n = 0;
+  team.players.forEach(a => team.players.forEach(b => {
+    if (a.id >= b.id) return;
+    if (affiniteEntre(a.id, b.id) === 0) return;
+    if (etatEntente(a.id, b.id)) n++;
+  }));
+  return n;
+}
+
 // Toutes les paires renseignées, pas seulement la plus forte. La carte n'en montrait qu'une
 // — la plus forte en valeur absolue — si bien qu'une brouille tout juste annoncée par le
 // courrier restait invisible derrière une entente ancienne.
@@ -4926,9 +4971,11 @@ function listeDesEntentes(team) {
     const portee = compte
       ? `<span class="entente-portee entente-compte">${T('entente.compte', { n: la })}</span>`
       : `<span class="entente-portee">${T('entente.sansEffet')}</span>`;
-    return `<div class="entente-li">
+    const etat = etatEntente(a.id, b.id);
+    const marque = etat ? `<span class="entente-neuf">${T('entente.' + etat)}</span>` : '';
+    return `<div class="entente-li ${etat ? 'nouvelle' : ''}">
       <span class="entente-force" style="color:${v > 0 ? 'var(--vert)' : 'var(--rouge)'}">${v > 0 ? '↔' : '✕'} ${escHtml(forceEntente(v))}</span>
-      <span>${escHtml(a.nom)} · ${escHtml(b.nom)}</span>${portee}</div>`;
+      <span>${escHtml(a.nom)} · ${escHtml(b.nom)}</span>${portee}${marque}</div>`;
   }).join('');
   return li;
 }
@@ -4945,6 +4992,9 @@ function renderEffectif() {
               <button class="btn sell" onclick="sellPlayer(${p.id})">${T('effectif.vendre')}</button>
               <button class="btn" onclick="loanPlayer(${p.id})">${T('effectif.preter')}</button>`
   })).join('');
+  // Compté AVANT le rendu : ouvrir le dépliant marque les ententes comme lues, et le compte
+  // doit refléter l'état d'avant l'ouverture.
+  const nbNouvelles = nbEntentesNouvelles(me);
   const nField = me.players.filter(p => p.pos !== 'G' && p.starter).length;
   const totalWage = me.players.reduce((s, p) => s + (p.salaire || 0), 0);
   const objRows = me.players.filter(p => p.objective).map(p =>
@@ -4980,9 +5030,13 @@ function renderEffectif() {
     </div>
 
     <div class="card">
-      <b>🤝 ${T('entente.titre')}</b>
-      <p class="note">${T('entente.info')}</p>
-      ${listeDesEntentes(me)}
+      <details class="depliant ${nbNouvelles ? 'signale' : ''}" ${ententesDepliees ? 'open' : ''}
+               ontoggle="memoriserDepliageEntentes(this)">
+        <summary>🤝 ${T('entente.titre')}${nbNouvelles
+          ? `<span class="depliant-badge">${T('entente.nouvelles', { n: nbNouvelles })}</span>` : ''}</summary>
+        <p class="note">${T('entente.info')}</p>
+        ${listeDesEntentes(me)}
+      </details>
     </div>
 
     <div class="card">
@@ -6082,6 +6136,10 @@ function hydrateSave(data) {
   if (!G.cup) G.cup = null;
   if (!G.loanedOut) G.loanedOut = [];
   if (!G.tabNotify) G.tabNotify = {};
+  // Sauvegardes d'avant cette version : on part des affinités EXISTANTES et non d'une table
+  // vide, sinon une partie en cours rouvrirait avec quinze ententes marquées neuves dont
+  // aucune ne l'est. Le repli choisit le silence, pas le bruit.
+  if (!G.ententesVues) G.ententesVues = Object.assign({}, G.affinites || {});
   G.settings = normaliserReglages(G.settings);   // sauvegardes d'avant cette version
   // Repli réservé aux sauvegardes qui n'ont JAMAIS connu ces champs — celles d'avant la
   // v83. On ne leur impose pas un tutoriel de début au milieu de leur saison.

@@ -571,6 +571,19 @@
   .depliant > summary::-webkit-details-marker { display: none; }
   .depliant > summary::after { content: '▾'; margin-left: auto; transition: transform .15s; }
   .depliant[open] > summary::after { transform: rotate(180deg); }
+  /* Surbrillance quand quelque chose a bougé. Replier sans signaler reviendrait à cacher
+     l'information, ce qui serait un recul par rapport au bloc toujours ouvert. */
+  .depliant.signale > summary { color: var(--tan); }
+  .depliant.signale { outline: 1px solid color-mix(in srgb, var(--tan) 55%, transparent);
+    outline-offset: 6px; border-radius: 6px; }
+  .depliant-badge { margin-left: 8px; font-size: 10px; font-weight: 700; padding: 2px 7px;
+    border-radius: 999px; background: var(--tan); color: #1a1206; white-space: nowrap; }
+  /* Le rang lui-même se distingue : le badge du titre dit COMBIEN, la ligne dit LESQUELLES. */
+  .entente-li.nouvelle { background: color-mix(in srgb, var(--tan) 10%, transparent);
+    border-radius: 6px; padding-left: 6px; padding-right: 6px; }
+  .entente-neuf { font-size: 10px; font-weight: 700; color: var(--tan);
+    border: 1px solid color-mix(in srgb, var(--tan) 45%, transparent);
+    padding: 1px 6px; border-radius: 999px; white-space: nowrap; }
   .card-duo { font-size: 10px; margin-top: 2px; white-space: nowrap; overflow: hidden;
     text-overflow: ellipsis; }
   .duo-plus { color: var(--vert); } .duo-moins { color: var(--rouge); opacity: .8; }
