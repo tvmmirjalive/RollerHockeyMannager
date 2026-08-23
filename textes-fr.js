@@ -277,6 +277,7 @@ Object.assign(TEXTES.fr, {
   "coupe.exempte.corps": "Ton club ne joue pas le {tour} : il est exempté et rejoint directement le tour suivant.",
   "coupe.exempte.regle": "Quand le nombre d'engagés n'est pas une puissance de deux, les mieux classés sautent un tour pour ramener le tableau au bon format (art. 7.2 C).",
   "rapport.titreCoupe": "{tour} · Coupe de France",
+  "ligne.faireSortir": "Le faire sortir",
   "effectif.selection": "Sélection des titulaires",
   "effectif.selection.info": "Clique sur une carte pour aligner ou retirer un joueur (● = titulaire, entouré en vert).",
   "effectif.consignes": "Consignes tactiques",

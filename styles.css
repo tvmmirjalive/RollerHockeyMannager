@@ -489,22 +489,39 @@
   .ligne-tete .ligne-compte + .ligne-crayon { margin-left: 6px; }
 
   /* ==================== Fenêtre d'édition d'une ligne ==================== */
-  .edit-liste { display: flex; flex-direction: column; gap: 4px; margin: 6px 0 12px; }
-  .edit-rang { display: grid; grid-template-columns: auto minmax(0, 1fr) auto;
-    align-items: center; column-gap: 8px; row-gap: 2px; background: var(--panel2);
-    border: 1px solid #2c313a; border-radius: 8px; padding: 6px; min-height: 44px;
-    font-size: 12px; width: 100%; text-align: left; color: var(--txt); }
-  .edit-rang > img { grid-row: 1 / span 2; }
-  .edit-rang > .edit-nom { grid-column: 2; grid-row: 1; }
-  .edit-meta { grid-column: 2; grid-row: 2; display: flex; align-items: center; gap: 6px; }
-  .edit-rang > .btn { grid-column: 3; grid-row: 1 / span 2; }
-  .edit-rang.sortant { cursor: pointer; }
-  .edit-rang.sortant:hover { border-color: var(--tan); }
-  .edit-rang .portrait-thumb.sm { margin-right: 0; }
-  .edit-nom { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
-  .edit-ov { color: var(--tan); }
-  .edit-ou { font-size: 10px; color: var(--muted); white-space: nowrap; }
-  .edit-rang .btn { white-space: nowrap; }
+  /* Grille de tuiles, deux colonnes — le même agencement que le tableau des lignes : c'est
+     le même objet, il doit se regarder pareil. Quatre alignés forment un carré 2×2.
+
+     Le gain n'est pas décoratif. En rangs, la seule cible sûre au pouce était un bouton
+     d'environ 90 × 44 px parmi dix rangs identiques ; la tuile entière fait 145 × 170 px,
+     six fois plus de surface, et il n'y a plus rien à viser. */
+  .edit-grille { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px; margin: 6px 0 14px; }
+  .edit-tuile { display: flex; flex-direction: column; align-items: center; gap: 3px;
+    background: var(--panel2); border: 2px solid #2c313a; border-radius: 11px;
+    padding: 7px 6px 6px; color: var(--txt); font-family: inherit; cursor: pointer;
+    text-align: center; width: 100%; }
+  .edit-tuile:hover { border-color: #4a5058; }
+  .edit-tuile.alignee { border-color: rgba(224,90,90,.45); }
+  .edit-tuile.alignee:hover { border-color: var(--rouge); }
+  .edit-tuile.dispo:hover, .edit-tuile.sortante:hover { border-color: var(--vert); }
+
+  /* Pas d'`aspect-ratio` ici : combiné à une hauteur maximale il rétrécit la LARGEUR de la
+     boîte — piège déjà payé et consigné dans CLAUDE.md. On donne la hauteur, directement. */
+  .tuile-photo { position: relative; display: block; width: 100%; }
+  .tuile-photo img { width: 100%; height: clamp(84px, 26vw, 112px); object-fit: cover;
+    border-radius: 9px; display: block; background: #12192b; border: 2px solid #3a4049; }
+  .tuile-pos { position: absolute; top: 4px; left: 4px; font-size: 10px; font-weight: 800;
+    padding: 2px 5px; border-radius: 5px; color: #fff; letter-spacing: .3px;
+    box-shadow: 0 1px 3px rgba(0,0,0,.5); }
+  .tuile-nom { font-size: 12px; font-weight: 700; line-height: 1.15; }
+  .tuile-meta { font-size: 11px; color: var(--muted); display: flex; gap: 6px;
+    align-items: baseline; justify-content: center; }
+  .tuile-meta b { color: var(--tan); font-size: 13px; }
+  /* L'action reste écrite : une tuile cliquable sans libellé obligerait à deviner. */
+  .tuile-action { font-size: 11px; font-weight: 700; margin-top: 2px; }
+  .edit-tuile.alignee .tuile-action { color: var(--rouge); }
+  .edit-tuile.dispo .tuile-action, .edit-tuile.sortante .tuile-action { color: var(--vert); }
 
   /* ==================== Ententes et tensions ==================== */
   .entente-li { display: flex; align-items: center; gap: 6px; padding: 4px 0;

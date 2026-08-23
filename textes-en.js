@@ -277,6 +277,7 @@ Object.assign(TEXTES.en, {
   "coupe.exempte.corps": "Your club does not play the {tour}: it gets a bye and goes straight through to the next round.",
   "coupe.exempte.regle": "When the number of entrants is not a power of two, the highest-ranked clubs skip a round to bring the bracket back to size (art. 7.2 C).",
   "rapport.titreCoupe": "{tour} · Coupe de France",
+  "ligne.faireSortir": "Take off",
   "effectif.selection": "Starting line-up",
   "effectif.selection.info": "Tap a card to select or drop a player (● = starter, outlined in green).",
   "effectif.consignes": "Tactical instructions",

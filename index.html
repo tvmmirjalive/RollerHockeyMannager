@@ -2001,7 +2001,7 @@ async function effacerSlot(s, ev) {
 // `versionName` du build Android par 4-outils/patch-version.py, qui refuse de s'appliquer
 // si les deux divergent. Le mode d'échec évité est réel : l'APK a annoncé « 1.0 » pendant
 // soixante-dix-sept versions parce que rien ne reliait le jeu à son numéro.
-const VERSION_JEU = '125';
+const VERSION_JEU = '126';
 
 function refreshMenu() {
   // Les textes de l'écran titre sont écrits ICI et non en HTML statique : sinon ils
@@ -4517,19 +4517,28 @@ function lignesDisponibles(me, n) {
   return l.sort((a, b) => (ligneDe(a) - ligneDe(b)) || (overall(b) - overall(a)));
 }
 
-function vignetteEdition(p) {
+// Une tuile, pas un rang. Portrait en grand, badge de poste sur le coin de la photo, nom
+// dessous : c'est l'agencement du tableau des lignes, et le même objet doit se regarder
+// pareil d'un écran à l'autre.
+//
+// `attribut` porte `data-retirer`, `data-aligner` ou `data-sortant` — les tests interrogent
+// ces attributs, et une refonte de mise en forme n'a pas à casser la vérification du
+// comportement.
+function tuileEdition(p, attribut, action, classe, gestionnaire) {
   const l = ligneDe(p);
   const ou = p.pos === 'G'
     ? ''
-    : `<span class="edit-ou">${l > 0 ? T('lignes.ligne', { n: l }) : T('ligne.surLeBanc')}</span>`;
-  // Deux lignes plutôt qu'une : sur un rang unique, en 390 px, le nom se tronquait dès
-  // « Baptiste Ga… ». Resserrer le bouton n'était pas une option — `body.game-started .btn`
-  // impose 44 px de cible tactile, et c'est une contrainte Apple, pas un réglage.
-  return `<img src="${portraitFor(p.id)}" class="portrait-thumb sm" alt="">`
-    + `<span class="edit-nom">${escHtml(p.nom)}</span>`
-    + `<span class="edit-meta">`
-    + `<span class="slot-pos" style="background:${COULEUR_POSTE[p.pos]}">${T('poste.' + p.pos + '.court')}</span>`
-    + `<b class="edit-ov">${overall(p)}</b>${ou}</span>`;
+    : (l > 0 ? T('lignes.ligne', { n: l }) : T('ligne.surLeBanc'));
+  return `<button class="edit-tuile ${classe}" ${attribut}="${p.id}" onclick="${gestionnaire}(${p.id})"
+      title="${escHtml(p.nom)}">
+      <span class="tuile-photo">
+        <img src="${portraitFor(p.id)}" alt="" onerror="this.style.visibility='hidden'">
+        <span class="tuile-pos" style="background:${COULEUR_POSTE[p.pos]}">${T('poste.' + p.pos + '.court')}</span>
+      </span>
+      <span class="tuile-nom">${escHtml(p.nom)}</span>
+      <span class="tuile-meta"><b>${overall(p)}</b>${ou ? `<span>${ou}</span>` : ''}</span>
+      <span class="tuile-action">${action}</span>
+    </button>`;
 }
 
 function corpsEditionLigne() {
@@ -4542,30 +4551,26 @@ function corpsEditionLigne() {
   if (editionLigne.entrant !== null) {
     const e = me.players.find(x => x.id === editionLigne.entrant);
     return `<p class="modal-note">${T('ligne.remplacerQui', { nom: escHtml(e ? e.nom : '') })}</p>`
-      + `<div class="edit-liste">`
-      + alignes.map(p => `<button class="edit-rang sortant" data-sortant="${p.id}"
-           onclick="executerRemplacement(${p.id})">${vignetteEdition(p)}</button>`).join('')
+      + `<div class="edit-grille">`
+      + alignes.map(p => tuileEdition(p, 'data-sortant', T('ligne.faireSortir'), 'sortante', 'executerRemplacement')).join('')
       + `</div>`
       + `<button class="btn" onclick="annulerRemplacement()">${T('ligne.annuler')}</button>`;
   }
 
   const dispos = lignesDisponibles(me, n);
   const listeAlignes = alignes.length
-    ? alignes.map(p => `<div class="edit-rang">${vignetteEdition(p)}
-        <button class="btn sell" data-retirer="${p.id}"
-          onclick="retirerPuisRafraichir(${p.id})">${T('ligne.retirer')}</button></div>`).join('')
+    ? alignes.map(p => tuileEdition(p, 'data-retirer', T('ligne.retirer'), 'alignee', 'retirerPuisRafraichir')).join('')
     : `<p class="note">${T('lignes.vide')}</p>`;
+  const libelleEntree = alignes.length >= max ? T('ligne.remplacer') : T('ligne.aligner');
   const listeDispos = dispos.length
-    ? dispos.map(p => `<div class="edit-rang">${vignetteEdition(p)}
-        <button class="btn buy" data-aligner="${p.id}"
-          onclick="choisirEntrant(${p.id})">${alignes.length >= max ? T('ligne.remplacer') : T('ligne.aligner')}</button></div>`).join('')
+    ? dispos.map(p => tuileEdition(p, 'data-aligner', libelleEntree, 'dispo', 'choisirEntrant')).join('')
     : `<p class="note">${T('ligne.aucunDispo')}</p>`;
 
   return `<p class="modal-note">${T('ligne.editer.info')}</p>
     <b>${T('ligne.alignes')}</b> <span class="tag">${alignes.length}/${max}</span>
-    <div class="edit-liste">${listeAlignes}</div>
+    <div class="edit-grille">${listeAlignes}</div>
     <b>${T('ligne.disponibles')}</b>
-    <div class="edit-liste">${listeDispos}</div>`;
+    <div class="edit-grille">${listeDispos}</div>`;
 }
 
 function majEditionLigne() {
