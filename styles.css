@@ -423,11 +423,25 @@
   #tutoTrou { display: none; position: fixed; z-index: 251; pointer-events: none;
     border-radius: 12px; box-shadow: 0 0 0 9999px rgba(4,6,10,.58); border: 2px solid var(--vert); }
   #tutoTrou.on { display: block; }
+  /* `position: relative` n'irait pas : la bulle est déjà `fixed`, ce qui suffit à ancrer le
+     bouton du coin en absolu. */
   #tutoBulle { display: none; position: fixed; z-index: 252; left: 50%; width: min(92vw, 420px);
     background: var(--fond2, #141920); border: 1px solid #2c313a; border-radius: 14px;
     padding: 14px 16px; box-shadow: 0 12px 40px rgba(0,0,0,.55); }
   #tutoBulle.on { display: block; }
-  .tuto-titre { font-weight: 800; font-size: 16px; margin-bottom: 6px; color: var(--tan); }
+  /* Titre et bouton sur une même ligne, en FLUX. Le bouton était en absolu : il se posait
+     par-dessus le texte, qui continuait de couler dessous. */
+  .tuto-tete { display: flex; align-items: flex-start; gap: 10px; margin-bottom: 6px; }
+  .tuto-titre { font-weight: 800; font-size: 16px; color: var(--tan); flex: 1; min-width: 0; }
+  /* Petit et gris, mais 44 px de haut : c'est le POIDS VISUEL qu'on réduit, jamais la cible
+     tactile — la règle Apple ne se négocie pas, et le tutoriel est le premier écran que
+     touche un nouveau joueur. */
+  .tuto-passer { flex: 0 0 auto; min-height: 44px; padding: 0 10px;
+    background: transparent; border: 1px solid #333a44; border-radius: 9px;
+    color: var(--muted); font-size: 11px; font-family: inherit; cursor: pointer;
+    white-space: nowrap; touch-action: manipulation; }
+  .tuto-passer:hover { color: var(--txt); border-color: #4a5058; }
+  .tuto-attente { margin-top: 12px; font-size: 12px; color: var(--tan); opacity: .85; }
   .tuto-texte { line-height: 1.45; font-size: 14px; }
   /* 44 px de haut minimum : c'est la cible tactile d'Apple, et le tutoriel est le premier
      écran que touche un nouveau joueur. */
@@ -915,9 +929,12 @@
              white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .hd-sub { font-size: 10.5px; color: var(--muted); white-space: nowrap;
             overflow: hidden; text-overflow: ellipsis; }
+  /* 26 px et non 16 : à 16 px l'enveloppe flottait au milieu d'une case de 44 px et on la
+     distinguait à peine. Le bouton ne change pas de taille, son contenu la remplit. */
   .hd-btn { flex: 0 0 auto; width: 44px; height: 44px; border-radius: 11px;
     border: 1px solid #2c313a; background: var(--panel2); color: var(--txt);
-    font-size: 16px; cursor: pointer; position: relative; font-family: inherit; }
+    font-size: 26px; line-height: 1; cursor: pointer; position: relative; font-family: inherit;
+    display: flex; align-items: center; justify-content: center; }
   .hd-btn b { position: absolute; top: -5px; right: -5px; min-width: 18px; height: 18px;
     border-radius: 9px; background: var(--rouge); color: #fff; font-size: 10px;
     line-height: 18px; font-weight: 700; }

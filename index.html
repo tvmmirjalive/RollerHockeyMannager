@@ -610,9 +610,21 @@ function construireBulle(titre, texte, boutonLabel) {
   const { bulle } = tutoElements();
   const bouton = boutonLabel
     ? `<button class="btn buy" id="tutoOk">${escHtml(boutonLabel)}</button>` : '';
-  bulle.innerHTML = `<div class="tuto-titre">${escHtml(titre)}</div>
+  // « Passer » sort du pied. Il y était à égalité avec le bouton d'action — et sur les
+  // étapes de navigation, qui n'ont PAS de bouton d'action, il occupait le pied à lui seul :
+  // le seul élément saillant de la bulle invitait à quitter le tutoriel.
+  //
+  // Les étapes sans bouton affichent une attente explicite : sans elle, on ne sait pas si la
+  // bulle va s'avancer seule ou si elle guette un geste.
+  // Le bouton reste DANS LE FLUX, sur la même ligne que le titre. En absolu il se posait
+  // par-dessus le texte, qui continuait de couler dessous : illisible sur trois lignes.
+  bulle.innerHTML = `<div class="tuto-tete">
+      <div class="tuto-titre">${escHtml(titre)}</div>
+      <button class="tuto-passer" id="tutoPasser">${escHtml(T('tuto.passer'))}</button>
+    </div>
     <div class="tuto-texte">${texte}</div>
-    <div class="tuto-pied">${bouton}<button class="btn" id="tutoPasser">${escHtml(T('tuto.passer'))}</button></div>`;
+    ${bouton ? `<div class="tuto-pied">${bouton}</div>`
+             : `<div class="tuto-attente">${escHtml(T('tuto.attente'))}</div>`}`;
   bulle.classList.add('on');
   const ok = document.getElementById('tutoOk');
   if (ok) ok.addEventListener('click', () => { if (tutoResolve) tutoResolve('ok'); });
@@ -2001,7 +2013,7 @@ async function effacerSlot(s, ev) {
 // `versionName` du build Android par 4-outils/patch-version.py, qui refuse de s'appliquer
 // si les deux divergent. Le mode d'échec évité est réel : l'APK a annoncé « 1.0 » pendant
 // soixante-dix-sept versions parce que rien ne reliait le jeu à son numéro.
-const VERSION_JEU = '128';
+const VERSION_JEU = '129';
 
 function refreshMenu() {
   // Les textes de l'écran titre sont écrits ICI et non en HTML statique : sinon ils
@@ -3230,6 +3242,69 @@ function computeMatchFinance(isHome) {
   return finance;
 }
 
+// ==================== Effectif minimum et forfait ====================
+// Voir 4-outils/patch-forfait.py. Règlement Sportif 6.1.1 A et 11.3.1.4.
+
+// Huit joueurs de champ et un gardien (6.1.1 A). La dérogation à six vaut pour la
+// Pré-Nationale (Particulier 9.2 A) et la qualification de N3 (4.4 A) ; on l'étend au
+// Régional, que le règlement fédéral ne couvre pas et qui est l'étage de départ du jeu.
+const EFFECTIF_MIN = 8;
+const EFFECTIF_MIN_DEROGATION = 6;
+const DIVISIONS_DEROGATION = ['Regional', 'PreNat', 'N3'];
+
+function seuilEffectif(divIdx) {
+  const d = DIVISIONS[divIdx];
+  return d && DIVISIONS_DEROGATION.includes(d.key) ? EFFECTIF_MIN_DEROGATION : EFFECTIF_MIN;
+}
+
+function etatEffectif(team) {
+  const champ = team.players.filter(p => p.pos !== 'G' && !p.injured).length;
+  const gardiens = team.players.filter(p => p.pos === 'G' && !p.injured).length;
+  const seuil = seuilEffectif(G.divIdx);
+  return { champ, gardiens, seuil, ok: champ >= seuil && gardiens >= 1 };
+}
+
+// Barème art. 11.3.1.4. Les buts ne sont crédités à personne : le règlement les attribue au
+// capitaine, notion que le jeu n'a pas, et leur inventer un porteur fausserait le classement
+// des buteurs pour une ligne de texte.
+function appliquerForfait(m, home, away) {
+  const domicileFautif = home.human;
+  const gH = domicileFautif ? 0 : 5;
+  const gA = domicileFautif ? 5 : 0;
+  const fautif = domicileFautif ? home : away;
+  const adverse = domicileFautif ? away : home;
+  home.bp += gH; home.bc += gA; away.bp += gA; away.bc += gH;
+  fautif.pts -= 2; fautif.d++;
+  adverse.pts += 3; adverse.v++;
+  noterForme(adverse, 'v'); noterForme(fautif, 'd');
+  trackGamePlayed(home); trackGamePlayed(away);
+  m.forfait = true;
+  return { gH, gA, scorers: [], penalties: [], wentOT: false, forfait: true };
+}
+
+// Validation OBLIGATOIRE : deux issues, jamais un simple « OK ». Une journée qui coûte deux
+// points sans avertissement serait pire que pas de forfait du tout.
+async function confirmerForfaitSiNecessaire() {
+  const me = myTeam();
+  if (!me) return 'normal';
+  const e = etatEffectif(me);
+  if (e.ok) return 'normal';
+  const accepte = await ask({
+    title: T('forfait.titre'), ico: '⛔', kind: 'bad', danger: true,
+    okLabel: T('forfait.declarer'), cancelLabel: T('forfait.renoncer'),
+    html: `<p class="modal-text">${T('forfait.constat', { champ: e.champ, gardiens: e.gardiens, seuil: e.seuil })}</p>`
+      + `<p class="modal-text"><b>${T('forfait.consequences')}</b></p>`
+      + `<ul class="modal-list">`
+      + `<li>${T('forfait.csq.score')}</li>`
+      + `<li>${T('forfait.csq.points')}</li>`
+      + `<li>${T('forfait.csq.adverse')}</li>`
+      + `</ul>`
+      + `<p class="modal-note">${T('forfait.article')}</p>`
+      + `<p class="modal-note">${T('forfait.alternative')}</p>`
+  });
+  return accepte ? 'forfait' : 'annule';
+}
+
 // ==================== Lignes complètes avant match ====================
 // Voir 4-outils/patch-lignes-completes.py.
 //
@@ -3310,7 +3385,7 @@ function preparerLignesAvantMatch() {
   }
 }
 
-function playDay() {
+function playDay(forfait) {
   if (G.day >= G.schedule.length) { toast(T('toast.saisonTerminee'), 'info'); return; }
   // On ne part jamais avec une ligne engagée à trois : on complète depuis la réserve, quitte
   // à sacrifier la parité 2/2. Doit rester AVANT toute simulation.
@@ -3319,6 +3394,14 @@ function playDay() {
   let myResult = null;
   round.forEach(m => {
     const home = G.teams[m.home], away = G.teams[m.away];
+    // Forfait déclaré et validé : la rencontre n'est pas jouée, elle est attribuée.
+    if (forfait && (home.human || away.human)) {
+      const res = appliquerForfait(m, home, away);
+      m.score = [res.gH, res.gA];
+      m.ot = false;
+      myResult = { m, res, home, away, forfait: true };
+      return;
+    }
     const res = simulateMatch(home, away);
     m.score = [res.gH, res.gA];
     m.ot = !!res.wentOT; // nécessaire au départage : une victoire en prolongation ne vaut que 2 points
@@ -3453,7 +3536,9 @@ function playDay() {
   if (myResult) remonteeVestiaire();
   renderAll();
   checkUnlockNotifications();
-  if (myResult) watchMatch(myResult);
+  // Un forfait n'a pas de match à regarder : on va droit au rapport.
+  if (myResult && myResult.forfait) showReport();
+  else if (myResult) watchMatch(myResult);
   else showReport();
 }
 
@@ -4375,10 +4460,16 @@ document.getElementById('hdInbox').addEventListener('click', () => { ouvrirTiroi
 document.addEventListener('keydown', e => {
   if (e.key === 'Escape' && tiroirOuvert() && !modalIsOpen()) ouvrirTiroir(false);
 });
-document.getElementById('btnPlay').addEventListener('click', () => {
+document.getElementById('btnPlay').addEventListener('click', async () => {
   try {
     if (cupHasPendingAction()) { advanceCupStep(); return; }
-    if (G.day < G.schedule.length) { playDay(); return; }
+    if (G.day < G.schedule.length) {
+      // Sous le seuil fédéral, on ne part pas sans que le joueur ait lu et validé.
+      const suite = await confirmerForfaitSiNecessaire();
+      if (suite === 'annule') return;
+      playDay(suite === 'forfait');
+      return;
+    }
     if (!G.playoff) { startPlayoffs(); return; }
     if (G.playoff.stage !== 'done') { advancePlayoffs(); return; }
     endSeason();
