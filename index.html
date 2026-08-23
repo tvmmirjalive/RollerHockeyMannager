@@ -100,7 +100,7 @@
         <span id="uiSeason">1</span> · <span id="uiDayLabel">journée</span>
         <span id="uiDay">1</span>/<span id="uiDayTotal">26</span></div>
     </div>
-    <button class="hd-btn" id="hdInbox">✉<b id="hdInboxCount"></b></button>
+    <button class="hd-btn" id="hdInbox" aria-label="Messages"><svg class="hd-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2.5" y="5" width="19" height="14" rx="2.5"/><path d="M3 7l9 6 9-6"/></svg><b id="hdInboxCount"></b></button>
   </div>
   <div class="hd-stats">
     <div class="hd-stat"><span id="uiBudgetLabel">Budget</span><b id="uiBudget">—</b></div>
@@ -2013,7 +2013,7 @@ async function effacerSlot(s, ev) {
 // `versionName` du build Android par 4-outils/patch-version.py, qui refuse de s'appliquer
 // si les deux divergent. Le mode d'échec évité est réel : l'APK a annoncé « 1.0 » pendant
 // soixante-dix-sept versions parce que rien ne reliait le jeu à son numéro.
-const VERSION_JEU = '129';
+const VERSION_JEU = '130';
 
 function refreshMenu() {
   // Les textes de l'écran titre sont écrits ICI et non en HTML statique : sinon ils
@@ -5916,7 +5916,7 @@ function renderInbox() {
     </div>`).join('');
 
   const vide = `<div class="vide">
-      <div class="rond">✉</div>
+      <div class="rond"><svg class="rond-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2.5" y="5" width="19" height="14" rx="2.5"/><path d="M3 7l9 6 9-6"/></svg></div>
       <h3>${T('messages.vide.titre')}</h3>
       <p>${T('messages.vide.note')}</p>
       <div class="apercu">

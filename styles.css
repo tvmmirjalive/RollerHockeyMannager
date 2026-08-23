@@ -929,12 +929,18 @@
              white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .hd-sub { font-size: 10.5px; color: var(--muted); white-space: nowrap;
             overflow: hidden; text-overflow: ellipsis; }
-  /* 26 px et non 16 : à 16 px l'enveloppe flottait au milieu d'une case de 44 px et on la
-     distinguait à peine. Le bouton ne change pas de taille, son contenu la remplit. */
-  .hd-btn { flex: 0 0 auto; width: 44px; height: 44px; border-radius: 11px;
+  /* 48 px : au-dessus des 44 pt d'Apple ET des 48 dp de Material, ce que 44 ne satisfaisait
+     pas. L'icône est un SVG et non le caractère U+2709 : celui-ci manque à la police Tomorrow
+     embarquée, le navigateur retombait sur une police système aux métriques inconnues, et le
+     glyphe sortait petit et décentré — deux défauts qu'aucune taille de police ne corrige. */
+  .hd-btn { flex: 0 0 auto; width: 48px; height: 48px; border-radius: 12px;
     border: 1px solid #2c313a; background: var(--panel2); color: var(--txt);
-    font-size: 26px; line-height: 1; cursor: pointer; position: relative; font-family: inherit;
-    display: flex; align-items: center; justify-content: center; }
+    cursor: pointer; position: relative; font-family: inherit;
+    display: flex; align-items: center; justify-content: center; padding: 0; }
+  /* 30 px dans 48 : l'icône occupe 62 % de la case. Mirja : « grandis, n'hésite pas ».
+     Au-delà, le tracé viendrait toucher la bordure arrondie du bouton. */
+  .hd-btn .hd-ico { width: 30px; height: 30px; display: block; }
+  .vide .rond .rond-ico { width: 38px; height: 38px; display: block; }
   .hd-btn b { position: absolute; top: -5px; right: -5px; min-width: 18px; height: 18px;
     border-radius: 9px; background: var(--rouge); color: #fff; font-size: 10px;
     line-height: 18px; font-weight: 700; }
