@@ -2001,7 +2001,7 @@ async function effacerSlot(s, ev) {
 // `versionName` du build Android par 4-outils/patch-version.py, qui refuse de s'appliquer
 // si les deux divergent. Le mode d'échec évité est réel : l'APK a annoncé « 1.0 » pendant
 // soixante-dix-sept versions parce que rien ne reliait le jeu à son numéro.
-const VERSION_JEU = '124';
+const VERSION_JEU = '125';
 
 function refreshMenu() {
   // Les textes de l'écran titre sont écrits ICI et non en HTML statique : sinon ils
@@ -4454,6 +4454,157 @@ function playerCard(p) {
   </div>`;
 }
 
+// ==================== Édition d'une ligne ====================
+// Voir 4-outils/patch-ligne-edition.py.
+//
+// `editionLigne` ne va PAS dans la sauvegarde : c'est l'état d'une fenêtre ouverte, pas
+// un état de partie. `entrant` porte le joueur qu'on vient de choisir quand la ligne est
+// pleine et qu'il faut encore désigner celui qui sort.
+let editionLigne = null;
+
+// SEUL chemin pour aligner quelqu'un. Toutes les règles de composition sont ici et nulle
+// part ailleurs : un deuxième chemin finirait par en oublier une.
+function alignerDansLigne(id, n) {
+  const me = myTeam();
+  const p = me.players.find(x => x.id === id);
+  if (!p) return false;
+  if (p.injured) { toast(T('ligne.blesse', { nom: p.nom }), 'warn'); return false; }
+
+  if (n === 0) {
+    // Le gardien ne tourne pas : l'aligner remplace d'office celui qui y était.
+    if (p.pos !== 'G') { toast(T('ligne.pasGardien'), 'warn'); return false; }
+    me.players.forEach(q => { if (q.pos === 'G' && q.id !== p.id) { q.starter = false; q.ligne = 0; } });
+    p.starter = true; p.ligne = 1;
+    return true;
+  }
+
+  if (p.pos === 'G') { toast(T('ligne.gardienHorsLigne'), 'warn'); return false; }
+  if (ligneDe(p) === n) return true;
+  if (joueursDeLigne(me, n).length >= PAR_LIGNE) {
+    toast(T('ligne.pleine', { n: PAR_LIGNE }), 'warn'); return false;
+  }
+  // Le plafond ne concerne que celui qui ARRIVE depuis le banc : déplacer un titulaire
+  // d'une ligne à l'autre ne change pas le total.
+  const dejaAligne = ligneDe(p) > 0;
+  const champ = me.players.filter(x => x.pos !== 'G' && x.starter).length;
+  if (!dejaAligne && champ >= MAX_JOUEURS_CHAMP) {
+    toast(T('ligne.plafond', { n: MAX_JOUEURS_CHAMP }), 'warn'); return false;
+  }
+  p.ligne = n; p.starter = true;
+  return true;
+}
+
+function retirerDeLigne(id) {
+  const me = myTeam();
+  const p = me.players.find(x => x.id === id);
+  if (!p) return false;
+  p.ligne = 0; p.starter = false;
+  return true;
+}
+
+function lignesAlignes(me, n) {
+  return n === 0
+    ? me.players.filter(p => p.pos === 'G' && p.starter && !p.injured)
+    : joueursDeLigne(me, n);
+}
+
+// Les disponibles d'une ligne de champ incluent les joueurs des AUTRES lignes : permuter
+// deux titulaires est un geste courant, et l'interdire obligerait à passer par le banc.
+function lignesDisponibles(me, n) {
+  const l = me.players.filter(p => !p.injured && (n === 0
+    ? (p.pos === 'G' && !p.starter)
+    : (p.pos !== 'G' && ligneDe(p) !== n)));
+  return l.sort((a, b) => (ligneDe(a) - ligneDe(b)) || (overall(b) - overall(a)));
+}
+
+function vignetteEdition(p) {
+  const l = ligneDe(p);
+  const ou = p.pos === 'G'
+    ? ''
+    : `<span class="edit-ou">${l > 0 ? T('lignes.ligne', { n: l }) : T('ligne.surLeBanc')}</span>`;
+  // Deux lignes plutôt qu'une : sur un rang unique, en 390 px, le nom se tronquait dès
+  // « Baptiste Ga… ». Resserrer le bouton n'était pas une option — `body.game-started .btn`
+  // impose 44 px de cible tactile, et c'est une contrainte Apple, pas un réglage.
+  return `<img src="${portraitFor(p.id)}" class="portrait-thumb sm" alt="">`
+    + `<span class="edit-nom">${escHtml(p.nom)}</span>`
+    + `<span class="edit-meta">`
+    + `<span class="slot-pos" style="background:${COULEUR_POSTE[p.pos]}">${T('poste.' + p.pos + '.court')}</span>`
+    + `<b class="edit-ov">${overall(p)}</b>${ou}</span>`;
+}
+
+function corpsEditionLigne() {
+  const me = myTeam();
+  const n = editionLigne.n;
+  const max = n === 0 ? 1 : PAR_LIGNE;
+  const alignes = lignesAlignes(me, n);
+
+  // Deuxième temps : la ligne était pleine, il reste à désigner qui sort.
+  if (editionLigne.entrant !== null) {
+    const e = me.players.find(x => x.id === editionLigne.entrant);
+    return `<p class="modal-note">${T('ligne.remplacerQui', { nom: escHtml(e ? e.nom : '') })}</p>`
+      + `<div class="edit-liste">`
+      + alignes.map(p => `<button class="edit-rang sortant" data-sortant="${p.id}"
+           onclick="executerRemplacement(${p.id})">${vignetteEdition(p)}</button>`).join('')
+      + `</div>`
+      + `<button class="btn" onclick="annulerRemplacement()">${T('ligne.annuler')}</button>`;
+  }
+
+  const dispos = lignesDisponibles(me, n);
+  const listeAlignes = alignes.length
+    ? alignes.map(p => `<div class="edit-rang">${vignetteEdition(p)}
+        <button class="btn sell" data-retirer="${p.id}"
+          onclick="retirerPuisRafraichir(${p.id})">${T('ligne.retirer')}</button></div>`).join('')
+    : `<p class="note">${T('lignes.vide')}</p>`;
+  const listeDispos = dispos.length
+    ? dispos.map(p => `<div class="edit-rang">${vignetteEdition(p)}
+        <button class="btn buy" data-aligner="${p.id}"
+          onclick="choisirEntrant(${p.id})">${alignes.length >= max ? T('ligne.remplacer') : T('ligne.aligner')}</button></div>`).join('')
+    : `<p class="note">${T('ligne.aucunDispo')}</p>`;
+
+  return `<p class="modal-note">${T('ligne.editer.info')}</p>
+    <b>${T('ligne.alignes')}</b> <span class="tag">${alignes.length}/${max}</span>
+    <div class="edit-liste">${listeAlignes}</div>
+    <b>${T('ligne.disponibles')}</b>
+    <div class="edit-liste">${listeDispos}</div>`;
+}
+
+function majEditionLigne() {
+  const b = document.getElementById('modalBody');
+  if (b && editionLigne) b.innerHTML = corpsEditionLigne();
+}
+
+function retirerPuisRafraichir(id) { if (retirerDeLigne(id)) majEditionLigne(); }
+
+function choisirEntrant(id) {
+  const me = myTeam();
+  const n = editionLigne.n;
+  const max = n === 0 ? 1 : PAR_LIGNE;
+  // Pour le gardien, aligner remplace déjà : pas de second temps à demander.
+  if (n !== 0 && lignesAlignes(me, n).length >= max) {
+    editionLigne.entrant = id; majEditionLigne(); return;
+  }
+  if (alignerDansLigne(id, n)) majEditionLigne();
+}
+
+function executerRemplacement(idSortant) {
+  const entrant = editionLigne.entrant;
+  editionLigne.entrant = null;
+  if (retirerDeLigne(idSortant)) alignerDansLigne(entrant, editionLigne.n);
+  majEditionLigne();
+}
+
+function annulerRemplacement() { editionLigne.entrant = null; majEditionLigne(); }
+
+function ouvrirLigne(n) {
+  editionLigne = { n: n, entrant: null };
+  showModal({
+    title: n === 0 ? T('poste.G') : T('lignes.ligne', { n: n }),
+    ico: '🧊',
+    html: corpsEditionLigne(),
+    actions: [{ label: T('ligne.termine'), value: true, cls: 'buy' }]
+  }).then(() => { editionLigne = null; renderEffectif(); });
+}
+
 // ==================== Tableau des lignes ====================
 // Voir 4-outils/patch-lignes-tableau.py.
 //
@@ -4527,9 +4678,10 @@ function rangDeLigne(team, n) {
   const slots = l.length
     ? l.map(q => slotJoueur(team, q)).join('')
     : `<span class="ligne-libre">${T('lignes.vide')}</span>`;
-  return `<div class="ligne-bloc ${l.length ? '' : 'vide'}">
+  return `<div class="ligne-bloc cliquable ${l.length ? '' : 'vide'}" onclick="ouvrirLigne(${n})"
+    role="button" tabindex="0" title="${escHtml(T('ligne.editer.info'))}">
     <div class="ligne-tete"><span class="ligne-nom">${T('lignes.ligne', { n })}</span>${compo}
-      <span class="ligne-compte">${l.length}/${PAR_LIGNE}</span></div>
+      <span class="ligne-compte">${l.length}/${PAR_LIGNE}</span><span class="ligne-crayon">✎</span></div>
     <div class="ligne-slots">${slots}</div>${verdict}</div>`;
 }
 
@@ -4537,8 +4689,10 @@ function tableauDesLignes(team) {
   const rangs = [];
   for (let n = 1; n <= LIGNES_MAX; n++) rangs.push(rangDeLigne(team, n));
   const gk = team.players.filter(p => p.pos === 'G' && p.starter && !p.injured);
-  rangs.push(`<div class="ligne-bloc ${gk.length ? '' : 'vide'}">
-    <div class="ligne-tete"><span class="ligne-nom">${T('poste.G.court')}</span></div>
+  rangs.push(`<div class="ligne-bloc cliquable ${gk.length ? '' : 'vide'}" onclick="ouvrirLigne(0)"
+    role="button" tabindex="0" title="${escHtml(T('ligne.editer.info'))}">
+    <div class="ligne-tete"><span class="ligne-nom">${T('poste.G.court')}</span>
+      <span class="ligne-crayon">✎</span></div>
     <div class="ligne-slots">${gk.length ? gk.map(q => slotJoueur(team, q)).join('')
       : `<span class="ligne-libre">${T('lignes.vide')}</span>`}</div></div>`);
   const banc = team.players.filter(p => !p.starter && !p.injured);
@@ -5123,7 +5277,7 @@ function showReport() {
       ).join(' • ') + `</p>`
     : `<p class="tag">${T('rapport.aucunePenalite')}</p>`;
   box.innerHTML = `
-    <h3>${isPlayoff ? '🏆 ' + G.lastReport.title : T('rapport.titre', { n: G.day })}</h3>
+    <h3>${isPlayoff ? '🏆 ' + escHtml(titreRapport(G.lastReport)) : T('rapport.titre', { n: G.day })}</h3>
     <div class="bigscore">${home.name} <span style="color:var(--bleu)">${res.gH} — ${res.gA}</span> ${away.name}</div>
     <ul>${goals || `<li>${T('rapport.aucunBut')}</li>`}</ul>
     ${cardsHtml}
@@ -5191,6 +5345,18 @@ function cupRoundKeyFor(nTeams) {
 }
 
 // Libellé d'un tour. Repli sur la valeur brute : les sauvegardes d'avant portent la phrase.
+// Titre d'un rapport de phase finale. Les sauvegardes d'avant cette version portent une
+// phrase déjà composée dans `title` : on la rend telle quelle plutôt que de réécrire le
+// passé, exactement comme pour le courrier.
+function titreRapport(r) {
+  if (!r) return '';
+  if (r.titreCle) {
+    const p = r.titreParams || {};
+    return T(r.titreCle, { tour: cupRoundLabel(p.tour) });
+  }
+  return r.title || '';
+}
+
 function cupRoundLabel(cle) {
   if (!cle) return '';
   const t = T('coupe.tour.' + cle);
@@ -5428,14 +5594,27 @@ function advanceCupStep() {
   round.forEach(m => { if (!cupHumanInMatch(m) && m.winner === null) runCupMatch(m); });
   const humanMatch = round.find(m => cupHumanInMatch(m));
   if (!humanMatch) {
-    // le joueur avait un bye ce tour-ci (ou n'y figure pas) : on enchaîne dès que le tour est complet
+    // Le club est exempté de ce tour — ou n'y figure pas. Sans un mot, l'écran se redessine
+    // et rien n'explique pourquoi il ne s'est rien passé : on croit la visionneuse cassée.
+    const exempte = !!(G.cup && G.cup.byes && G.cup.byes.includes(myTeam().cupId));
     if (round.every(m => m.winner !== null)) cupBuildNextRound();
     renderAll();
+    if (exempte && !G.cup.humanOut) {
+      notify({
+        title: T('coupe.exempte.titre'), ico: '🎟️',
+        html: `<p class="modal-text">${T('coupe.exempte.corps', { tour: escHtml(cupRoundLabel(round[0] && round[0].label)) })}</p>`
+              + `<p class="modal-note">${T('coupe.exempte.regle')}</p>`
+      });
+    }
     return;
   }
   if (humanMatch.winner === null) {
     const { home, away, res } = runCupMatch(humanMatch);
-    G.lastReport = { m: humanMatch, res, home, away, playoff: true, title: `${humanMatch.label} (Coupe de France)` };
+    // Clé + paramètres, jamais la phrase composée : `humanMatch.label` est une clé brute
+    // (« preliminaire ») et « (Coupe de France) » était du français en dur, l'un et l'autre
+    // affichés tels quels dans l'écran de rapport.
+    G.lastReport = { m: humanMatch, res, home, away, playoff: true,
+                     titreCle: 'rapport.titreCoupe', titreParams: { tour: humanMatch.label } };
     if (humanMatch.winner !== myTeam().cupId) G.cup.humanOut = true;
     if (round.every(m => m.winner !== null)) cupBuildNextRound();
     renderAll();

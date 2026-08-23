@@ -317,20 +317,28 @@ function initMvSkaters(report) {
   function mk(p, team, role, idx, col, x, y) {
     return { x, y, homeX: x, homeY: y, heading: team === 'home' ? 0 : Math.PI, speed: 0, team, role, idx, col, p, isLead: false };
   }
-  mv.skaters = [
-    mk(hLine.fwds[0], 'home', 'fwd', 0, hCol, MW/2 - 34, mCY - 30),
-    mk(hLine.fwds[1], 'home', 'fwd', 1, hCol, mGL_L + 175, mCY + 95),
-    mk(hLine.defs[0], 'home', 'def', 2, hCol, mGL_L + 95, mCY - 70),
-    mk(hLine.defs[1], 'home', 'def', 3, hCol, mGL_L + 80, mCY + 55),
-    mk(aLine.fwds[0], 'away', 'fwd', 0, aCol, MW/2 + 34, mCY + 30),
-    mk(aLine.fwds[1], 'away', 'fwd', 1, aCol, mGL_R - 175, mCY - 95),
-    mk(aLine.defs[0], 'away', 'def', 2, aCol, mGL_R - 95, mCY + 70),
-    mk(aLine.defs[1], 'away', 'def', 3, aCol, mGL_R - 80, mCY - 55)
+  // On construit autant de patineurs qu'il y a de JOUEURS, jamais huit par principe. Un
+  // club réduit à trois joueurs de champ valides — une cascade de blessures suffit —
+  // produisait sinon un patineur bâti sur `undefined`, et `mvMaxSpeed` plantait sur `p.vit`
+  // dès la première image. On ne complète pas avec des doublons : voir deux fois le même
+  // joueur serait plus déroutant que d'en voir un de moins.
+  const places = [
+    ['home', 'fwd', 0, MW/2 - 34, mCY - 30], ['home', 'fwd', 1, mGL_L + 175, mCY + 95],
+    ['home', 'def', 2, mGL_L + 95, mCY - 70], ['home', 'def', 3, mGL_L + 80, mCY + 55],
+    ['away', 'fwd', 0, MW/2 + 34, mCY + 30], ['away', 'fwd', 1, mGL_R - 175, mCY - 95],
+    ['away', 'def', 2, mGL_R - 95, mCY + 70], ['away', 'def', 3, mGL_R - 80, mCY - 55]
   ];
+  mv.skaters = [];
+  places.forEach(([team, role, idx, x, y]) => {
+    const ligne = team === 'home' ? hLine : aLine;
+    const joueur = (role === 'fwd' ? ligne.fwds : ligne.defs)[role === 'fwd' ? idx : idx - 2];
+    if (!joueur) return;
+    mv.skaters.push(mk(joueur, team, role, idx, team === 'home' ? hCol : aCol, x, y));
+  });
   mv.goalies = [
     { x: mGL_L + 12, y: mCY, col: hCol, p: hLine.gk },
     { x: mGL_R - 12, y: mCY, col: aCol, p: aLine.gk }
-  ];
+  ].filter(g => g.p);
 }
 
 // Vitesse max liée à la Vitesse (vit) du joueur ; virages et accélération limités comme sur des patins (inertie)
@@ -355,6 +363,10 @@ function updateMvSkaters(simDt) {
       fwds.forEach(s => { s.isLead = (s === carrier); });
       return;
     }
+    // Une équipe peut n'avoir qu'un avant, ou aucun : la désignation du meneur ne peut pas
+    // supposer qu'il y en a exactement deux.
+    if (!fwds.length) return;
+    if (fwds.length === 1) { fwds[0].isLead = true; mv.press[team] = 0; return; }
     const d0 = mvDist(fwds[0], p), d1 = mvDist(fwds[1], p);
     let lead = mv.press[team] ?? 0;
     if (lead === 0 && d1 < d0 - 30) lead = 1;
@@ -435,7 +447,10 @@ function updateMvSkaters(simDt) {
       const puckInOurZone = forward > 0 ? p.x < mSLOT_L + 60 : p.x > mSLOT_R - 60;
       if (puckInOurZone) {
         const myDefs = mv.skaters.filter(d => d.team === s.team && d.role === 'def');
-        const nearest = mvDist(myDefs[0], p) <= mvDist(myDefs[1], p) ? myDefs[0] : myDefs[1];
+        // Un seul arrière disponible : c'est lui le plus proche, il n'y a pas à comparer.
+        const nearest = myDefs.length < 2
+          ? myDefs[0]
+          : (mvDist(myDefs[0], p) <= mvDist(myDefs[1], p) ? myDefs[0] : myDefs[1]);
         if (s === nearest && carrier && carrier.team !== s.team) {
           // provoque la confrontation avant le slot (ralentit pour ne pas reculer dans le slot)
           targetX = clampV(p.x - forward * 18, Math.min(slotFront, p.x) - 40, Math.max(slotFront, p.x) + 40);
