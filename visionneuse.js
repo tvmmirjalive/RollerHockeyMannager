@@ -103,7 +103,7 @@ function mvKickPuck(tx, ty, power) {
 function mvTriggerGoal(e) {
   if (!e) return;
   if (e.side === 'home') mv.gH++; else mv.gA++;
-  feedLine(`${Math.floor(mv.t)}' — <b>BUT !</b> ${e.nom} (${e.team})`
+  feedLine(`${Math.floor(mv.t)}' — <b>BUT !</b> ${escHtml(e.nom)} (${escHtml(e.team)})`
     + (e.pp ? ' <span class="tag">(supériorité numérique)</span>' : '')
     + (e.prolongation ? ' <span class="tag">(but en or)</span>' : ''), true);
   mv.goalFlash = 1.2;
@@ -155,7 +155,7 @@ function forceScriptedShot() {
   mv.puck.ownerCooldown = 2.0; // tir cadré : personne ne l'intercepte en vol
   ss.fired = true;
   if (mv.report.home.human || mv.report.away.human) {
-    feedLine(`${Math.floor(mv.t)}' — 🏒 Lancer de ${sh.p.nom} (${nxt.side === 'home' ? mv.report.home.short : mv.report.away.short}) depuis le slot !`);
+    feedLine(`${Math.floor(mv.t)}' — 🏒 Lancer de ${escHtml(sh.p.nom)} (${escHtml(nxt.side === 'home' ? mv.report.home.short : mv.report.away.short)}) depuis le slot !`);
   }
 }
 
@@ -242,7 +242,7 @@ function updateMvPuck(simDt) {
           if (mv.report.home.human || mv.report.away.human) {
             const now = Math.floor(mv.t);
             if (now - (mv.lastTurnoverT || -99) >= 2) {
-              feedLine(`${now}' — Interception de ${s.p.nom} (${s.team === 'home' ? mv.report.home.short : mv.report.away.short}) sur ${o.p.nom} !`);
+              feedLine(`${now}' — Interception de ${escHtml(s.p.nom)} (${escHtml(s.team === 'home' ? mv.report.home.short : mv.report.away.short)}) sur ${escHtml(o.p.nom)} !`);
               mv.lastTurnoverT = now;
             }
           }
@@ -262,7 +262,7 @@ function updateMvPuck(simDt) {
       if (mate && (mv.report.home.human || mv.report.away.human)) {
         const now = Math.floor(mv.t);
         if (now - (mv.lastPassT || -99) >= 2) {
-          feedLine(`${now}' — Passe de ${own.p.nom} vers ${mate.p.nom} (${own.team === 'home' ? mv.report.home.short : mv.report.away.short}).`);
+          feedLine(`${now}' — Passe de ${escHtml(own.p.nom)} vers ${escHtml(mate.p.nom)} (${escHtml(own.team === 'home' ? mv.report.home.short : mv.report.away.short)}).`);
           mv.lastPassT = now;
         }
       }
@@ -495,7 +495,7 @@ function watchMatch(report) {
   mv.goalFlash = 0; mv.retarget = 0.4; mv.flavor = irnd(4, 8); mv.prolongationAnnoncee = false;
   mv.scriptedShot = null; mv.lastTurnoverT = -99; mv.lastPassT = -99; mv.lastTouchTeam = 'home'; mv.faceoff = 0;
   document.getElementById('mvFeed').innerHTML =
-    `<div>0' — Coup d'envoi ! ${report.home.name} reçoit ${report.away.name}.</div>`;
+    `<div>0' — Coup d'envoi ! ${escHtml(report.home.name)} reçoit ${escHtml(report.away.name)}.</div>`;
   document.getElementById('matchViewer').style.display = 'flex';
   updateMvHead();
   mv.lastFrame = performance.now();
@@ -605,7 +605,7 @@ function mvLoop(now) {
     const p = mv.pens[mv.nextPen];
     const icon = PENALTY_LABEL[p.type];
     const typeLabel = T('penalite.' + p.type);
-    feedLine(`${p.minute}' — ${icon} <b>${typeLabel}</b> — ${p.nom} (${p.team}) : ${fauteLabel(p.faute)}.${p.shorthand ? ` ${T('penalite.inferiorite', { n: p.dur })}` : ''}`);
+    feedLine(`${p.minute}' — ${icon} <b>${typeLabel}</b> — ${escHtml(p.nom)} (${escHtml(p.team)}) : ${fauteLabel(p.faute)}.${p.shorthand ? ` ${T('penalite.inferiorite', { n: p.dur })}` : ''}`);
     if (p.shorthand) mv.activePP = { against: p.side, until: mv.t + p.dur, endsOnGoal: p.endsOnGoal };
     mv.nextPen++;
   }

@@ -446,8 +446,56 @@
      mais elle doit rester lisible sans survol — ni Android ni iOS n'en affichent. */
   /* Ligne et partenaire : deux mentions discrètes sur la carte. Jamais de chiffre
      d'affinité — le potentiel s'affiche bien en étoiles depuis l'origine. */
-  .card-ligne { position: absolute; top: 6px; right: 6px; font-size: 10px; font-weight: 800;
-    padding: 1px 5px; border-radius: 999px; background: rgba(255,255,255,.14); }
+  /* Un seul badge en haut à droite, et il remplace le ✓ : superposer les deux masquait
+     70 % de la pastille. Vert plein comme l'ancienne validation, pour que l'œil y lise
+     toujours « ce joueur est aligné », avec le numéro de ligne en prime. */
+  .card-ligne { position: absolute; top: 6px; right: 6px; min-width: 20px; height: 20px;
+    font-size: 10px; font-weight: 800; padding: 0 5px; border-radius: 999px;
+    background: var(--vert); color: #04210f; display: flex; align-items: center;
+    justify-content: center; line-height: 1; }
+
+  /* ==================== Tableau des lignes ====================
+     Une vraie grille, pas une rangée qui coule : les emplacements s'alignent verticalement
+     d'une ligne à l'autre, c'est ce qui rend le bloc lisible d'un coup d'œil. Deux colonnes
+     en téléphone, quatre dès qu'il y a la place — la ligne complète tient alors sur un rang.
+
+     Le verdict d'entente est passé SOUS la ligne : à droite, il mangeait la largeur des
+     emplacements et les noms se tronquaient. */
+  .lignes-tab { display: flex; flex-direction: column; gap: 8px; margin-top: 8px; }
+  .ligne-bloc { background: var(--panel2); border: 1px solid #2c313a; border-radius: 9px;
+    padding: 8px; }
+  .ligne-bloc.vide { opacity: .55; }
+  .ligne-tete { display: flex; align-items: baseline; gap: 8px; margin-bottom: 6px; }
+  .ligne-nom { font-weight: 800; font-size: 12px; letter-spacing: .5px; }
+  .ligne-compo { font-size: 10px; color: var(--muted); }
+  .ligne-compte { font-size: 10px; color: var(--muted); margin-left: auto; }
+  .ligne-slots { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px; }
+  @media (min-width: 600px) { .ligne-slots { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+  .ligne-slot { display: flex; align-items: center; gap: 5px; background: #12192b;
+    border-radius: 7px; padding: 3px 6px 3px 3px; font-size: 11px; min-width: 0; }
+  .ligne-slot img { width: 22px; height: 22px; border-radius: 6px; object-fit: cover; flex: none; }
+  .slot-pos { font-size: 9px; font-weight: 800; padding: 1px 4px; border-radius: 4px;
+    color: #fff; flex: none; letter-spacing: .3px; }
+  .slot-nom { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .ligne-libre { font-size: 11px; color: var(--muted); font-style: italic; }
+  .ligne-cohesion { display: block; margin-top: 6px; padding-top: 6px;
+    border-top: 1px solid #22272f; font-size: 11px; font-weight: 700; }
+
+  /* ==================== Ententes et tensions ==================== */
+  .entente-li { display: flex; align-items: center; gap: 6px; padding: 4px 0;
+    border-bottom: 1px solid #22272f; font-size: 12px; flex-wrap: wrap; }
+  .entente-li:last-child { border-bottom: none; }
+  .entente-force { font-weight: 700; }
+  .entente-portee { font-size: 10px; color: var(--muted); }
+  .entente-compte { color: var(--tan); }
+
+  /* Le bloc de composition se replie : l'écran Effectif était déjà long. Cible tactile à
+     44 px de haut, contrainte Apple. */
+  .depliant > summary { cursor: pointer; list-style: none; display: flex; align-items: center;
+    gap: 8px; min-height: 44px; font-weight: 700; user-select: none; }
+  .depliant > summary::-webkit-details-marker { display: none; }
+  .depliant > summary::after { content: '▾'; margin-left: auto; transition: transform .15s; }
+  .depliant[open] > summary::after { transform: rotate(180deg); }
   .card-duo { font-size: 10px; margin-top: 2px; white-space: nowrap; overflow: hidden;
     text-overflow: ellipsis; }
   .duo-plus { color: var(--vert); } .duo-moins { color: var(--rouge); opacity: .8; }

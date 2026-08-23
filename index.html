@@ -322,7 +322,7 @@ function euros(n) {
 function carteIntroJoueur(p, rang, total) {
   const ov = overall(p);
   const posLabel = T('poste.' + p.pos);
-  const posColor = { G: '#6b4fd1', D: '#2e7dd1', A: '#d1642e' }[p.pos];
+  const posColor = COULEUR_POSTE[p.pos];
   const moral = p.moral ?? 70;
   const stat = (lib, val, couleur) =>
     `<div class="ij-stat"><span class="ij-lib">${lib}</span>` +
@@ -2001,7 +2001,7 @@ async function effacerSlot(s, ev) {
 // `versionName` du build Android par 4-outils/patch-version.py, qui refuse de s'appliquer
 // si les deux divergent. Le mode d'échec évité est réel : l'APK a annoncé « 1.0 » pendant
 // soixante-dix-sept versions parce que rien ne reliait le jeu à son numéro.
-const VERSION_JEU = '122';
+const VERSION_JEU = '123';
 
 function refreshMenu() {
   // Les textes de l'écran titre sont écrits ICI et non en HTML statique : sinon ils
@@ -2577,6 +2577,10 @@ const MAX_JOUEURS_CHAMP = 12;
 
 // ==================== Lignes nominatives et affinités ====================
 // Voir 4-outils/patch-lignes-affinites.py.
+
+// Couleur de chaque poste, employée par la carte de joueur ET par le tableau des lignes.
+// Elle était écrite en dur dans playerCard ; deux copies auraient divergé.
+const COULEUR_POSTE = { G: '#6b4fd1', D: '#2e7dd1', A: '#d1642e' };
 
 const LIGNES_MAX = 3;
 const PAR_LIGNE = 4;
@@ -4388,7 +4392,7 @@ function playerRow(p, opts = {}) {
     : '—';
   return `<tr class="${p.starter && opts.mine ? 'sel' : ''}" style="${p.injured ? 'opacity:.55' : ''}">
     <td data-label="${escHtml(T('colonne.pos'))}"><span class="pos ${p.pos}">${p.pos}</span></td>
-    <td data-label="${escHtml(T('colonne.nom'))}" class="nomcell"><img src="${portraitFor(p.id)}" class="portrait-thumb" alt="">${clubBadge}${p.nom} ${p.starter && opts.mine ? '<span class="starterDot">●</span>' : ''}${injBadge}</td>
+    <td data-label="${escHtml(T('colonne.nom'))}" class="nomcell"><img src="${portraitFor(p.id)}" class="portrait-thumb" alt="">${clubBadge}${escHtml(p.nom)} ${p.starter && opts.mine ? '<span class="starterDot">●</span>' : ''}${injBadge}</td>
     <td data-label="${escHtml(T('colonne.age'))}">${p.age}</td>
     <td data-label="${escHtml(T('stat.general'))}"><b>${ov}</b>${opts.apport ? pastilleApport(p) : ''}</td>
     <td data-label="${escHtml(T('stat.tir'))}">${p.tir}</td><td data-label="${escHtml(T('stat.def'))}">${p.def}</td><td data-label="${escHtml(T('stat.vit'))}">${p.vit}</td><td data-label="${escHtml(T('stat.gar'))}">${p.pos === 'G' ? p.gar : '—'}</td>
@@ -4408,14 +4412,18 @@ function playerCard(p) {
   const laLigne = ligneDe(p);
   const duo = (typeof partenaireMarquant === 'function') ? partenaireMarquant(myTeam(), p) : null;
   const mentionDuo = duo
-    ? `<div class="card-duo ${duo.v > 0 ? 'duo-plus' : 'duo-moins'}">${duo.v > 0 ? '↔' : '✕'} ${escHtml(duo.q.nom.split(' ').pop())}</div>`
+    ? `<div class="card-duo ${duo.v > 0 ? 'duo-plus' : 'duo-moins'}">${duo.v > 0 ? '↔' : '✕'} ${escHtml(nomCourtEquipe(myTeam(), duo.q))}</div>`
     : '';
-  const badgeLigne = laLigne ? `<span class="card-ligne">L${laLigne}</span>` : '';
+  // Le gardien ne tourne pas : lui afficher « L1 » ferait croire à une rotation. Il garde
+  // donc le ✓ d'origine, et les joueurs de champ portent leur numéro de ligne.
+  const badgeLigne = laLigne
+    ? `<span class="card-ligne">${p.pos === 'G' ? '✓' : 'L' + laLigne}</span>`
+    : '';
   const f = p.forme;
   const moral = p.moral ?? 70;
   const moralColor = moral >= 75 ? 'var(--vert)' : moral >= 50 ? 'var(--tan)' : 'var(--rouge)';
   const formeColor = f >= 98 ? 'var(--vert)' : f >= 88 ? 'var(--tan)' : 'var(--rouge)';
-  const posColor = { G: '#6b4fd1', D: '#2e7dd1', A: '#d1642e' }[p.pos];
+  const posColor = COULEUR_POSTE[p.pos];
   const statLine = p.pos === 'G'
     ? `<span>${T('stat.gar.court')} <b>${p.gar}</b></span><span>${T('stat.def.court')} <b>${p.def}</b></span>`
     : `<span>${T('stat.tir.court')} <b>${p.tir}</b></span><span>${T('stat.def.court')} <b>${p.def}</b></span><span>${T('stat.vit.court')} <b>${p.vit}</b></span>`;
@@ -4432,7 +4440,6 @@ function playerCard(p) {
   }
   return `<div class="player-card ${p.starter ? 'selected' : ''}" onclick="toggleStarter(${p.id});renderEffectif();">
     <span class="card-pos" style="background:${posColor}">${p.pos}</span>
-    <span class="card-check">✓</span>
     ${badgeLigne}
     <img src="${portraitFor(p.id)}" class="card-portrait" alt="">
     <div class="card-name">${p.nom}</div>
@@ -4445,6 +4452,135 @@ function playerCard(p) {
       <span style="color:${moralColor}">${T('stat.moral')} ${moral}</span>
     </div>
   </div>`;
+}
+
+// ==================== Tableau des lignes ====================
+// Voir 4-outils/patch-lignes-tableau.py.
+//
+// Le badge posé sur chaque carte ne disait qu'une chose à la fois : « ce joueur est en L2 ».
+// Il ne disait pas AVEC QUI. Or c'est la seule question qui compte quand on compose, et
+// c'est aussi celle dont dépendent les affinités.
+
+// L'état du dépliage vit ici et pas dans la sauvegarde : c'est une préférence d'écran.
+// Sans mémoire, chaque clic sur une carte refermerait le bloc, puisque `renderEffectif()`
+// reconstruit tout l'HTML.
+let compoDepliee = false;
+function memoriserDepliage(el) { compoDepliee = !!el.open; }
+
+// Force d'une entente en toutes lettres. Jamais en chiffre : l'affinité se lit comme le
+// potentiel se lit en étoiles, parce qu'un « −2 » n'apprend rien à qui n'a pas le barème.
+function forceEntente(v) {
+  const a = Math.abs(v);
+  const cle = v > 0 ? 'entente.bonne.' + a : 'entente.mauvaise.' + a;
+  const t = T(cle);
+  return t === cle ? String(v) : t;
+}
+
+// Les noms de famille se répètent beaucoup dans un effectif tiré au sort : la mise en scène
+// de test a sorti trois « Laurent » et trois « Moreau » sur quatorze joueurs. Côte à côte
+// dans une ligne, ils ne se distinguent plus. On préfixe l'initiale du prénom, et SEULEMENT
+// en cas de collision — sinon la table s'alourdirait partout pour un cas particulier.
+function nomCourtEquipe(team, p) {
+  const fam = p.nom.split(' ').pop();
+  const collision = team.players.some(q => q.id !== p.id && q.nom.split(' ').pop() === fam);
+  return collision ? p.nom.charAt(0) + '. ' + fam : fam;
+}
+
+function slotJoueur(team, p) {
+  return `<span class="ligne-slot" title="${escHtml(p.nom + ' — ' + T('poste.' + p.pos))}">`
+    + `<span class="slot-pos" style="background:${COULEUR_POSTE[p.pos]}">${T('poste.' + p.pos + '.court')}</span>`
+    + `<img src="${portraitFor(p.id)}" alt="">`
+    + `<span class="slot-nom">${escHtml(nomCourtEquipe(team, p))}</span></span>`;
+}
+
+// Cohésion d'une seule ligne, sur la même base que `cohesionEquipe` : la moyenne des paires
+// internes renseignées. On n'affiche un verdict que si au moins une paire est connue — sinon
+// on laisserait croire à une ligne « neutre » alors qu'elle est simplement inconnue.
+function cohesionDeLigne(team, n) {
+  const l = joueursDeLigne(team, n);
+  let somme = 0, paires = 0;
+  for (let i = 0; i < l.length; i++) {
+    for (let k = i + 1; k < l.length; k++) {
+      const v = affiniteEntre(l[i].id, l[k].id);
+      if (v !== 0) { somme += v; paires++; }
+    }
+  }
+  return paires ? somme / paires : null;
+}
+
+// Défenseurs d'abord, attaquants ensuite : sans ordre fixe, deux lignes de composition
+// identique s'affichaient différemment et la grille perdait tout son intérêt.
+const ORDRE_POSTE = { G: 0, D: 1, A: 2 };
+
+function rangDeLigne(team, n) {
+  const l = joueursDeLigne(team, n).slice()
+    .sort((a, b) => (ORDRE_POSTE[a.pos] - ORDRE_POSTE[b.pos]) || (overall(b) - overall(a)));
+  const nbD = l.filter(x => x.pos === 'D').length;
+  const nbA = l.filter(x => x.pos === 'A').length;
+  const c = cohesionDeLigne(team, n);
+  const arrondi = c === null ? 0 : (c > 0 ? Math.ceil(c) : Math.floor(c));
+  const verdict = c === null ? ''
+    : `<span class="ligne-cohesion" style="color:${c > 0 ? 'var(--vert)' : 'var(--rouge)'}">`
+      + `${c > 0 ? '↔' : '✕'} ${escHtml(forceEntente(arrondi))}</span>`;
+  const compo = l.length
+    ? `<span class="ligne-compo">${T('lignes.compo', { d: nbD, a: nbA })}</span>` : '';
+  const slots = l.length
+    ? l.map(q => slotJoueur(team, q)).join('')
+    : `<span class="ligne-libre">${T('lignes.vide')}</span>`;
+  return `<div class="ligne-bloc ${l.length ? '' : 'vide'}">
+    <div class="ligne-tete"><span class="ligne-nom">${T('lignes.ligne', { n })}</span>${compo}
+      <span class="ligne-compte">${l.length}/${PAR_LIGNE}</span></div>
+    <div class="ligne-slots">${slots}</div>${verdict}</div>`;
+}
+
+function tableauDesLignes(team) {
+  const rangs = [];
+  for (let n = 1; n <= LIGNES_MAX; n++) rangs.push(rangDeLigne(team, n));
+  const gk = team.players.filter(p => p.pos === 'G' && p.starter && !p.injured);
+  rangs.push(`<div class="ligne-bloc ${gk.length ? '' : 'vide'}">
+    <div class="ligne-tete"><span class="ligne-nom">${T('poste.G.court')}</span></div>
+    <div class="ligne-slots">${gk.length ? gk.map(q => slotJoueur(team, q)).join('')
+      : `<span class="ligne-libre">${T('lignes.vide')}</span>`}</div></div>`);
+  const banc = team.players.filter(p => !p.starter && !p.injured);
+  rangs.push(`<div class="ligne-bloc vide">
+    <div class="ligne-tete"><span class="ligne-nom">${T('lignes.banc')}</span>
+      <span class="ligne-compte">${T('lignes.bancCompte', { n: banc.length })}</span></div></div>`);
+  return `<div class="lignes-tab">${rangs.join('')}</div>`;
+}
+
+// Toutes les paires renseignées, pas seulement la plus forte. La carte n'en montrait qu'une
+// — la plus forte en valeur absolue — si bien qu'une brouille tout juste annoncée par le
+// courrier restait invisible derrière une entente ancienne.
+//
+// La colonne qui compte vraiment est la PORTÉE : `cohesionEquipe()` ne somme que les paires
+// d'une même ligne. Une tension entre deux lignes différentes ne coûte rien, et rien dans le
+// jeu ne le disait.
+function listeDesEntentes(team) {
+  if (!G.affinites) return '';
+  const vus = {};
+  const paires = [];
+  team.players.forEach(a => team.players.forEach(b => {
+    if (a.id >= b.id) return;
+    const v = affiniteEntre(a.id, b.id);
+    if (v === 0) return;
+    const cle = cleAffinite(a.id, b.id);
+    if (vus[cle]) return;
+    vus[cle] = 1;
+    paires.push({ a, b, v });
+  }));
+  if (!paires.length) return `<p class="note">${T('entente.aucune')}</p>`;
+  paires.sort((x, y) => Math.abs(y.v) - Math.abs(x.v));
+  const li = paires.map(({ a, b, v }) => {
+    const la = ligneDe(a), lb = ligneDe(b);
+    const compte = la > 0 && la === lb;
+    const portee = compte
+      ? `<span class="entente-portee entente-compte">${T('entente.compte', { n: la })}</span>`
+      : `<span class="entente-portee">${T('entente.sansEffet')}</span>`;
+    return `<div class="entente-li">
+      <span class="entente-force" style="color:${v > 0 ? 'var(--vert)' : 'var(--rouge)'}">${v > 0 ? '↔' : '✕'} ${escHtml(forceEntente(v))}</span>
+      <span>${escHtml(a.nom)} · ${escHtml(b.nom)}</span>${portee}</div>`;
+  }).join('');
+  return li;
 }
 
 function renderEffectif() {
@@ -4480,9 +4616,23 @@ function renderEffectif() {
     <p class="note">${T('effectif.masseSalariale', { montantHtml: `<b style="color:var(--tan)">${euros(totalWage)}</b>` })}</p>
 
     <div class="card">
-      <b>🧊 ${T('effectif.selection')}</b>
-      <p class="note">${T('effectif.selection.info')}</p>
-      <div class="lineup-grid">${cards}</div>
+      <b>🧊 ${T('lignes.titre')}</b>
+      <p class="note">${T('lignes.info')}</p>
+      ${tableauDesLignes(me)}
+    </div>
+
+    <div class="card">
+      <details class="depliant" ${compoDepliee ? 'open' : ''} ontoggle="memoriserDepliage(this)">
+        <summary>🧊 ${T('effectif.selection')}</summary>
+        <p class="note">${T('effectif.selection.info')}</p>
+        <div class="lineup-grid">${cards}</div>
+      </details>
+    </div>
+
+    <div class="card">
+      <b>🤝 ${T('entente.titre')}</b>
+      <p class="note">${T('entente.info')}</p>
+      ${listeDesEntentes(me)}
     </div>
 
     <div class="card">
@@ -4969,7 +5119,7 @@ function showReport() {
   const finTag = fin ? `<p class="tag">${T('rapport.recette', { montantHtml: `<b style="color:${fin.total>=0?'var(--vert)':'var(--rouge)'}">${euros(fin.total)}</b>` })}</p>` : '';
   const cardsHtml = (res.penalties && res.penalties.length)
     ? `<p class="tag"><b>${T('colonne.penalites')} :</b> ` + res.penalties.map(p =>
-        `${p.minute}' ${PENALTY_LABEL[p.type]} ${p.nom} (${p.team}, ${fauteLabel(p.faute)}, ${p.dur}')`
+        `${p.minute}' ${PENALTY_LABEL[p.type]} ${escHtml(p.nom)} (${escHtml(p.team)}, ${fauteLabel(p.faute)}, ${p.dur}')`
       ).join(' • ') + `</p>`
     : `<p class="tag">${T('rapport.aucunePenalite')}</p>`;
   box.innerHTML = `

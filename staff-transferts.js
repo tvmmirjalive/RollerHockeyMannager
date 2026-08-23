@@ -230,7 +230,7 @@ function runTrainingSession() {
     notify({
       title: "Séance d'entraînement", ico: '🏋️',
       html: `<p class="modal-note">${gains.length} progression${gains.length > 1 ? 's' : ''} enregistrée${gains.length > 1 ? 's' : ''}.</p>
-        <ul class="modal-list">${gains.map(g => `<li><span class="nm">${escHtml(g)}</span></li>`).join('')}</ul>`
+        <ul class="modal-list">${gains.map(g => `<li><span class="nm">${escHtml(ligneGain(g))}</span></li>`).join('')}</ul>`
     });
   }
 }
@@ -251,7 +251,7 @@ function renderEntrainement() {
       const trainCost = c.note < 95 ? coachTrainCost(c.note) : null;
       current = `<div class="coach-ligne">
         <img class="coach-photo" src="${coachPortrait(c)}" alt="" onerror="this.remove()">
-        <div class="coach-txt"><b style="color:var(--tan)">${c.nom}</b> — ${T('staff.note', { n: c.note })}</div>
+        <div class="coach-txt"><b style="color:var(--tan)">${escHtml(c.nom)}</b> — ${T('staff.note', { n: c.note })}</div>
         </div>
         <div style="margin-top:6px">
           ${trainCost !== null
@@ -272,7 +272,7 @@ function renderEntrainement() {
         const total = hireCost + sev;
         const label = c ? T('staff.remplacer', { prix: euros(total) }) : T('staff.embaucher', { prix: euros(hireCost) });
         return `<div style="margin-top:5px;display:flex;justify-content:space-between;align-items:center;gap:8px">
-          <span>${cand.nom} — ${T('staff.noteCourte', { n: cand.note })}</span>
+          <span>${escHtml(cand.nom)} — ${T('staff.noteCourte', { n: cand.note })}</span>
           <button class="btn buy" data-hire="${role}" ${G.budget < total ? 'disabled' : ''} onclick="hireStaff('${role}',${cand.id})">${label}</button>
         </div>`;
       }).join('');
