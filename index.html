@@ -2001,7 +2001,7 @@ async function effacerSlot(s, ev) {
 // `versionName` du build Android par 4-outils/patch-version.py, qui refuse de s'appliquer
 // si les deux divergent. Le mode d'échec évité est réel : l'APK a annoncé « 1.0 » pendant
 // soixante-dix-sept versions parce que rien ne reliait le jeu à son numéro.
-const VERSION_JEU = '126';
+const VERSION_JEU = '127';
 
 function refreshMenu() {
   // Les textes de l'écran titre sont écrits ICI et non en HTML statique : sinon ils
@@ -2540,16 +2540,35 @@ function newGame() {
 function myTeam() { return G.teams.find(t => t.human); }
 
 // ---------------- Composition ----------------
+// Deux défenseurs et deux attaquants par ligne : c'est la norme du roller in line, et
+// c'est ce que Mirja demande. L'ancienne version triait tout l'effectif par note et coupait
+// aux rangs 1-4 et 5-8 sans regarder le poste — mesuré : 9 lignes conformes sur 14, avec des
+// compositions à 4 déf / 0 att.
+const PAR_POSTE_AUTO = 2;
+// Deux lignes par défaut, comme avant. Le joueur qui en veut une troisième la compose
+// lui-même, par la fenêtre de composition ou par le cycle des cartes.
+const LIGNES_AUTO = 2;
+
 function autoLineup(team) {
-  team.players.forEach(p => p.starter = false);
-  const avail = p => !p.injured;
-  const gks = team.players.filter(p => p.pos === 'G' && avail(p)).sort((a, b) => effOv(b) - effOv(a));
-  const field = team.players.filter(p => p.pos !== 'G' && avail(p)).sort((a, b) => effOv(b) - effOv(a));
-  team.players.forEach(p => { p.ligne = 0; });
+  team.players.forEach(p => { p.starter = false; p.ligne = 0; });
+  const dispo = p => !p.injured;
+  const gks = team.players.filter(p => p.pos === 'G' && dispo(p)).sort((a, b) => effOv(b) - effOv(a));
   if (gks[0]) { gks[0].starter = true; gks[0].ligne = 1; }
-  // Deux lignes par défaut : les quatre meilleurs en première, les quatre suivants en
-  // seconde. Le joueur qui veut une troisième ligne, ou un autre équilibre, la compose.
-  field.slice(0, 8).forEach((p, i) => { p.starter = true; p.ligne = i < PAR_LIGNE ? 1 : 2; });
+
+  const defs = team.players.filter(p => p.pos === 'D' && dispo(p)).sort((a, b) => effOv(b) - effOv(a));
+  const atts = team.players.filter(p => p.pos === 'A' && dispo(p)).sort((a, b) => effOv(b) - effOv(a));
+
+  // On prend dans le vivier du poste voulu ; s'il est vide, on prend le meilleur de l'autre
+  // plutôt que de laisser une ligne trouée. Jouer à trois est pire qu'un poste de travers.
+  const prendre = (voulu, autre) => (voulu.length ? voulu : autre).shift();
+
+  for (let n = 1; n <= LIGNES_AUTO; n++) {
+    if (!defs.length && !atts.length) break;
+    const ligne = [];
+    for (let i = 0; i < PAR_POSTE_AUTO; i++) { const p = prendre(defs, atts); if (p) ligne.push(p); }
+    for (let i = 0; i < PAR_POSTE_AUTO; i++) { const p = prendre(atts, defs); if (p) ligne.push(p); }
+    ligne.forEach(p => { p.starter = true; p.ligne = n; });
+  }
 }
 function effOv(p) {
   const brut = overall(p) - (p.consigne === 'prudent' ? MALUS_CONSIGNE : 0);
@@ -4643,9 +4662,14 @@ function nomCourtEquipe(team, p) {
 }
 
 function slotJoueur(team, p) {
+  // Même langage que les tuiles de la fenêtre de composition : photo en grand, badge de
+  // poste sur le coin, nom dessous. Le portrait faisait 22 px alors que la fenêtre en
+  // affichait 112 : le même joueur se regardait de deux façons opposées selon l'écran.
   return `<span class="ligne-slot" title="${escHtml(p.nom + ' — ' + T('poste.' + p.pos))}">`
+    + `<span class="slot-photo">`
+    + `<img src="${portraitFor(p.id)}" alt="" onerror="this.style.visibility='hidden'">`
     + `<span class="slot-pos" style="background:${COULEUR_POSTE[p.pos]}">${T('poste.' + p.pos + '.court')}</span>`
-    + `<img src="${portraitFor(p.id)}" alt="">`
+    + `</span>`
     + `<span class="slot-nom">${escHtml(nomCourtEquipe(team, p))}</span></span>`;
 }
 

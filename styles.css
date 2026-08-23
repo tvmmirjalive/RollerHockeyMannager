@@ -469,14 +469,30 @@
   .ligne-nom { font-weight: 800; font-size: 12px; letter-spacing: .5px; }
   .ligne-compo { font-size: 10px; color: var(--muted); }
   .ligne-compte { font-size: 10px; color: var(--muted); margin-left: auto; }
-  .ligne-slots { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px; }
-  @media (min-width: 600px) { .ligne-slots { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
-  .ligne-slot { display: flex; align-items: center; gap: 5px; background: #12192b;
-    border-radius: 7px; padding: 3px 6px 3px 3px; font-size: 11px; min-width: 0; }
-  .ligne-slot img { width: 22px; height: 22px; border-radius: 6px; object-fit: cover; flex: none; }
-  .slot-pos { font-size: 9px; font-weight: 800; padding: 1px 4px; border-radius: 4px;
-    color: #fff; flex: none; letter-spacing: .3px; }
-  .slot-nom { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  /* QUATRE colonnes à toutes les largeurs : une ligne compte quatre joueurs, et la voir sur
+     un seul rang est ce qui fait qu'on lit un tableau et non une liste. Deux rangées en
+     téléphone trahissaient la demande d'origine — « genre tableau ». */
+  .ligne-slots { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 4px;
+    justify-items: center; }
+  /* Largeur plafonnée : sans ce plafond, une tuile faisait 162 px de large pour 74 de haut
+     en tablette et le cadrage ne gardait que le visage, maillot coupé. */
+  .ligne-slot { display: flex; flex-direction: column; align-items: center; gap: 2px;
+    background: #12192b; border-radius: 8px; padding: 3px; font-size: 10px; min-width: 0;
+    max-width: 132px; width: 100%; }
+  /* `aspect-ratio` SANS `max-height` : c'est leur combinaison que CLAUDE.md proscrit, parce
+     qu'elle rétrécit la LARGEUR de la boîte. Seul, il donne un portrait carré à toutes les
+     largeurs, ce qu'aucun `clamp()` sur la hauteur ne sait faire. */
+  .slot-photo { position: relative; display: block; width: 100%; }
+  .slot-photo img { width: 100%; aspect-ratio: 1 / 1; object-fit: cover;
+    border-radius: 6px; display: block; background: #0d1220; }
+  .slot-pos { position: absolute; top: 2px; left: 2px; font-size: 8px; font-weight: 800;
+    padding: 1px 3px; border-radius: 3px; color: #fff; letter-spacing: .3px;
+    box-shadow: 0 1px 2px rgba(0,0,0,.55); }
+  .slot-nom { overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    width: 100%; text-align: center; }
+  /* Une ligne vide n'a rien à aligner sur quatre colonnes : le message occupe toute la
+     largeur plutôt que de se serrer dans la première. */
+  .ligne-libre { grid-column: 1 / -1; }
   .ligne-libre { font-size: 11px; color: var(--muted); font-style: italic; }
   .ligne-cohesion { display: block; margin-top: 6px; padding-top: 6px;
     border-top: 1px solid #22272f; font-size: 11px; font-weight: 700; }
