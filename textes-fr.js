@@ -302,6 +302,8 @@ Object.assign(TEXTES.fr, {
   "calendrier.prochain": "Prochain match {date}",
   "calendrier.dansJours": {"un": "dans {n} jour", "autres": "dans {n} jours"},
   "calendrier.seances": {"un": "{n} séance d'entraînement d'ici là", "autres": "{n} séances d'entraînement d'ici là"},
+  "effectif.completCompte": {"un": "{n} joueur", "autres": "{n} joueurs"},
+  "effectif.indisponibles": {"un": "{n} indisponible", "autres": "{n} indisponibles"},
   "effectif.selection": "Sélection des titulaires",
   "effectif.selection.info": "Clique sur une carte pour aligner ou retirer un joueur (● = titulaire, entouré en vert).",
   "effectif.consignes": "Consignes tactiques",

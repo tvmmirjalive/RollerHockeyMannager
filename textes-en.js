@@ -302,6 +302,8 @@ Object.assign(TEXTES.en, {
   "calendrier.prochain": "Next match {date}",
   "calendrier.dansJours": {"un": "in {n} day", "autres": "in {n} days"},
   "calendrier.seances": {"un": "{n} training session until then", "autres": "{n} training sessions until then"},
+  "effectif.completCompte": {"un": "{n} player", "autres": "{n} players"},
+  "effectif.indisponibles": {"un": "{n} unavailable", "autres": "{n} unavailable"},
   "effectif.selection": "Starting line-up",
   "effectif.selection.info": "Tap a card to select or drop a player (● = starter, outlined in green).",
   "effectif.consignes": "Tactical instructions",

@@ -587,6 +587,8 @@
     outline-offset: 6px; border-radius: 6px; }
   .depliant-badge { margin-left: 8px; font-size: 10px; font-weight: 700; padding: 2px 7px;
     border-radius: 999px; background: var(--tan); color: #1a1206; white-space: nowrap; }
+  /* Rouge pour une absence, ambre pour une nouveauté : deux natures d'alerte, deux couleurs. */
+  .depliant-badge.alerte { background: var(--rouge); color: #fff; }
   /* Le rang lui-même se distingue : le badge du titre dit COMBIEN, la ligne dit LESQUELLES. */
   .entente-li.nouvelle { background: color-mix(in srgb, var(--tan) 10%, transparent);
     border-radius: 6px; padding-left: 6px; padding-right: 6px; }
@@ -1104,11 +1106,17 @@
                   text-transform: uppercase; border: 1px solid var(--bleu);
                   border-radius: 5px; padding: 2px 5px; }
   .rg-item .btn { min-width: 44px; min-height: 44px; padding: 0 10px; }
-  .rg-item .sw { flex: 0 0 auto; width: 52px; height: 30px; border-radius: 15px; border: 0;
-                 background: #3a4048; position: relative; cursor: pointer; }
-  .rg-item .sw::after { content: ''; position: absolute; top: 3px; left: 3px; width: 24px;
+  /* 44 px de CIBLE pour 30 px de dessin. `background-clip: content-box` fait que le fond ne
+     peint que la boîte de contenu : l'interrupteur garde exactement son allure, mais le doigt
+     dispose des 44 pt d'Apple et des 48 dp de Material. On agrandit ce que le doigt vise, pas
+     ce que l'œil voit — mesuré à 30 px avant, sur onze interrupteurs. */
+  .rg-item .sw { flex: 0 0 auto; width: 52px; height: 30px; padding: 7px 0;
+                 background-clip: content-box; box-sizing: content-box;
+                 border-radius: 15px; border: 0;
+                 background-color: #3a4048; position: relative; cursor: pointer; }
+  .rg-item .sw::after { content: ''; position: absolute; top: 10px; left: 3px; width: 24px;
                         height: 24px; border-radius: 50%; background: #cdd5de; transition: .18s; }
-  .rg-item .sw.on { background: var(--bleu); }
+  .rg-item .sw.on { background-color: var(--bleu); }
   .rg-item .sw.on::after { left: 25px; background: #04121f; }
   .rg-sep { border: 0; border-top: 1px dashed #2c313a; margin: 10px 0; }
   .rg-info { font-size: 11.5px; color: var(--muted); line-height: 1.5; }

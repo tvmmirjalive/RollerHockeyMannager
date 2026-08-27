@@ -2013,7 +2013,7 @@ async function effacerSlot(s, ev) {
 // `versionName` du build Android par 4-outils/patch-version.py, qui refuse de s'appliquer
 // si les deux divergent. Le mode d'échec évité est réel : l'APK a annoncé « 1.0 » pendant
 // soixante-dix-sept versions parce que rien ne reliait le jeu à son numéro.
-const VERSION_JEU = '132';
+const VERSION_JEU = '133';
 
 function refreshMenu() {
   // Les textes de l'écran titre sont écrits ICI et non en HTML statique : sinon ils
@@ -4950,6 +4950,12 @@ function ouvrirLigne(n) {
 let compoDepliee = false;
 function memoriserDepliage(el) { compoDepliee = !!el.open; }
 
+// Même mécanique pour le tableau complet. Ce gestionnaire ne re-rend PAS : il n'a donc pas
+// besoin du garde de réentrance qu'il a fallu poser sur les ententes en v131, où
+// `renderEffectif()` recréait le <details> avec `open` et refaisait tirer `toggle`.
+let completDeplie = false;
+function memoriserDepliageComplet(el) { completDeplie = !!el.open; }
+
 // Force d'une entente en toutes lettres. Jamais en chiffre : l'affinité se lit comme le
 // potentiel se lit en étoiles, parce qu'un « −2 » n'apprend rien à qui n'a pas le barème.
 function forceEntente(v) {
@@ -5135,6 +5141,9 @@ function renderEffectif() {
   // Compté AVANT le rendu : ouvrir le dépliant marque les ententes comme lues, et le compte
   // doit refléter l'état d'avant l'ouverture.
   const nbNouvelles = nbEntentesNouvelles(me);
+  // Replier le tableau complet masquerait QUI est indisponible : on ne doit pas avoir à
+  // ouvrir un panneau pour savoir qu'il manque deux joueurs.
+  const nBlesses = me.players.filter(p => p.injured).length;
   const nField = me.players.filter(p => p.pos !== 'G' && p.starter).length;
   const totalWage = me.players.reduce((s, p) => s + (p.salaire || 0), 0);
   const objRows = me.players.filter(p => p.objective).map(p =>
@@ -5209,11 +5218,14 @@ function renderEffectif() {
     </div>
 
     <div class="card">
-      <b>📄 ${T('effectif.complet')}</b>
+      <details class="depliant" ${completDeplie ? 'open' : ''} ontoggle="memoriserDepliageComplet(this)">
+        <summary>📄 ${T('effectif.complet')} <span class="tag">${T('effectif.completCompte', { n: me.players.length })}</span>${
+          nBlesses ? `<span class="depliant-badge alerte">${T('effectif.indisponibles', { n: nBlesses })}</span>` : ''}</summary>
       <table class="responsive-cards">
         <tr><th>${T('colonne.pos')}</th><th>${T('colonne.nom')}</th><th>${T('colonne.age')}</th><th>${T('stat.general')}</th><th>${T('stat.tir')}</th><th>${T('stat.def')}</th><th>${T('stat.vit')}</th><th>${T('stat.gar')}</th><th>${T('stat.agr')}</th><th>${T('stat.forme')}</th><th>${T('stat.moral')}</th><th>${T('stat.potentiel')}</th><th>${T('colonne.contrat')}</th><th>${T('colonne.valeur')}</th><th></th></tr>
         ${rows}
       </table>
+      </details>
     </div>`;
 }
 
