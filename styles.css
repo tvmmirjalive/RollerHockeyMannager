@@ -290,7 +290,7 @@
   #mvCtrls { display: flex; gap: 6px; margin-top: 10px; flex-wrap: wrap; }
   #mvCtrls .btn.on { border-color: var(--bleu); color: var(--bleu); }
 
-  /* --- Fond : patinoire floutée + halo de division --- */
+  /* --- Fond : piste floutée + halo de division --- */
   /* La photo donne la profondeur, le halo donne l'appartenance : le fond se teinte de
      la couleur de la division en cours, et change donc à chaque montée. Les deux
      couches tiennent dans un seul pseudo-élément, les dégradés étant empilés avant

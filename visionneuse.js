@@ -402,7 +402,7 @@ function updateMvSkaters(simDt) {
         // Avec un porteur, on se place en SOUTIEN devant lui : le décalage de 30 px a du
         // sens. Sans porteur, il faut aller SUR le palet — viser 30 px au-delà garait le
         // meneur entre 24 et 36 px, alors que le ramassage exige 23,5 px. Un demi-pixel
-        // d'écart, et la patinoire se figeait jusqu'au coup de sifflet.
+        // d'écart, et la piste se figeait jusqu'au coup de sifflet.
         if (carrier) { tx = p.x + forward * 30; ty = p.y; }
         else { tx = p.x; ty = p.y; }
       } else {
