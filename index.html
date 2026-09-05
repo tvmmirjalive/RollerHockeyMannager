@@ -2013,7 +2013,7 @@ async function effacerSlot(s, ev) {
 // `versionName` du build Android par 4-outils/patch-version.py, qui refuse de s'appliquer
 // si les deux divergent. Le mode d'échec évité est réel : l'APK a annoncé « 1.0 » pendant
 // soixante-dix-sept versions parce que rien ne reliait le jeu à son numéro.
-const VERSION_JEU = '134';
+const VERSION_JEU = '135';
 
 function refreshMenu() {
   // Les textes de l'écran titre sont écrits ICI et non en HTML statique : sinon ils
@@ -2461,10 +2461,18 @@ window.addEventListener('pagehide', flushSave);
 let lastTeamChoice = null;
 // Le choix porte sur une ASSOCIATION (indice dans CLUBS_ASSOS), plus sur un créneau de
 // division. Toutes ses équipes sortent des poules et le joueur démarre en Régional.
-function applyTeamChoice(assoId) {
-  CLUB_ASSO = (assoId !== null && assoId !== undefined && CLUBS_ASSOS[assoId])
+function applyTeamChoice(assoId, code) {
+  // Le CODE FFRS prime sur l'indice. L'indice n'est vrai que pour la table du jour :
+  // le relevé du championnat change chaque saison, et un club ajouté ou retiré décale
+  // tous ceux qui suivent. Une partie en cours se réveillerait alors dans un autre club,
+  // sans erreur ni message — le code, lui, désigne toujours le même club.
+  let idx = code ? CLUBS_ASSOS.findIndex(a => a[6] === code) : -1;
+  if (idx < 0) idx = (assoId !== null && assoId !== undefined && CLUBS_ASSOS[assoId])
     ? assoId : (CLUB_DEFAUT >= 0 ? CLUB_DEFAUT : 0);
-  lastTeamChoice = { assoId: CLUB_ASSO };
+  CLUB_ASSO = idx;
+  // On réécrit le code depuis la table : une sauvegarde d'avant ce champ en gagne un,
+  // et un code périmé est remplacé par celui du club réellement incarné.
+  lastTeamChoice = { assoId: CLUB_ASSO, code: (CLUBS_ASSOS[CLUB_ASSO] || [])[6] || null };
   chargerPoules();
 }
 
@@ -6372,7 +6380,8 @@ function hydrateSave(data) {
     // Sauvegardes d'avant les clubs réels : elles mémorisaient un créneau (divIdx,
     // slotIdx) qui n'a plus de sens. Faute de pouvoir retrouver l'association, on repart
     // sur le secteur par défaut — la partie reste jouable, seuls les adversaires changent.
-    applyTeamChoice(G.teamChoice.assoId !== undefined ? G.teamChoice.assoId : null);
+    applyTeamChoice(G.teamChoice.assoId !== undefined ? G.teamChoice.assoId : null,
+                    G.teamChoice.code);
   }
   document.body.classList.add('game-started');
   document.body.classList.remove('ts-open');
