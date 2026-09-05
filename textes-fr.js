@@ -678,6 +678,7 @@ Object.assign(TEXTES.fr, {
   "dlg.effacer.texte": "Effacer définitivement {quoi} ?",
   "toast.emplacementEfface": "Emplacement effacé.",
   "toast.aucuneSauvegarde": "Aucune partie sauvegardée à cet emplacement.",
+  "toast.sauvegardeEchec": "Sauvegarde impossible — le stockage est plein ou bloqué. Exporte ta partie en .json depuis l'onglet Sauvegarde.",
   "toast.saisonTerminee": "La saison est terminée — lance la suivante depuis le Classement.",
   "toast.budgetIndemnite": "Budget insuffisant pour payer l'indemnité.",
   "toast.coachPlafond": "Ce coach a atteint son plafond de compétence.",

@@ -678,6 +678,7 @@ Object.assign(TEXTES.en, {
   "dlg.effacer.texte": "Permanently delete {quoi}?",
   "toast.emplacementEfface": "Slot deleted.",
   "toast.aucuneSauvegarde": "No saved game in this slot.",
+  "toast.sauvegardeEchec": "Saving failed — storage is full or blocked. Export your game as .json from the Save tab.",
   "toast.saisonTerminee": "The season is over — start the next one from the Standings tab.",
   "toast.budgetIndemnite": "Not enough budget to pay the severance.",
   "toast.coachPlafond": "This coach has reached his skill ceiling.",

@@ -2013,7 +2013,7 @@ async function effacerSlot(s, ev) {
 // `versionName` du build Android par 4-outils/patch-version.py, qui refuse de s'appliquer
 // si les deux divergent. Le mode d'échec évité est réel : l'APK a annoncé « 1.0 » pendant
 // soixante-dix-sept versions parce que rien ne reliait le jeu à son numéro.
-const VERSION_JEU = '135';
+const VERSION_JEU = '136';
 
 function refreshMenu() {
   // Les textes de l'écran titre sont écrits ICI et non en HTML statique : sinon ils
@@ -2355,6 +2355,17 @@ Object.defineProperty(window, 'cachedSaveJson', {
   set(v) { cachedSaves[SLOT] = v; }
 });
 
+// Une sauvegarde qui échoue doit se voir. Signalée UNE fois, puis silence jusqu'au prochain
+// succès : l'autosauvegarde repasse toutes les 700 ms, un toast à chaque tour ferait un mur.
+let echecSauvegardeSignale = false;
+function signalerEchecSauvegarde(err) {
+  console.warn('[sauvegarde]', err);
+  if (echecSauvegardeSignale) return;
+  echecSauvegardeSignale = true;
+  toast(T('toast.sauvegardeEchec'), 'warn');
+}
+function noterSauvegardeReussie() { echecSauvegardeSignale = false; }
+
 function saveLocal() {
   if (typeof G === 'undefined' || !G) return false;
   let json;
@@ -2372,12 +2383,20 @@ function saveLocal() {
     }
   } catch (e) { return false; }
   cachedSaveJson = json;
-  let ok = false;
-  try { localStorage.setItem(saveKey(SLOT), json); ok = true; } catch (e) {}
+  // La couche qui fait foi dépend de la cible. Sur natif, Preferences est la seule durable
+  // (iOS purge le stockage web) : c'est SON verdict qu'on attend, par la promesse. Sur
+  // navigateur, c'est localStorage, et un quota plein doit se dire tout de suite.
   const Prefs = capPlugin('Preferences');
+  let ok = false;
+  try { localStorage.setItem(saveKey(SLOT), json); ok = true; }
+  catch (e) { if (!Prefs) signalerEchecSauvegarde(e); }
   if (Prefs) {
-    Prefs.set({ key: saveKey(SLOT), value: json }).catch(err => console.warn('Preferences.set', err));
-    ok = true;
+    Prefs.set({ key: saveKey(SLOT), value: json })
+      .then(noterSauvegardeReussie)
+      .catch(signalerEchecSauvegarde);
+    ok = true;   // verdict provisoire : le natif tranche à la résolution de la promesse
+  } else if (ok) {
+    noterSauvegardeReussie();
   }
   return ok;
 }
