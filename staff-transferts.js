@@ -284,7 +284,7 @@ function renderEntrainement() {
       <b>${def.icon} ${roleLabel(role)}</b><br>
       <span class="note">${roleDesc(role)}. ${T('staff.frequence')}</span><br><br>
       ${current}
-      <div style="margin-top:8px;border-top:1px solid #2c313a;padding-top:6px">
+      <div style="margin-top:8px;border-top:1px solid var(--bordure);padding-top:6px">
         <span class="tag">💼 ${c ? T('staff.mercato.avec') : T('staff.mercato')}</span>
         ${candidates}
       </div>

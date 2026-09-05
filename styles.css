@@ -53,8 +53,16 @@
     --muted: #93a0ad;
     --vert: #3fce7a;
     --rouge: #e85454;
+    /* Bordures : #2c313a était écrit 41 fois sans nom. C'est la ligne qui sépare tout —
+       cartes, champs, en-têtes, modales. Sa variante vive répond au survol. */
+    --bordure: #2c313a;
+    --bordure-vive: #3a4049;
+    --fond2: #141920;
   }
   * { box-sizing: border-box; }
+  /* Focus clavier : :focus-visible, pas :focus — un clic à la souris ne doit pas faire
+     apparaître le contour. Sans cette règle, rien dans la feuille ne montrait où l'on est. */
+  :focus-visible { outline: 2px solid var(--bleu); outline-offset: 2px; }
   html, body { margin: 0; min-height: 100%; background: var(--noir); color: var(--txt);
     font-family: 'Tomorrow', 'Segoe UI', sans-serif; }
 
@@ -95,7 +103,7 @@
   #topinfo b { color: var(--tan); }
   nav { display: flex; flex-wrap: wrap; gap: 6px; padding: 10px 18px; background: var(--panel); }
   nav button {
-    background: var(--panel2); color: var(--txt); border: 1px solid #2c313a;
+    background: var(--panel2); color: var(--txt); border: 1px solid var(--bordure);
     padding: 8px 16px; border-radius: 6px; cursor: pointer; font-family: inherit; font-size: 14px;
   }
   nav button.active { background: var(--bleu); color: #04121f; font-weight: 700; border-color: var(--bleu); }
@@ -109,7 +117,7 @@
   nav button.play { background: var(--tan); color: #201503; font-weight: 700; border-color: var(--tan); margin-left: auto; }
   main { padding: 16px 18px 40px; max-width: 1100px; margin: 0 auto;
          --pad-x: calc(18px + env(safe-area-inset-left, 0px)); }
-  h2 { font-size: 17px; color: var(--bleu); border-bottom: 1px solid #2c313a; padding-bottom: 6px; }
+  h2 { font-size: 17px; color: var(--bleu); border-bottom: 1px solid var(--bordure); padding-bottom: 6px; }
   table { width: 100%; border-collapse: collapse; font-size: 14px; }
   th, td { padding: 7px 8px; text-align: left; border-bottom: 1px solid #23272f; }
   th { color: var(--muted); font-weight: 500; font-size: 12px; text-transform: uppercase; letter-spacing: .5px; }
@@ -118,13 +126,13 @@
   .pos { display: inline-block; min-width: 22px; text-align: center; border-radius: 4px; font-size: 12px; padding: 1px 4px; font-weight: 700; }
   .pos.G { background: #6b4fd1; } .pos.D { background: #2e7dd1; } .pos.A { background: #d1642e; }
   .portrait-thumb { width: 40px; height: 40px; border-radius: 9px; object-fit: cover; vertical-align: middle;
-    margin-right: 9px; border: 2px solid #3a4049; background: #12192b; }
+    margin-right: 9px; border: 2px solid var(--bordure-vive); background: #12192b; }
   .portrait-thumb.sm { width: 24px; height: 24px; margin-right: 6px; border-width: 1px; }
 
   /* ==================== Cartes de sélection des titulaires ==================== */
   .lineup-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; margin: 12px 0; }
   .player-card {
-    background: var(--panel2); border: 2px solid #2c313a; border-radius: 10px;
+    background: var(--panel2); border: 2px solid var(--bordure); border-radius: 10px;
     padding: 10px 8px 8px; text-align: center; cursor: pointer; user-select: none;
     transition: border-color .15s, transform .1s, background .15s;
     position: relative;
@@ -132,12 +140,12 @@
   .player-card:hover { border-color: #4a5058; transform: translateY(-2px); }
   .player-card.selected { border-color: var(--vert); background: rgba(63,206,122,.10); }
   .player-card.injured { opacity: .5; cursor: not-allowed; }
-  .player-card.injured:hover { transform: none; border-color: #2c313a; }
+  .player-card.injured:hover { transform: none; border-color: var(--bordure); }
   /* Carré arrondi et non plus rond : les nouveaux portraits remplissent l'image
      jusqu'aux bords, un masque circulaire rognerait les oreilles et les cheveux. */
   .player-card .card-portrait {
     width: 84px; height: 84px; border-radius: 14px; object-fit: cover; display: block;
-    margin: 0 auto 6px; border: 3px solid #3a4049; background: #12192b;
+    margin: 0 auto 6px; border: 3px solid var(--bordure-vive); background: #12192b;
   }
   .player-card.selected .card-portrait { border-color: var(--vert); }
   .player-card .card-check {
@@ -163,7 +171,7 @@
 
   /* ==================== Cartes d'infrastructure illustrées (style "fiche") ==================== */
   .infra-fiche {
-    background: var(--panel2); border: 2px solid #2c313a; border-radius: 14px;
+    background: var(--panel2); border: 2px solid var(--bordure); border-radius: 14px;
     overflow: hidden; margin-bottom: 4px;
   }
   .infra-fiche .infra-img-wrap {
@@ -174,7 +182,7 @@
   }
   .infra-fiche .infra-tier-badge {
     position: absolute; top: 10px; right: 10px; background: rgba(10,12,16,.78); color: var(--tan);
-    font-weight: 700; font-size: 12px; padding: 4px 10px; border-radius: 20px; border: 1px solid #3a4049;
+    font-weight: 700; font-size: 12px; padding: 4px 10px; border-radius: 20px; border: 1px solid var(--bordure-vive);
   }
   .infra-fiche .infra-body { padding: 14px 16px 16px; }
   .infra-fiche .infra-title { font-size: 16px; font-weight: 700; margin-bottom: 2px; }
@@ -185,7 +193,7 @@
     height: 100%; background: linear-gradient(90deg, #2e7dd1, var(--vert)); border-radius: 6px;
   }
   .btn {
-    background: var(--panel2); border: 1px solid #2c313a; color: var(--txt);
+    background: var(--panel2); border: 1px solid var(--bordure); color: var(--txt);
     padding: 4px 10px; border-radius: 5px; cursor: pointer; font-family: inherit; font-size: 13px;
   }
   .btn:hover { border-color: var(--bleu); }
@@ -194,7 +202,7 @@
   .btn:disabled { opacity: .35; cursor: not-allowed; }
   .tag { font-size: 11px; color: var(--muted); }
   #matchReport {
-    background: var(--panel); border: 1px solid #2c313a; border-radius: 8px;
+    background: var(--panel); border: 1px solid var(--bordure); border-radius: 8px;
     padding: 14px 16px; margin-bottom: 18px; display: none;
   }
   #matchReport h3 { margin: 0 0 8px; color: var(--tan); font-size: 16px; }
@@ -219,7 +227,7 @@
     table.responsive-cards tr, table.responsive-cards td { display: block; width: 100%; }
     table.responsive-cards thead, table.responsive-cards tr:first-child { display: none; }
     table.responsive-cards tr {
-      border: 1px solid #2c313a; border-radius: 8px; margin-bottom: 10px;
+      border: 1px solid var(--bordure); border-radius: 8px; margin-bottom: 10px;
       padding: 6px 10px; background: var(--panel2);
     }
     table.responsive-cards td {
@@ -251,20 +259,20 @@
        plutôt que de casser la lisibilité en compressant chaque colonne à l'excès */
     table:not(.responsive-cards) { display: block; overflow-x: auto; white-space: nowrap; }
   }
-  .card { background: var(--panel); border: 1px solid #2c313a; border-radius: 8px; padding: 12px 14px; margin-bottom: 14px; }
+  .card { background: var(--panel); border: 1px solid var(--bordure); border-radius: 8px; padding: 12px 14px; margin-bottom: 14px; }
   .forme { display:inline-block; width: 40px; text-align:center; border-radius:4px; font-size:12px; }
   .starterDot { color: var(--vert); font-weight: 700; }
   .note { color: var(--muted); font-size: 13px; }
   #saveRow { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
-  select { background: var(--panel2); color: var(--txt); border: 1px solid #2c313a; border-radius: 5px; padding: 4px 8px; font-family: inherit; }
+  select { background: var(--panel2); color: var(--txt); border: 1px solid var(--bordure); border-radius: 5px; padding: 4px 8px; font-family: inherit; }
   /* --- Schéma de tournoi (bracket) --- */
   .bracket { display: flex; align-items: center; justify-content: center; gap: 0; margin: 16px 0; overflow-x: auto; padding: 10px 0; }
   .bcol { display: flex; flex-direction: column; justify-content: space-around; gap: 14px; min-width: 190px; }
   .bcol.qf { gap: 26px; }
   .bslot { position: relative; display: flex; align-items: center; }
-  .bslot::after { content: ''; position: absolute; right: -18px; top: 50%; width: 18px; height: 1px; background: #3a4049; }
+  .bslot::after { content: ''; position: absolute; right: -18px; top: 50%; width: 18px; height: 1px; background: var(--bordure-vive); }
   .bcol.final .bslot::after, .bcol.champion .bslot::after { display: none; }
-  .bbox { background: var(--panel2); border: 1px solid #3a4049; border-radius: 6px; padding: 6px 10px; font-size: 12px; width: 170px; }
+  .bbox { background: var(--panel2); border: 1px solid var(--bordure-vive); border-radius: 6px; padding: 6px 10px; font-size: 12px; width: 170px; }
   .bbox.final-box { border-color: var(--tan); width: 190px; }
   .bteam { display: flex; justify-content: space-between; padding: 2px 0; }
   .bteam.win { color: var(--vert); font-weight: 700; }
@@ -277,7 +285,7 @@
     position: fixed; inset: 0; background: rgba(4,6,10,.92); z-index: 50;
     display: none; align-items: center; justify-content: center; padding: 12px;
   }
-  #mvBox { background: var(--panel); border: 1px solid #2c313a; border-radius: 10px;
+  #mvBox { background: var(--panel); border: 1px solid var(--bordure); border-radius: 10px;
     padding: 14px 16px; width: 100%; max-width: 780px; }
   #mvHead { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; }
   #mvScore { font-size: 20px; font-weight: 700; }
@@ -370,7 +378,7 @@
   .menu-btn {
     display: block; width: 100%; text-align: left; cursor: pointer;
     background: linear-gradient(160deg, var(--panel2), var(--panel));
-    border: 1px solid #2c313a; border-radius: 12px; padding: 15px 18px;
+    border: 1px solid var(--bordure); border-radius: 12px; padding: 15px 18px;
     color: var(--txt); font-family: inherit; font-size: 15px;
     transition: transform .15s cubic-bezier(.2,.7,.3,1), border-color .15s, box-shadow .15s;
   }
@@ -426,7 +434,7 @@
   /* `position: relative` n'irait pas : la bulle est déjà `fixed`, ce qui suffit à ancrer le
      bouton du coin en absolu. */
   #tutoBulle { display: none; position: fixed; z-index: 252; left: 50%; width: min(92vw, 420px);
-    background: var(--fond2, #141920); border: 1px solid #2c313a; border-radius: 14px;
+    background: var(--fond2); border: 1px solid var(--bordure); border-radius: 14px;
     padding: 14px 16px; box-shadow: 0 12px 40px rgba(0,0,0,.55); }
   #tutoBulle.on { display: block; }
   /* Titre et bouton sur une même ligne, en FLUX. Le bouton était en absolu : il se posait
@@ -476,7 +484,7 @@
      Le verdict d'entente est passé SOUS la ligne : à droite, il mangeait la largeur des
      emplacements et les noms se tronquaient. */
   .lignes-tab { display: flex; flex-direction: column; gap: 8px; margin-top: 8px; }
-  .ligne-bloc { background: var(--panel2); border: 1px solid #2c313a; border-radius: 9px;
+  .ligne-bloc { background: var(--panel2); border: 1px solid var(--bordure); border-radius: 9px;
     padding: 8px; }
   .ligne-bloc.vide { opacity: .55; }
   .ligne-tete { display: flex; align-items: baseline; gap: 8px; margin-bottom: 6px; }
@@ -540,7 +548,7 @@
   .edit-grille { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 8px; margin: 6px 0 14px; }
   .edit-tuile { display: flex; flex-direction: column; align-items: center; gap: 3px;
-    background: var(--panel2); border: 2px solid #2c313a; border-radius: 11px;
+    background: var(--panel2); border: 2px solid var(--bordure); border-radius: 11px;
     padding: 7px 6px 6px; color: var(--txt); font-family: inherit; cursor: pointer;
     text-align: center; width: 100%; }
   .edit-tuile:hover { border-color: #4a5058; }
@@ -552,7 +560,7 @@
      boîte — piège déjà payé et consigné dans CLAUDE.md. On donne la hauteur, directement. */
   .tuile-photo { position: relative; display: block; width: 100%; }
   .tuile-photo img { width: 100%; height: clamp(84px, 26vw, 112px); object-fit: cover;
-    border-radius: 9px; display: block; background: #12192b; border: 2px solid #3a4049; }
+    border-radius: 9px; display: block; background: #12192b; border: 2px solid var(--bordure-vive); }
   .tuile-pos { position: absolute; top: 4px; left: 4px; font-size: 10px; font-weight: 800;
     padding: 2px 5px; border-radius: 5px; color: #fff; letter-spacing: .3px;
     box-shadow: 0 1px 3px rgba(0,0,0,.5); }
@@ -694,18 +702,18 @@
   }
   .ts-search {
     width: 100%; max-width: 380px; padding: 11px 16px; border-radius: 24px;
-    background: var(--panel2); border: 1px solid #2c313a; color: var(--txt); font-size: 14px;
-    font-family: inherit; text-align: center; outline: none; transition: border-color .15s;
+    background: var(--panel2); border: 1px solid var(--bordure); color: var(--txt); font-size: 14px;
+    font-family: inherit; text-align: center; transition: border-color .15s;
   }
   .ts-search:focus { border-color: var(--bleu); }
   .ts-search::placeholder { color: var(--muted); }
   .ts-chips { display: flex; gap: 7px; flex-wrap: wrap; justify-content: center; }
   .ts-chip {
     padding: 6px 13px; border-radius: 18px; font-size: 11.5px; font-weight: 600; cursor: pointer;
-    background: var(--panel2); border: 1px solid #2c313a; color: var(--muted);
+    background: var(--panel2); border: 1px solid var(--bordure); color: var(--muted);
     transition: all .15s; text-transform: uppercase; letter-spacing: .6px;
   }
-  .ts-chip:hover { color: var(--txt); border-color: #3a4049; }
+  .ts-chip:hover { color: var(--txt); border-color: var(--bordure-vive); }
   .ts-chip.active { color: var(--noir); background: var(--chip-color, var(--tan)); border-color: var(--chip-color, var(--tan)); }
 
   /* --- Grilles de clubs --- */
@@ -715,13 +723,13 @@
   .ts-div-title {
     font-size: 12.5px; font-weight: 700; margin-bottom: 13px; padding-bottom: 8px; text-transform: uppercase;
     letter-spacing: 1.6px; display: flex; align-items: center; gap: 10px;
-    border-bottom: 2px solid var(--div-color, #2c313a);
+    border-bottom: 2px solid var(--div-color, var(--bordure));
   }
   .ts-div-badge { font-size: 10.5px; font-weight: 500; color: var(--muted); text-transform: none; letter-spacing: 0; }
   .ts-team-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; }
   .ts-team-card {
     position: relative; background: linear-gradient(160deg, var(--panel2), var(--panel));
-    border: 1px solid #2c313a; border-radius: 12px; padding: 15px 10px 13px;
+    border: 1px solid var(--bordure); border-radius: 12px; padding: 15px 10px 13px;
     cursor: pointer; text-align: center; overflow: hidden;
     transition: transform .16s cubic-bezier(.2,.7,.3,1), border-color .16s, box-shadow .16s;
     animation: tsPop .4s cubic-bezier(.2,.7,.3,1) both;
@@ -791,7 +799,7 @@
   .ts-confirm-overlay.show { display: flex; animation: tsFade .2s both; }
   @keyframes tsFade { from { opacity: 0; } to { opacity: 1; } }
   .ts-confirm-box {
-    background: linear-gradient(160deg, var(--panel2), var(--panel)); border: 1px solid #2c313a;
+    background: linear-gradient(160deg, var(--panel2), var(--panel)); border: 1px solid var(--bordure);
     border-radius: 16px; padding: 30px 30px 26px; max-width: 390px; width: 100%; text-align: center;
     box-shadow: 0 26px 70px -12px rgba(0,0,0,.8);
     animation: tsPopIn .28s cubic-bezier(.2,.8,.3,1) both;
@@ -837,7 +845,7 @@
   .toast {
     pointer-events: auto; max-width: 430px; width: 100%;
     background: linear-gradient(160deg, var(--panel2), var(--panel));
-    border: 1px solid #2c313a; border-left: 3px solid var(--muted);
+    border: 1px solid var(--bordure); border-left: 3px solid var(--muted);
     border-radius: 10px; padding: 11px 14px;
     font-size: 13.5px; line-height: 1.45; color: var(--txt);
     box-shadow: 0 14px 34px -10px rgba(0,0,0,.75);
@@ -866,7 +874,7 @@
   #modalOverlay.show { display: flex; animation: tsFade .2s both; }
   .modal-box {
     background: linear-gradient(160deg, var(--panel2), var(--panel));
-    border: 1px solid #2c313a; border-radius: 16px;
+    border: 1px solid var(--bordure); border-radius: 16px;
     max-width: 440px; width: 100%; max-height: 100%;
     display: flex; flex-direction: column; overflow: hidden;
     box-shadow: 0 26px 70px -12px rgba(0,0,0,.8);
@@ -958,7 +966,7 @@
      embarquée, le navigateur retombait sur une police système aux métriques inconnues, et le
      glyphe sortait petit et décentré — deux défauts qu'aucune taille de police ne corrige. */
   .hd-btn { flex: 0 0 auto; width: 48px; height: 48px; border-radius: 12px;
-    border: 1px solid #2c313a; background: var(--panel2); color: var(--txt);
+    border: 1px solid var(--bordure); background: var(--panel2); color: var(--txt);
     cursor: pointer; position: relative; font-family: inherit;
     display: flex; align-items: center; justify-content: center; padding: 0; }
   /* 30 px dans 48 : l'icône occupe 62 % de la case. Mirja : « grandis, n'hésite pas ».
@@ -981,7 +989,7 @@
   body.game-started nav {
     position: fixed; left: 0; right: 0; bottom: 0; z-index: 120;
     display: flex; align-items: stretch; gap: 0; flex-wrap: nowrap;
-    background: var(--panel); border-top: 1px solid #2c313a;
+    background: var(--panel); border-top: 1px solid var(--bordure);
     padding: 0 0 env(safe-area-inset-bottom, 0px);
   }
   nav button[data-nav] {
@@ -1007,7 +1015,7 @@
   #subnav { display: none; gap: 6px; padding: 9px 0 3px; }
   #subnav.show { display: flex; }
   #subnav button { flex: 1 1 0; min-height: 44px; border-radius: 9px;
-    border: 1px solid #2c313a; background: var(--panel2); color: var(--txt);
+    border: 1px solid var(--bordure); background: var(--panel2); color: var(--txt);
     font-family: inherit; font-size: 12.5px; cursor: pointer; }
   #subnav button.active { background: var(--bleu); color: #04121f;
                           font-weight: 700; border-color: var(--bleu); }
@@ -1031,12 +1039,12 @@
             background: rgba(4,6,10,.72); backdrop-filter: blur(3px); }
   #drawer.show { display: block; animation: tsFade .18s both; }
   .drawer-in { position: absolute; left: 0; right: 0; bottom: 0;
-    background: var(--panel2); border-top: 1px solid #2c313a;
+    background: var(--panel2); border-top: 1px solid var(--bordure);
     border-radius: 16px 16px 0 0; padding: 8px 12px 14px;
     padding-bottom: calc(16px + env(safe-area-inset-bottom, 0px));
     animation: drawerUp .22s cubic-bezier(.2,.8,.3,1) both; }
   @keyframes drawerUp { from { transform: translateY(100%); } to { transform: none; } }
-  .drawer-grab { width: 38px; height: 4px; border-radius: 2px; background: #2c313a;
+  .drawer-grab { width: 38px; height: 4px; border-radius: 2px; background: var(--bordure);
     margin: 4px auto 12px; position: relative; cursor: pointer; touch-action: manipulation; }
   /* La poignée ne mesure que 4 px de haut ; sa zone tactile en fait 44, comme l'exige
      Apple. Une poignée qu'on ne peut pas viser est une fausse promesse. */
@@ -1045,7 +1053,7 @@
   .drawer-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
   .drawer-grid button { min-height: 76px; display: flex; flex-direction: column;
     align-items: center; justify-content: center; gap: 5px; background: var(--panel);
-    border: 1px solid #2c313a; border-radius: 11px; color: var(--txt);
+    border: 1px solid var(--bordure); border-radius: 11px; color: var(--txt);
     font-family: inherit; font-size: 11px; cursor: pointer; position: relative; }
   .drawer-grid button .ic { font-size: 21px; }
   .drawer-grid button.notify { border-color: var(--tan); }
@@ -1054,9 +1062,9 @@
 
   /* réglage du son, dans le tiroir */
   .drawer-audio { display: flex; align-items: center; gap: 11px; margin-top: 10px;
-    padding: 11px 12px; background: var(--panel); border: 1px solid #2c313a; border-radius: 11px; }
+    padding: 11px 12px; background: var(--panel); border: 1px solid var(--bordure); border-radius: 11px; }
   .drawer-audio button { min-width: 44px; min-height: 44px; border-radius: 9px;
-    border: 1px solid #2c313a; background: var(--panel2); color: var(--txt);
+    border: 1px solid var(--bordure); background: var(--panel2); color: var(--txt);
     font-size: 17px; cursor: pointer; font-family: inherit; }
   .drawer-audio button.on { border-color: var(--vert); color: var(--vert); }
   .drawer-audio input[type=range] { flex: 1 1 auto; min-width: 0; accent-color: var(--bleu); height: 30px; }
@@ -1084,7 +1092,7 @@
   }
 
   /* ==================== Réglages ==================== */
-  .rg-bloc { background: var(--panel); border: 1px solid #2c313a; border-radius: 12px;
+  .rg-bloc { background: var(--panel); border: 1px solid var(--bordure); border-radius: 12px;
              padding: 14px; margin-bottom: 12px; }
   .rg-bloc h3 { margin: 0 0 4px; font-size: 14px; color: var(--bleu); }
   .rg-bloc .note { margin: 0 0 12px; }
@@ -1096,7 +1104,7 @@
 
   .rg-liste { display: flex; flex-direction: column; gap: 6px; }
   .rg-item { display: flex; align-items: center; gap: 10px; background: var(--panel2);
-             border: 1px solid #2c313a; border-radius: 10px; padding: 7px 9px; min-height: 52px; }
+             border: 1px solid var(--bordure); border-radius: 10px; padding: 7px 9px; min-height: 52px; }
   .rg-item.off { opacity: .55; }
   .rg-item .ic { font-size: 18px; flex: 0 0 26px; text-align: center; }
   .rg-item .ic img { width: 22px; height: 22px; vertical-align: middle; }
@@ -1118,7 +1126,7 @@
                         height: 24px; border-radius: 50%; background: #cdd5de; transition: .18s; }
   .rg-item .sw.on { background-color: var(--bleu); }
   .rg-item .sw.on::after { left: 25px; background: #04121f; }
-  .rg-sep { border: 0; border-top: 1px dashed #2c313a; margin: 10px 0; }
+  .rg-sep { border: 0; border-top: 1px dashed var(--bordure); margin: 10px 0; }
   .rg-info { font-size: 11.5px; color: var(--muted); line-height: 1.5; }
   .rg-info b { color: var(--tan); }
 
@@ -1192,10 +1200,10 @@
   .sect { display: flex; align-items: center; gap: 9px; margin: 18px 0 9px; }
   .sect b { font-size: 10.5px; text-transform: uppercase; letter-spacing: 1.3px;
             color: var(--muted); font-weight: 700; }
-  .sect i { flex: 1 1 auto; height: 1px; background: linear-gradient(90deg, #2c313a, transparent); }
+  .sect i { flex: 1 1 auto; height: 1px; background: linear-gradient(90deg, var(--bordure), transparent); }
 
   /* --- classement en liste --- */
-  .clst { background: var(--panel); border: 1px solid #2c313a; border-radius: 12px; overflow: hidden; }
+  .clst { background: var(--panel); border: 1px solid var(--bordure); border-radius: 12px; overflow: hidden; }
   .clst-l { display: flex; align-items: center; gap: 9px; padding: 10px 11px; font-size: 13px; position: relative; }
   .clst-l + .clst-l { border-top: 1px solid rgba(255,255,255,.05); }
   .clst-l .rk { flex: 0 0 20px; text-align: center; font-size: 12px; color: var(--muted);
@@ -1220,14 +1228,14 @@
 
   /* --- carte de rencontre --- */
   .match-c { display: flex; align-items: center; gap: 11px; padding: 13px; border-radius: 12px;
-    background: linear-gradient(140deg, var(--panel2), var(--panel)); border: 1px solid #2c313a; }
+    background: linear-gradient(140deg, var(--panel2), var(--panel)); border: 1px solid var(--bordure); }
   .match-c .c { flex: 1 1 0; min-width: 0; text-align: center; }
   .match-c .c b { display: block; font-size: 12.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .match-c .c span { font-size: 9.5px; color: var(--muted); }
   .match-c .vs { flex: 0 0 auto; font-size: 11px; color: var(--div); font-weight: 800; letter-spacing: 1px; }
 
   /* --- messages --- */
-  .msg { display: flex; gap: 10px; background: var(--panel); border: 1px solid #2c313a;
+  .msg { display: flex; gap: 10px; background: var(--panel); border: 1px solid var(--bordure);
          border-left: 3px solid var(--muted); border-radius: 10px; padding: 11px 12px; margin-bottom: 7px; }
   .msg.t-objectif, .msg.t-board { border-left-color: var(--tan); }
   .msg.t-transfert { border-left-color: var(--vert); }
@@ -1249,13 +1257,13 @@
   .vide p { margin: 0 auto; max-width: 270px; font-size: 12.5px; color: var(--muted); line-height: 1.55; }
   .vide .apercu { margin-top: 18px; text-align: left; }
   .vide .apercu-l { display: flex; align-items: center; gap: 9px; padding: 9px 11px; border-radius: 9px;
-    background: rgba(255,255,255,.025); border: 1px dashed #2c313a; margin-bottom: 6px;
+    background: rgba(255,255,255,.025); border: 1px dashed var(--bordure); margin-bottom: 6px;
     font-size: 11.5px; color: #6b7480; }
   .vide .apercu-l b { color: var(--muted); font-weight: 600; }
 
   /* --- fiches de saison --- */
   .saison { display: flex; align-items: center; gap: 11px; background: var(--panel);
-    border: 1px solid #2c313a; border-radius: 11px; padding: 11px 12px; margin-bottom: 7px;
+    border: 1px solid var(--bordure); border-radius: 11px; padding: 11px 12px; margin-bottom: 7px;
     position: relative; overflow: hidden; }
   .saison::before { content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 3px; background: var(--sc, var(--div)); }
   .saison .an { flex: 0 0 auto; text-align: center; min-width: 42px; }
@@ -1267,17 +1275,17 @@
 
   /* --- règle repliable --- */
   .chip-info { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; color: var(--muted);
-    background: rgba(255,255,255,.04); border: 1px solid #2c313a; border-radius: 20px;
+    background: rgba(255,255,255,.04); border: 1px solid var(--bordure); border-radius: 20px;
     padding: 8px 13px; cursor: pointer; min-height: 40px; margin-top: 10px; font-family: inherit; }
   .chip-info.open { color: var(--txt); border-color: var(--div); }
   .regle { display: none; font-size: 11.5px; color: var(--muted); line-height: 1.55; margin-top: 8px;
-    padding: 11px; background: rgba(255,255,255,.025); border-radius: 9px; border: 1px solid #2c313a; }
+    padding: 11px; background: rgba(255,255,255,.025); border-radius: 9px; border: 1px solid var(--bordure); }
   .regle.show { display: block; }
 
   /* --- portrait de coach --- */
   .coach-ligne { display: flex; align-items: center; gap: 11px; }
   .coach-photo { width: 52px; height: 52px; flex: 0 0 auto; border-radius: 12px;
-    object-fit: cover; border: 2px solid #3a4049; background: #12192b; }
+    object-fit: cover; border: 2px solid var(--bordure-vive); background: #12192b; }
   .coach-txt { flex: 1 1 auto; min-width: 0; }
 
   /* --- visuel de sponsor --- */
@@ -1285,3 +1293,11 @@
      voyait qu'un bandeau de 13 % sur une fenêtre large. */
   .sponsor-img { width: 100%; aspect-ratio: 3 / 2; max-height: 260px; object-fit: cover;
     border-radius: 9px; margin-bottom: 9px; display: block; }
+
+  /* Mouvement réduit : on arrête les deux zooms d'ambiance (26 et 30 s) et on raccourcit les
+     transitions. Les autres animations sont courtes et portent du sens (un toast qui sort).
+     Dernier bloc de la feuille : à spécificité égale, c'est l'ordre qui tranche. */
+  @media (prefers-reduced-motion: reduce) {
+    .menu-bg, #teamSelectScreen .ts-hero-bg { animation: none; }
+    * { transition-duration: .01ms !important; }
+  }
