@@ -628,7 +628,9 @@
   .tr-plus  { color: var(--vert);  background: rgba(60,190,120,.14); }
   .tr-moins { color: var(--txt); opacity: .5; background: rgba(255,255,255,.06); }
   .modal-tapable { cursor: pointer; }
-  .modal-tapable::after { content: "Touche l'écran pour continuer"; display: block;
+  /* La phrase vient de T('modale.toucher') via data-tap : en dur ici, elle restait en
+     français quand le jeu passait en anglais. */
+  .modal-tapable::after { content: attr(data-tap); display: block;
     margin-top: 10px; font-size: var(--fs-xs); opacity: .55; text-align: center; }
   .modal-lettre { line-height: 1.45; }
   .modal-lettre img.portrait-thumb { vertical-align: middle; margin-right: 6px; }
@@ -717,7 +719,7 @@
     animation: tsRise .6s .22s cubic-bezier(.2,.7,.3,1) both;
   }
   .ts-search {
-    width: 100%; max-width: 380px; padding: 11px 16px; border-radius: var(--r-pilule);
+    width: 100%; max-width: 380px; min-height: 44px; padding: 11px 16px; border-radius: var(--r-pilule);
     background: var(--panel2); border: 1px solid var(--bordure); color: var(--txt); font-size: var(--fs-base);
     font-family: inherit; text-align: center; transition: border-color .15s;
   }
@@ -995,7 +997,7 @@
   .hd-btn b:empty { display: none; }
   .hd-stats { display: flex; border-top: 1px solid rgba(255,255,255,.07); }
   .hd-stat { flex: 1 1 0; min-width: 0; padding: 6px 3px 7px; text-align: center; }
-  .hd-stat span { display: block; font-size: var(--fs-3xs); color: var(--muted);
+  .hd-stat span { display: block; font-size: var(--fs-xs); color: var(--muted);
                   text-transform: uppercase; letter-spacing: .7px; }
   .hd-stat b { display: block; font-size: var(--fs-sm); color: var(--tan);
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -1010,7 +1012,7 @@
   }
   nav button[data-nav] {
     flex: 1 1 0; min-width: 0; min-height: 58px; border: 0; border-radius: 0;
-    background: none; color: var(--muted); font-family: inherit; font-size: var(--fs-3xs);
+    background: none; color: var(--muted); font-family: inherit; font-size: var(--fs-2xs);
     display: flex; flex-direction: column; align-items: center; justify-content: center;
     gap: 3px; padding: 7px 2px; cursor: pointer; position: relative;
   }
@@ -1048,6 +1050,15 @@
     box-shadow: 0 10px 26px -6px rgba(0,173,233,.6);
   }
   #btnPlay:disabled { opacity: .4; }
+  /* Le direct se joue par-dessus l'écran, mais la journée a déjà avancé dans l'état : le
+     bouton annonçait « journée 2 » pendant qu'on regardait la 1. Il se cache le temps du match. */
+  body.direct-ouvert #btnPlay { display: none; }
+  /* Pilule de 385 px sur un écran de 390 : elle couvrait la quatrième carte de chaque ligne et
+     le sélecteur de style. Repliée en rond de 56 px dès qu'on descend, redéployée dès qu'on
+     remonte — à ce moment-là on cherche quelque chose, pas le bouton. */
+  #btnPlay.compact { min-width: 56px; min-height: 56px; padding: 0; gap: 0; justify-content: center; }
+  #btnPlay.compact #btnPlayLabel { display: none; }
+  #btnPlay.compact .ic img { width: 28px; height: 28px; }
   body:not(.game-started) #btnPlay, body:not(.game-started) nav { display: none; }
 
   /* tiroir « Plus » */
@@ -1083,18 +1094,27 @@
     border: 1px solid var(--bordure); background: var(--panel2); color: var(--txt);
     font-size: var(--fs-xl); cursor: pointer; font-family: inherit; }
   .drawer-audio button.on { border-color: var(--vert); color: var(--vert); }
-  .drawer-audio input[type=range] { flex: 1 1 auto; min-width: 0; accent-color: var(--bleu); height: 30px; }
+  .drawer-audio input[type=range] { flex: 1 1 auto; min-width: 0; accent-color: var(--bleu); height: 44px; }
   .drawer-audio .lab { font-size: var(--fs-xs); color: var(--muted); flex: 0 0 auto; }
 
   /* Cibles tactiles du contenu. Les boutons du jeu faisaient 24 px de haut : sous les
      44 pt d'Apple et les 48 dp de Material, les taps ratés sont mesurables. On ne
      touche qu'à la hauteur et au rembourrage — ni la couleur, ni la bordure, ni la
      place qu'ils occupent dans les grilles. */
-  @media (max-width: 760px) {
+  @media (max-width: 760px), (pointer: coarse) {
     body.game-started .btn { min-height: 44px; padding: 10px 14px; font-size: var(--fs-md); }
     body.game-started select,
     body.game-started input[type=number],
     body.game-started input[type=text] { min-height: 44px; }
+    /* x1 · x2 · x4 : 43 px de large, la seule cible du direct sous la règle. */
+    #mvCtrls .btn { min-width: 44px; min-height: 44px; }
+    /* Les puces de région faisaient 27 px de haut. Le contenu reste à sa taille : c'est la
+       zone qu'on peut viser qui grandit. */
+    .ts-chip { min-height: 44px; display: inline-flex; align-items: center; }
+    /* Hors partie, `body.game-started .btn` ne s'applique pas : « Annuler » et « C'est
+       parti » de la confirmation du club faisaient 26 px, le lien de retour 23. */
+    .ts-confirm-btns .btn { min-height: 44px; padding: 10px 14px; }
+    .ts-back { min-height: 44px; }
   }
 
   @media (min-width: 760px) {
@@ -1114,7 +1134,7 @@
   .rg-bloc .note { margin: 0 0 12px; }
 
   .rg-son { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
-  .rg-son input[type=range] { flex: 1 1 160px; min-width: 120px; accent-color: var(--bleu); height: 34px; }
+  .rg-son input[type=range] { flex: 1 1 160px; min-width: 120px; accent-color: var(--bleu); height: 44px; }
   .rg-son .val { flex: 0 0 auto; font-variant-numeric: tabular-nums; color: var(--tan);
                  font-weight: 700; min-width: 44px; text-align: right; }
 
@@ -1292,7 +1312,7 @@
   /* --- règle repliable --- */
   .chip-info { display: inline-flex; align-items: center; gap: 5px; font-size: var(--fs-xs); color: var(--muted);
     background: rgba(255,255,255,.04); border: 1px solid var(--bordure); border-radius: var(--r-pilule);
-    padding: 8px 13px; cursor: pointer; min-height: 40px; margin-top: 10px; font-family: inherit; }
+    padding: 8px 13px; cursor: pointer; min-height: 44px; margin-top: 10px; font-family: inherit; }
   .chip-info.open { color: var(--txt); border-color: var(--div); }
   .regle { display: none; font-size: var(--fs-xs); color: var(--muted); line-height: 1.55; margin-top: 8px;
     padding: 11px; background: rgba(255,255,255,.025); border-radius: var(--r-md); border: 1px solid var(--bordure); }

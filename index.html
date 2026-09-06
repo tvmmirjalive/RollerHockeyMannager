@@ -367,7 +367,7 @@ async function presenterIntroPartie() {
   const region = asso ? asso[3] : '';
 
   await showModal({
-    title: T('intro.bienvenue'), ico: '🏒', tapPourSuivant: true,
+    title: T('intro.bienvenue'), ico: '🏒',
     html: `<div class="intro-accueil">
       <p class="ij-club">${escHtml(me.name)}</p>
       <p class="modal-note">${escHtml(ville)}${region ? ' · ' + escHtml(region) : ''}</p>
@@ -2013,7 +2013,7 @@ async function effacerSlot(s, ev) {
 // `versionName` du build Android par 4-outils/patch-version.py, qui refuse de s'appliquer
 // si les deux divergent. Le mode d'échec évité est réel : l'APK a annoncé « 1.0 » pendant
 // soixante-dix-sept versions parce que rien ne reliait le jeu à son numéro.
-const VERSION_JEU = '138';
+const VERSION_JEU = '139';
 
 function refreshMenu() {
   // Les textes de l'écran titre sont écrits ICI et non en HTML statique : sinon ils
@@ -2266,6 +2266,7 @@ function modalPump() {
     const valeur = acts[acts.length - 1].value; // l'action principale est toujours la dernière
     modalTapHandler = () => closeModal(valeur);
     body.addEventListener('click', modalTapHandler);
+    body.dataset.tap = T('modale.toucher');
     body.classList.add('modal-tapable');
   } else {
     body.classList.remove('modal-tapable');
@@ -2572,6 +2573,12 @@ function newGame() {
   noterDebutSaison();
   updateBranding();
   renderAll();
+  // Ce qui est ouvert dès le départ — premier palier de sponsors, postes de staff de base,
+  // quota de chantiers de la saison 1 — n'est pas une nouveauté. Sans ce relevé, trois
+  // onglets sur cinq clignotaient avant le premier match et la pastille ne disait plus rien.
+  G.knownUnlockedRoles = Object.keys(ROLES).filter(r => roleUnlocked(r));
+  G.knownUnlockedSponsors = SPONSOR_TIERS.map((s, i) => sponsorUnlocked(s) ? i : null).filter(i => i !== null);
+  G.clubQuotaNotifiedSeason = G.season;
   checkUnlockNotifications();
   // L'introduction vient après le premier rendu : le joueur voit son écran se remplir
   // derrière la modale, plutôt qu'un fond vide.
@@ -3976,6 +3983,13 @@ const NAV_DEFAUT_ORDRE = ['effectif', 'entrainement', 'classement', 'club',
                           'transferts', 'calendrier', 'coupe', 'inbox', 'historique',
                           'aide', 'options'];
 const NAV_DEFAUT_ACTIFS = ['effectif', 'entrainement', 'classement', 'club'];
+// Écrans qu'on atteint déjà autrement : le calendrier et la Coupe par les sous-onglets du
+// Classement, les messages par l'enveloppe de l'en-tête. Leur donner en plus un bouton dans
+// la barre ou une tuile dans le tiroir, c'était trois écrans en double — et sur tablette,
+// Classement · Calendrier · Coupe dans la barre juste sous les mêmes trois sous-onglets.
+// Ils ne sont ni remplis d'office ni rangés dans « Plus » ; le joueur reste libre de les
+// mettre dans la barre depuis les Réglages.
+const ECRANS_SECONDAIRES = ['calendrier', 'coupe', 'inbox'];
 
 function reglagesDefaut() {
   return {
@@ -4502,17 +4516,30 @@ function showTab(tab) {
   musiquePourEcran(tab);
 }
 
+// Un écran secondaire n'a pas de bouton à lui : sa pastille remonte sur l'écran par lequel
+// on y va — Classement pour le calendrier et la Coupe. Les messages n'en ont pas besoin,
+// l'enveloppe porte déjà le compte des non-lus.
+function alerteEcran(tab, n, rep) {
+  if (n[tab]) return true;
+  if (tab !== 'classement') return false;
+  return NAV_GROUPES.competition.some(t =>
+    ECRANS_SECONDAIRES.includes(t) && !rep.barre.includes(t) && n[t]);
+}
+
 function applyNavNotifications() {
   const n = (G && G.tabNotify) || {};
   const rep = navRepartition();
   document.querySelectorAll('#mainNav button[data-nav]').forEach(b => {
     const alerte = b.dataset.nav === '__plus'
-      ? rep.tiroir.some(t => n[t])       // le « Plus » signale ce qu'il cache
-      : !!n[b.dataset.nav];
+      ? rep.tiroir.some(t => alerteEcran(t, n, rep))       // le « Plus » signale ce qu'il cache
+      : alerteEcran(b.dataset.nav, n, rep);
     b.classList.toggle('notify', !!alerte);
   });
-  document.querySelectorAll('#subnav button[data-tab], .drawer-grid button[data-tab]').forEach(b => {
+  document.querySelectorAll('#subnav button[data-tab]').forEach(b => {
     b.classList.toggle('notify', !!n[b.dataset.tab]);
+  });
+  document.querySelectorAll('.drawer-grid button[data-tab]').forEach(b => {
+    b.classList.toggle('notify', alerteEcran(b.dataset.tab, n, rep));
   });
   // compteur de messages non lus sur l'enveloppe de l'en-tête
   const badge = document.getElementById('hdInboxCount');
@@ -4547,7 +4574,7 @@ function navRepartition() {
   const r = reglages();
   const actifs = r.navOrdre.filter(t => r.navActifs.includes(t));
   const capacite = navCapacite();
-  const reste = r.navOrdre.filter(t => !actifs.includes(t));
+  const reste = r.navOrdre.filter(t => !actifs.includes(t) && !ECRANS_SECONDAIRES.includes(t));
 
   // Tout tient : pas de bouton « Plus », il ne servirait à rien.
   if (actifs.length + reste.length <= capacite) {
@@ -4561,7 +4588,7 @@ function navRepartition() {
     if (barre.length >= capacite - 1) break;
     barre.push(t);
   }
-  const tiroir = r.navOrdre.filter(t => !barre.includes(t));
+  const tiroir = r.navOrdre.filter(t => !barre.includes(t) && !ECRANS_SECONDAIRES.includes(t));
   return { barre, tiroir, plus: tiroir.length > 0 };
 }
 
@@ -4648,6 +4675,35 @@ document.getElementById('btnPlay').addEventListener('click', async () => {
   }
 });
 
+// Le bouton flottant se replie en descendant et se redéploie dès qu'on remonte : replié, il
+// ne cache plus qu'un rond de 56 px au lieu d'une pilule de 385. Un défilement de moins de
+// 8 px ne compte pas (le doigt tremble), et les 120 premiers pixels non plus : en haut de
+// page on lit le bandeau, le bouton n'y gêne rien. Sans icône il reste déployé.
+const REPLI_SEUIL_PX = 8;
+const REPLI_DEPART_PX = 120;
+let repliDernierY = 0;
+let repliPrevu = false;
+function replierBoutonFlottant() {
+  repliPrevu = false;
+  const btn = document.getElementById('btnPlay');
+  const icone = document.getElementById('btnPlayIcon');
+  if (!btn) return;
+  const y = window.scrollY;
+  const delta = y - repliDernierY;
+  if (Math.abs(delta) < REPLI_SEUIL_PX) return;
+  repliDernierY = y;
+  const replie = delta > 0 && y > REPLI_DEPART_PX && !!(icone && icone.children.length);
+  btn.classList.toggle('compact', replie);
+  // Replié, le bouton n'a plus de texte : les lecteurs d'écran gardent son nom.
+  if (replie) btn.setAttribute('aria-label', document.getElementById('btnPlayLabel').textContent);
+  else btn.removeAttribute('aria-label');
+}
+window.addEventListener('scroll', () => {
+  if (repliPrevu) return;
+  repliPrevu = true;
+  requestAnimationFrame(replierBoutonFlottant);
+}, { passive: true });
+
 // La saison 1 correspond à l'exercice 2026-2027, puis on avance d'un an par saison.
 const FIRST_SEASON_YEAR = 2026;
 function seasonLabel(n) {
@@ -4674,7 +4730,7 @@ function renderTop() {
   document.getElementById('uiRank').textContent =
     DIVISIONS[G.divIdx].label + ' · ' + T('bandeau.rang', { rang: rank, total: G.teams.length });
   document.getElementById('uiSeason').textContent = seasonLabel(G.season);
-  document.getElementById('uiObjective').textContent = objectifLabel();
+  document.getElementById('uiObjective').textContent = objectifCourt();
   const bc = G.boardConfidence ?? 60;
   document.getElementById('uiBoardConf').textContent = bc + '/100';
   document.getElementById('uiBoardConf').style.color = bc >= 60 ? 'var(--vert)' : bc >= 35 ? 'var(--tan)' : 'var(--rouge)';

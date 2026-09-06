@@ -672,6 +672,16 @@ function objectifLabel() {
   return o.label || '—';
 }
 
+// Pour l'en-tête, où 130 px tronquaient « Viser le milieu de … » sur tous les écrans. Le
+// libellé « Objectif » est déjà au-dessus : « Milieu de tableau » suffit. Les sauvegardes
+// d'avant les clés (objectif en clair dans `label`) gardent leur texte entier.
+function objectifCourt() {
+  const o = G.boardObjective;
+  if (!o) return '—';
+  if (o.key) return T('objectif.' + o.key + '.court');
+  return o.label || '—';
+}
+
 function assignBoardObjective() {
   const n = G.teams.length;
   const lastRank = G.lastSeasonRank;

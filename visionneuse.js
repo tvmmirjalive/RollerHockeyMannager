@@ -535,6 +535,7 @@ function watchMatch(report) {
   document.getElementById('mvFeed').innerHTML =
     `<div>0' — Coup d'envoi ! ${escHtml(report.home.name)} reçoit ${escHtml(report.away.name)}.</div>`;
   document.getElementById('matchViewer').style.display = 'flex';
+  document.body.classList.add('direct-ouvert');   // cache le bouton « Jouer » (styles.css)
   updateMvHead();
   mv.lastFrame = performance.now();
   requestAnimationFrame(mvLoop);
@@ -543,6 +544,7 @@ function watchMatch(report) {
 function closeViewer() {
   mv.open = false;
   document.getElementById('matchViewer').style.display = 'none';
+  document.body.classList.remove('direct-ouvert');
   showReport();
 }
 
