@@ -2013,7 +2013,7 @@ async function effacerSlot(s, ev) {
 // `versionName` du build Android par 4-outils/patch-version.py, qui refuse de s'appliquer
 // si les deux divergent. Le mode d'échec évité est réel : l'APK a annoncé « 1.0 » pendant
 // soixante-dix-sept versions parce que rien ne reliait le jeu à son numéro.
-const VERSION_JEU = '140';
+const VERSION_JEU = '141';
 
 function refreshMenu() {
   // Les textes de l'écran titre sont écrits ICI et non en HTML statique : sinon ils
@@ -2618,6 +2618,28 @@ function autoLineup(team) {
     ligne.forEach(p => { p.starter = true; p.ligne = n; });
   }
 }
+// Sauvegardes d'avant les lignes : les titulaires n'ont pas de `ligne`, et `ligneDe()` les
+// réputait TOUS en ligne 1 — vu sur le Pixel de Mirja, « L1 · 8/4 ». On les répartit une
+// fois pour toutes, deux défenseurs et deux attaquants par ligne comme la compo auto, mais
+// SANS toucher à qui est titulaire : c'est le choix du joueur. Au-delà de trois lignes, les
+// moins bons rendent leur maillot. Une équipe dont les lignes sont déjà écrites est laissée
+// telle quelle. Renvoie vrai si quelque chose a bougé.
+function repartirLignesHeritees(team) {
+  const champ = team.players.filter(p => p.pos !== 'G' && p.starter);
+  if (!champ.length || champ.every(p => p.ligne > 0)) return false;
+  const gk = team.players.find(p => p.pos === 'G' && p.starter);
+  if (gk) gk.ligne = 1;
+  const defs = champ.filter(p => p.pos === 'D').sort((a, b) => effOv(b) - effOv(a));
+  const atts = champ.filter(p => p.pos !== 'D').sort((a, b) => effOv(b) - effOv(a));
+  const prendre = (voulu, autre) => (voulu.length ? voulu : autre).shift();
+  for (let n = 1; n <= LIGNES_MAX; n++) {
+    for (let i = 0; i < PAR_POSTE_AUTO; i++) { const p = prendre(defs, atts); if (p) p.ligne = n; }
+    for (let i = 0; i < PAR_POSTE_AUTO; i++) { const p = prendre(atts, defs); if (p) p.ligne = n; }
+  }
+  [...defs, ...atts].forEach(p => { p.starter = false; p.ligne = 0; });
+  return true;
+}
+
 function effOv(p) {
   const brut = overall(p) - (p.consigne === 'prudent' ? MALUS_CONSIGNE : 0);
   return brut * (p.forme / 100) * (0.85 + 0.15 * (p.moral || 70) / 100);
@@ -2658,8 +2680,9 @@ const COHESION_EFFET = 0.04;   // ±4 % au plus sur la force d'une ligne
 // directement — `playDay()` le passe à false quand un joueur se blesse — sans connaître les
 // lignes. Sans cette règle, un blessé restait fantomatiquement assigné à sa ligne.
 //
-// Repli pour les parties d'avant cette version : un titulaire sans `ligne` est réputé en
-// ligne 1, ce qui reproduit exactement l'ancien comportement.
+// Filet de sécurité : `hydrateSave()` répartit les titulaires sans `ligne` au chargement
+// (repartirLignesHeritees). S'il en restait un, il est réputé en ligne 1 plutôt qu'invisible
+// — mais ce n'est plus la règle, c'était elle qui affichait « 8/4 ».
 function ligneDe(p) {
   if (!p.starter) return 0;
   return (p.ligne !== undefined && p.ligne > 0) ? p.ligne : 1;
@@ -6458,6 +6481,7 @@ function hydrateSave(data) {
     if (p.injured === undefined) p.injured = false;
     if (p.injuryWeeks === undefined) p.injuryWeeks = 0;
   }));
+  G.teams.forEach(repartirLignesHeritees);
   // rejoue l'échange d'identité du club incarné (DIVISIONS est pristine au chargement de la page)
   if (G.teamChoice) {
     lastTeamChoice = G.teamChoice;
