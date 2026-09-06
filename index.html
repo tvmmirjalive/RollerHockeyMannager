@@ -2013,7 +2013,7 @@ async function effacerSlot(s, ev) {
 // `versionName` du build Android par 4-outils/patch-version.py, qui refuse de s'appliquer
 // si les deux divergent. Le mode d'échec évité est réel : l'APK a annoncé « 1.0 » pendant
 // soixante-dix-sept versions parce que rien ne reliait le jeu à son numéro.
-const VERSION_JEU = '139';
+const VERSION_JEU = '140';
 
 function refreshMenu() {
   // Les textes de l'écran titre sont écrits ICI et non en HTML statique : sinon ils
@@ -5209,6 +5209,15 @@ function listeDesEntentes(team) {
   return li;
 }
 
+// Une règle repliée derrière une puce ⓘ, comme le détail des playoffs au Classement. Un
+// paragraphe de règles en tête d'écran se relit à chaque visite et repousse les boutons
+// d'action sous le pli ; replié, il reste à un geste. La boîte doit SUIVRE la puce : c'est
+// `nextElementSibling` que le clic déplie.
+function regleRepliable(html, label) {
+  return `<button class="chip-info" onclick="this.classList.toggle('open');this.nextElementSibling.classList.toggle('show')">ⓘ ${escHtml(label || T('regle.comment'))}</button>
+    <div class="regle">${html}</div>`;
+}
+
 function renderEffectif() {
   const me = myTeam();
   const sorted = [...me.players].sort((a, b) => (a.pos > b.pos ? 1 : a.pos < b.pos ? -1 : overall(b) - overall(a)));
@@ -5235,8 +5244,8 @@ function renderEffectif() {
   document.getElementById('tab-effectif').innerHTML = `
     ${bandeau('effectif', DIVISIONS[G.divIdx].label, T('ecran.effectif.label'),
               `${me.name} · ${T('effectif.nbJoueurs', { n: me.players.length })}`)}
-    <p class="note">${T('effectif.composition', { n: nField, max: MAX_JOUEURS_CHAMP })}
-    <button class="btn" onclick="autoLineup(myTeam());renderEffectif()">${T('effectif.compoAuto')}</button></p>
+    <div class="note"><button class="btn" onclick="autoLineup(myTeam());renderEffectif()">${T('effectif.compoAuto')}</button>
+    ${regleRepliable(T('effectif.composition', { n: nField, max: MAX_JOUEURS_CHAMP }))}</div>
     <p class="note">${T('effectif.intervalle')}
       <select onchange="setLineInterval(this.value)">
         <option value="1" ${G.lineChangeInterval === 1 ? 'selected' : ''}>${T('effectif.minutes', { n: 1 })}</option>
@@ -5654,8 +5663,7 @@ function renderClub() {
   const reqSuiv = divSuiv < DIVISIONS.length ? classeRequise(divSuiv) : null;
   const classeCard = `<div class="card">
     <b>🏟️ ${T('club.classe.titre', { classe: clAct })}</b>
-    <p class="note">${T('club.classe.regle')}
-    ${reqSuiv ? (stadeSuffisantPour(divSuiv)
+    <p class="note">${reqSuiv ? (stadeSuffisantPour(divSuiv)
       ? T('club.classe.suffisant', { niveau: c.stade, classe: clAct, division: escHtml(DIVISIONS[divSuiv].label) })
       : T('club.classe.insuffisant', { division: escHtml(DIVISIONS[divSuiv].label), classe: reqSuiv.classe, requis: reqSuiv.stade, niveau: c.stade }))
       : T('club.classe.sommet')}</p>
@@ -5703,6 +5711,7 @@ function renderClub() {
     ${classeCard}
     <p class="note">${T('club.capacite', { placesHtml: `<b style="color:var(--tan)">${nombreLocal(stadiumCapacity())}</b>` })}
     ${T('club.chantiers', { chantiersHtml: `<b style="color:${G.upgradesThisSeason >= MAX_UPGRADES_PER_SEASON ? 'var(--rouge)' : 'var(--vert)'}">${MAX_UPGRADES_PER_SEASON - G.upgradesThisSeason}/${MAX_UPGRADES_PER_SEASON}</b>` })}</p>
+    ${regleRepliable(`<p>${T('club.classe.regle')}</p><p>${T('club.chantiers.info')}</p>`)}
     <div class="lineup-grid" style="grid-template-columns:repeat(auto-fill,minmax(280px,1fr))">
       ${infraCard('stade', 'club', '🏟️ ' + T('infra.stade.label'), T('infra.stade.desc'))}
       ${infraCard('confort', 'tribune', '🪑 ' + T('infra.confort.label'), T('infra.confort.desc'))}

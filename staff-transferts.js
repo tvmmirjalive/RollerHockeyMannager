@@ -301,15 +301,15 @@ function renderEntrainement() {
                 ? T('entrainement.dispoN', { n: G.seancesRestantes, date: formatDateJournee(dateJournee(G.day), false) })
                 : T('entrainement.deja'))}
     <div class="card">
-      <p class="note">${T('entrainement.info')}</p>
       <button class="btn buy" ${!(G.seancesRestantes > 0) ? 'disabled' : ''} onclick="runTrainingSession()">
         ${G.seancesRestantes > 0 ? '🏋️ ' + T('entrainement.lancer') : '✔️ ' + T('entrainement.deja')}
       </button>
+      ${regleRepliable(T('entrainement.info'))}
     </div>
     ${sessionGains}
 
     <h2>${T('entrainement.staff')}</h2>
-    <p class="note">${T('entrainement.staff.info')}</p>
+    ${regleRepliable(T('entrainement.staff.info'))}
     <div class="grid2">${cards}</div>
     ${lastGains}`;
 }
