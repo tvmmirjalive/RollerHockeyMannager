@@ -15,7 +15,7 @@
 // faire évoluer, pas plus simple.
 //
 // CE QU'IL N'Y A PAS
-//   `autoLineupIfBroken`, `toggleStarter`, `checkUnlockNotifications` : des utilitaires
+//   `toggleStarter`, `checkUnlockNotifications` : des utilitaires
 //   d'effectif et d'interface que les marqueurs de section avaient réunis ici par voisinage,
 //   pas par parenté. Ils restent dans index.html.
 //
@@ -341,12 +341,19 @@ function signNewContract(p) {
   p.salaire = playerSalary(p);
 }
 
+// Le joueur portait un numéro que quelqu'un porte déjà chez nous : il en a reçu un autre, et
+// on le DIT. Sans numéro valide au départ — marché hors division — il n'y a rien à annoncer.
+function annoncerNumeroDArrivee(p, voulu, porte) {
+  if (numeroValide(voulu) && porte !== voulu) toast(T('numero.arrivee', { nom: p.nom, n: porte, ancien: voulu }), 'info');
+}
+
 async function buyPlayer(teamId, playerId) {
   if (G.season < 2) { toast(T('toast.marcheFerme'), 'info'); return; }
   const seller = G.teams[teamId];
   const p = seller.players.find(x => x.id === playerId);
   if (!p) return;
   if (!canSell(seller, p)) { toast("Ce club refuse de vendre : son effectif est trop court.", 'warn'); return; }
+  if (effectifPlein()) { toast(T('toast.effectifPlein', { n: EFFECTIF_MAX }), 'warn'); return; }
   const basePrice = playerValue(p) * 1.1;
   const neg = negotiatePrice(p, basePrice);
   if (!neg.ok) { toast(T('toast.refuseVendre', { club: seller.name, nom: p.nom }), 'bad'); return; }
@@ -361,6 +368,7 @@ async function buyPlayer(teamId, playerId) {
   p.starter = false;
   signNewContract(p);
   myTeam().players.push(p);
+  annoncerNumeroDArrivee(p, p.num, attribuerNumero(myTeam(), p));
   renderAll();
 }
 
@@ -384,6 +392,7 @@ async function buyScoutPlayer(scoutId) {
   const entry = G.scoutPool.find(e => e.p.id === scoutId);
   if (!entry) return;
   const { p, divIdx, clubName } = entry;
+  if (effectifPlein()) { toast(T('toast.effectifPlein', { n: EFFECTIF_MAX }), 'warn'); return; }
   const premium = divIdx < G.divIdx ? 1.25 : 0.95; // débaucher d'une division supérieure coûte plus cher
   const basePrice = playerValue(p) * 1.1 * premium;
   const neg = negotiatePrice(p, basePrice);
@@ -398,6 +407,7 @@ async function buyScoutPlayer(scoutId) {
   G.scoutPool = G.scoutPool.filter(e => e.p.id !== scoutId);
   signNewContract(p);
   myTeam().players.push(p);
+  annoncerNumeroDArrivee(p, p.num, attribuerNumero(myTeam(), p));
   renderAll();
 }
 async function sellPlayer(playerId) {
@@ -411,8 +421,12 @@ async function sellPlayer(playerId) {
   G.budget += price;
   me.players = me.players.filter(x => x.id !== playerId);
   // le joueur part dans un club aléatoire
-  pick(G.teams.filter(t => !t.human)).players.push(p);
-  autoLineupIfBroken();
+  const acheteur = pick(G.teams.filter(t => !t.human));
+  acheteur.players.push(p);
+  attribuerNumero(acheteur, p);
+  // Pas de recomposition ici : `lineupOf()` et `preparerLignesAvantMatch()` s'en chargent au
+  // moment de jouer. L'appel qui se trouvait là visait une fonction retirée en v128, et levait
+  // AVANT `renderAll()` — l'écran restait figé sur le joueur vendu.
   renderAll();
 }
 
@@ -431,8 +445,7 @@ async function loanPlayer(playerId) {
   if (!G.loanedOut) G.loanedOut = [];
   G.loanedOut.push(p);
   pushInbox('courrier.pret.titre', 'courrier.pret.corps', { nom: p.nom }, 'transfert');
-  autoLineupIfBroken();
-  renderAll();
+  renderAll();   // même raison que dans `sellPlayer` : la composition se refait au moment de jouer
 }
 
 // Témoin de chargement, lu par verifierPieces() en fin d'amorçage.

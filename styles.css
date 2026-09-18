@@ -63,6 +63,11 @@
        pour qu'aucune ne bouge de plus d'un pixel. Au-delà de 20 px : titres, littéraux. */
     --fs-3xs: 9px;  --fs-2xs: 10px; --fs-xs: 11px; --fs-sm: 12px; --fs-md: 13px;
     --fs-base: 14px; --fs-lg: 15px; --fs-xl: 17px; --fs-2xl: 20px;
+    /* Les CHAMPS DE SAISIE ont leur propre taille, et elle ne descend pas sous 16 px : en
+       dessous, iOS agrandit la page de lui-même dès qu'on touche le champ. Le zoom est
+       désormais permis (audit du 9 septembre 2026, C5) ; ce réglage-là ne doit plus se
+       retourner contre le joueur. */
+    --fs-saisie: 16px;
     /* Rayons — sept formes. Une pilule se dit 999px, quelle que soit sa hauteur. */
     --r-xs: 4px; --r-sm: 6px; --r-md: 9px; --r-lg: 12px; --r-xl: 16px;
     --r-pilule: 999px; --r-rond: 50%;
@@ -303,14 +308,42 @@
   }
   #mvBox { background: var(--panel); border: 1px solid var(--bordure); border-radius: var(--r-md);
     padding: 14px 16px; width: 100%; max-width: 780px; }
-  #mvHead { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; }
-  #mvScore { font-size: var(--fs-2xl); font-weight: 700; }
-  #mvScore .h { color: var(--bleu); } #mvScore .a { color: #f0803a; }
-  #mvClock { font-size: var(--fs-xl); color: var(--tan); font-weight: 700; }
-  #mvCanvas { width: 100%; height: auto; border-radius: var(--r-md); margin: 10px 0; display: block; background: #10141a; }
-  #mvFeed { max-height: 110px; overflow-y: auto; font-size: var(--fs-md); color: var(--muted);
-    background: var(--panel2); border-radius: var(--r-sm); padding: 8px 10px; }
+  /* L'en-tête est un tableau de marque : score et chrono sur UNE ligne qui ne se replie
+     jamais, et dessous une ligne RÉSERVÉE à la supériorité numérique, présente même vide.
+     Tout ce qui apparaissait « de temps en temps » déplaçait le terrain sous le doigt. */
+  #mvHead { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; column-gap: 8px;
+    background: var(--panel2); border-radius: var(--r-sm); padding: 8px 12px 4px; }
+  #mvScore { font-size: var(--fs-xl); font-weight: 700; white-space: nowrap; display: flex; align-items: center; gap: 8px; }
+  #mvScore .h, #mvScore .a { color: var(--txt); letter-spacing: .5px; }
+  #mvScore .mv-marque { font-size: var(--fs-2xl); font-variant-numeric: tabular-nums; }
+  /* La pastille porte les deux couleurs du maillot : le corps au centre, les épaules autour. */
+  .mv-pastille { display: inline-block; width: 14px; height: 14px; border-radius: var(--r-rond); border: 3px solid; box-sizing: border-box; }
+  #mvClock { font-size: var(--fs-lg); color: var(--tan); font-weight: 700; white-space: nowrap; font-variant-numeric: tabular-nums; }
+  #mvSup { flex-basis: 100%; height: 18px; line-height: 18px; font-size: var(--fs-sm); color: var(--muted);
+    overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+  #mvSup.actif { color: var(--tan); font-weight: 700; }
+  #mvCanvas { width: 100%; height: auto; border-radius: var(--r-md); margin: 10px 0; display: block; background: #0b0f15; }
+  /* HAUTEUR FIXE, pas maximale. `#mvBox` est centrée dans l'écran : un fil qui grandit d'une
+     ligne remontait la boîte entière d'une demi-ligne — mesuré, 31 px sur quatorze lignes.
+     Le dégradé du haut dit qu'il y a des lignes au-dessus sans montrer une phrase coupée. */
+  #mvFeed { height: 116px; overflow-y: auto; font-size: var(--fs-md); line-height: 1.45; color: var(--muted);
+    background: var(--panel2); border-radius: var(--r-sm); padding: 8px 10px; overscroll-behavior: contain;
+    -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 18px);
+            mask-image: linear-gradient(to bottom, transparent 0, #000 18px); }
+  #mvFeed > div { padding: 1px 0; }
+  #mvFeed > div:last-child:not(.goal) { color: var(--txt); }
   #mvFeed .goal { color: var(--tan); font-weight: 700; }
+  /* Trois consignes, trois colonnes égales : « Verrouiller » tombait seul sur une seconde ligne. */
+  @media (max-width: 760px) {
+    #mvTactics { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+    #mvTactics .tag { grid-column: 1 / -1; }
+    #mvTactics .btn { padding-left: 4px; padding-right: 4px; white-space: nowrap; }
+  }
+  /* La boîte se règle sur la HAUTEUR de l'écran : le terrain garde son rapport 740/420, donc
+     limiter la largeur est la seule façon de limiter la hauteur. 400 px = tout ce qui n'est pas
+     le terrain, barre de navigation comprise. Regardé en 1280 × 800 : sans cela les consignes
+     passaient sous la barre. Le plancher de 320 px protège un téléphone tenu en paysage. */
+  #mvBox { max-width: min(780px, max(320px, calc((100vh - 400px) * 740 / 420))); }
   #mvCtrls { display: flex; gap: 6px; margin-top: 10px; flex-wrap: wrap; }
   #mvCtrls .btn.on { border-color: var(--bleu); color: var(--bleu); }
 
@@ -359,15 +392,22 @@
   #menuScreen {
     position: fixed; inset: 0; z-index: var(--z-menu);
     align-items: center; justify-content: center; text-align: center;
-    padding: 30px 16px; overflow-y: auto; background: var(--noir);
+    /* Les DEUX axes sont déclarés. Un seul axe non `visible` fait passer l'autre de `visible` à
+       `auto` : l'image de fond, posée à `inset: -4%`, rendait l'écran défilable de côté, et un
+       balayage oblique décalait toute la page de 17 px (relevé sur un Pixel 10, 17 sept. 2026). */
+    padding: 30px 16px; overflow-y: auto; overflow-x: hidden; background: var(--noir);
   }
   .menu-bg {
-    position: absolute; inset: -4%;
+    /* COLLÉE À L'ÉCRAN, pas au contenu : posée en absolu, elle montait avec la liste quand le menu
+       défilait, et découvrait une bande d'image crue sous le dernier texte. */
+    position: fixed; inset: -4%;
     background-size: cover; background-position: center 40%;
     animation: tsSlowZoom 30s ease-in-out infinite alternate;
   }
   #menuScreen::after {
-    content: ''; position: absolute; inset: 0; pointer-events: none;
+    /* Le dégradé de lisibilité ne fait qu'un écran de haut : posé en absolu, il cessait de couvrir
+       dès que le contenu défilait. Collé à l'écran, il couvre toujours ce qu'on regarde. */
+    content: ''; position: fixed; inset: 0; pointer-events: none;
     background:
       radial-gradient(ellipse at 50% 30%, rgba(0,173,233,.16), transparent 60%),
       linear-gradient(180deg, rgba(10,12,16,.72) 0%, rgba(10,12,16,.90) 100%);
@@ -634,11 +674,19 @@
     margin-top: 10px; font-size: var(--fs-xs); opacity: .55; text-align: center; }
   .modal-lettre { line-height: 1.45; }
   .modal-lettre img.portrait-thumb { vertical-align: middle; margin-right: 6px; }
+  /* Le conteneur neutre d'un emplacement : il ne porte AUCUN comportement, il sert de repère
+     de position aux deux boutons qu'il contient (C6). */
+  .menu-slot { position: relative; }
   .menu-slot-del { position: absolute; right: 8px; top: 50%; transform: translateY(-50%);
                    min-width: 44px; min-height: 44px; display: flex; align-items: center;
-                   justify-content: center; opacity: .55; touch-action: manipulation; }
+                   justify-content: center; opacity: .55; touch-action: manipulation;
+                   /* Remise à zéro : c'est un vrai bouton depuis la v170, et le navigateur
+                      lui donnerait sinon un fond gris et une bordure. */
+                   background: none; border: 0; padding: 0; margin: 0; color: inherit;
+                   font: inherit; line-height: 1; cursor: pointer; }
   .menu-slot-del:hover { opacity: 1; }
-  #menuSlots .menu-btn { position: relative; padding-right: 52px; }
+  .menu-slot-del:focus-visible { opacity: 1; }
+  #menuSlots .menu-btn { padding-right: 52px; }
   .menu-btn-primary {
     border-color: var(--vert);
     background: linear-gradient(160deg, rgba(63,206,122,.16), var(--panel));
@@ -661,7 +709,9 @@
   /* ==================== Écran de sélection d'équipe ==================== */
   #teamSelectScreen {
     position: fixed; inset: 0; z-index: var(--z-ecran); background: var(--noir);
-    overflow-y: auto; padding: 0 0 70px;
+    /* Même montage que la page de garde, donc même précaution : son bandeau est déjà découpé par
+       `.ts-hero`, mais l'axe horizontal se déclare, il ne se déduit pas. */
+    overflow-y: auto; overflow-x: hidden; padding: 0 0 70px;
   }
 
   /* --- Bandeau héros : image de stade + léger zoom lent, dégradé de lisibilité --- */
@@ -720,7 +770,7 @@
   }
   .ts-search {
     width: 100%; max-width: 380px; min-height: 44px; padding: 11px 16px; border-radius: var(--r-pilule);
-    background: var(--panel2); border: 1px solid var(--bordure); color: var(--txt); font-size: var(--fs-base);
+    background: var(--panel2); border: 1px solid var(--bordure); color: var(--txt); font-size: var(--fs-saisie);
     font-family: inherit; text-align: center; transition: border-color .15s;
   }
   .ts-search:focus { border-color: var(--bleu); }
@@ -1329,6 +1379,64 @@
      voyait qu'un bandeau de 13 % sur une fenêtre large. */
   .sponsor-img { width: 100%; aspect-ratio: 3 / 2; max-height: 260px; object-fit: cover;
     border-radius: var(--r-md); margin-bottom: 9px; display: block; }
+
+  /* ==================== Numéros de maillot (v180) ==================== */
+  /* Le dossard : chiffres à chasse fixe, pour que 7 et 17 s'alignent dans une colonne de noms. */
+  .dossard, .card-num { display: inline-block; min-width: 1.7em; padding: 0 3px; text-align: center; font-weight: 700;
+    font-variant-numeric: tabular-nums; color: var(--tan); border: 1px solid var(--bordure-vive); border-radius: var(--r-xs);
+    line-height: 1.35; vertical-align: baseline; }
+  .card-num { font-size: var(--fs-sm); }
+  /* 16 px : en dessous, iOS agrandit la page de lui-même dès qu'on touche le champ. */
+  .numero-champ { display: block; width: 5.5em; min-height: 48px; margin: 10px auto; text-align: center; font: inherit;
+    font-size: var(--fs-saisie); font-weight: 700; font-variant-numeric: tabular-nums; color: var(--txt);
+    background: var(--panel2); border: 1px solid var(--bordure-vive); border-radius: var(--r-sm); }
+  .numero-champ:focus-visible { outline: 2px solid var(--bleu); outline-offset: 2px; }
+  #tab-effectif select[data-tri-effectif] { min-height: 44px; min-width: 44px; }
+
+  /* ==================== Maillots (v176) ==================== */
+  /* Le portrait teinté : l'image, puis deux calques `multiply`. Chaque calque a la couleur du
+     club en fond et, par-dessus, le masque de `masques-maillots.py` — une image BLANCHE percée
+     d'alpha — en `background-image` : la couleur ne paraît que par le trou, et `multiply` par
+     du blanc ne change rien ailleurs. Pas de `mask-image` : il lit l'alpha d'un raster et il est
+     chargé en mode CORS, refusé sous `file://` ; `background-image` ne l'est pas.
+     `isolation: isolate` est obligatoire : sans lui le calque fusionne avec tout ce qui est
+     derrière le portrait, jusqu'au fond de la page. Le conteneur reprend la boîte que portait
+     l'image — taille, bordure, arrondi — et l'image la remplit. Ce bloc vient APRÈS
+     `.tuile-photo img` et `.slot-photo img` : à spécificité égale, c'est lui qui redonne à
+     l'image intérieure sa hauteur pleine et lui retire sa bordure. */
+  .portrait { position: relative; display: inline-block; isolation: isolate; overflow: hidden;
+    vertical-align: middle; }
+  .portrait > img { display: block; width: 100%; height: 100%; object-fit: cover; border: 0;
+    border-radius: 0; margin: 0; }
+  .portrait > i { position: absolute; inset: 0; mix-blend-mode: multiply; pointer-events: none;
+    background-size: 100% 100%; background-repeat: no-repeat; }
+  /* Sans variable — un portrait dont le `style` a été retiré — le fond est blanc et sans image :
+     `multiply` par du blanc ne change rien. Un fond coloré sur tout le portrait serait pire. */
+  .portrait > i.m1 { background-color: var(--m1, #ffffff); background-image: var(--mc, none); }
+  .portrait > i.m2 { background-color: var(--m2, #ffffff); background-image: var(--me, none); }
+  /* Les deux boîtes qui n'étaient pas des classes de portrait : la tuile de composition et la
+     case de ligne. Même géométrie qu'avant, portée par le conteneur. */
+  .tuile-photo .portrait.tuile-img { display: block; width: 100%; height: clamp(84px, 26vw, 112px);
+    border-radius: var(--r-md); background: #12192b; border: 2px solid var(--bordure-vive); }
+  .slot-photo .portrait.slot-img { display: block; width: 100%; aspect-ratio: 1 / 1;
+    border-radius: var(--r-sm); background: #0d1220; }
+
+  /* Le dépliant « Maillot » de l'écran Club : un aperçu, deux rangées de pastilles. */
+  .maillot-corps { display: flex; gap: 14px; align-items: flex-start; flex-wrap: wrap; margin-top: 8px; }
+  .maillot-apercu .portrait { margin: 0; }
+  .maillot-zones { flex: 1 1 220px; min-width: 0; display: flex; flex-direction: column; gap: 10px; }
+  .maillot-pastilles { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 6px; }
+  /* 44 px : la cible tactile du projet. Le rond montre la couleur, l'anneau dit le choix. */
+  .pastille { width: 44px; height: 44px; border-radius: var(--r-rond); border: 2px solid var(--bordure-vive);
+    background: var(--pastille, transparent); padding: 0; cursor: pointer; touch-action: manipulation;
+    position: relative; display: inline-flex; align-items: center; justify-content: center; flex: 0 0 auto; }
+  .pastille.actif { border-color: var(--tan); box-shadow: 0 0 0 3px color-mix(in srgb, var(--tan) 60%, transparent); }
+  /* La couleur libre : le sélecteur natif, invisible, couvre toute la pastille. `inset: -2px`
+     et non 0 : le zéro s'arrête à l'intérieur de la bordure, et la cible faisait 40 px. */
+  .pastille.libre { background: conic-gradient(#c81e28, #f0d21e, #14803c, #0474c5, #6e2896, #c81e28);
+    color: #fff; font-size: var(--fs-md); }
+  .pastille.libre input { position: absolute; inset: -2px; width: calc(100% + 4px); height: calc(100% + 4px);
+    opacity: 0; cursor: pointer; margin: 0; padding: 0; border: 0; }
 
   /* Mouvement réduit : on arrête les deux zooms d'ambiance (26 et 30 s) et on raccourcit les
      transitions. Les autres animations sont courtes et portent du sens (un toast qui sort).

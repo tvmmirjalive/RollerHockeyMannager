@@ -2,7 +2,9 @@
 <html lang="fr">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1">
+<!-- Pas de `maximum-scale` : interdire le zoom prive d'un outil d'accessibilité
+     universel, et rien dans cette mise en page n'en dépend (audit du 9 septembre 2026, C5). -->
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <!-- Politique de sécurité du contenu. Elle rend mécanique la règle « zéro réseau » du
      projet : `connect-src 'self'` interdit toute sortie vers un hôte tiers, et le reste
      ferme greffons, cadres, fils d'exécution et détournement d'URL relatives.
@@ -142,9 +144,7 @@
     <div id="optionsPanel"></div>
     <h2>Sauvegarde</h2>
     <div class="card">
-      <p class="note">La partie est <b>sauvegardée automatiquement</b> dans ce navigateur : tu la retrouves via
-      « Continuer » sur la page d'accueil. Le bouton ci-dessous télécharge en plus un fichier <b>.json</b> —
-      utile pour changer d'appareil ou garder plusieurs parties.</p>
+      <p class="note" id="noteSauvegarde"></p>
       <div id="saveRow">
         <button class="btn" id="btnSave">💾 Exporter un fichier</button>
         <label class="btn" style="display:inline-block">📂 Charger une sauvegarde
@@ -222,6 +222,10 @@ var PIECES_REQUISES = {
   phases: { fichier: 'phases-finales.js', critique: true,
             quoi: 'les phases finales et la fin de saison', repli: '' },
   // Sans le staff, l'écran Entraînement ne s'affiche pas et aucun transfert n'est possible.
+  // Sans elle, `validerCandidat` n'existe pas : `analyserSauvegarde()` lève sur la première
+  // sauvegarde lue, et le menu déclare illisibles quatre emplacements pleins. Critique.
+  validation: { fichier: 'validation-import.js', critique: true,
+                quoi: 'la validation des sauvegardes', repli: '' },
   staff: { fichier: 'staff-transferts.js', critique: true,
            quoi: 'le staff, l\'entraînement et les transferts', repli: '' },
   textesen: { fichier: 'textes-en.js', critique: false,
@@ -271,6 +275,7 @@ window.addEventListener('unhandledrejection', function(e) {
 <script src="visionneuse.js"></script>
 <script src="phases-finales.js"></script>
 <script src="staff-transferts.js"></script>
+<script src="validation-import.js"></script>
 <script>
 // ---------------- Données de base ----------------
 
@@ -332,7 +337,7 @@ function carteIntroJoueur(p, rang, total) {
   const cMoral = moral >= 75 ? 'var(--vert)' : moral >= 50 ? 'var(--tan)' : 'var(--rouge)';
   return `<div class="intro-joueur">
     <div class="ij-tete">
-      <img src="${portraitFor(p.id)}" class="ij-portrait" alt="">
+      ${portraitHtml(p, 'ij-portrait', myTeam())}
       <div class="ij-ident">
         <div class="ij-nom">${escHtml(p.nom)}</div>
         <div class="ij-sous"><span class="ij-poste" style="background:${posColor}">${posLabel}</span>
@@ -466,7 +471,7 @@ function ecransResumeSaison(infos) {
 
   ecrans.push({ titre: T('resume.hommes'), ico: '⭐', html:
     (buteur && buteur.seasonGoals
-      ? `<div class="rs-vedette"><img src="${portraitFor(buteur.id)}" class="ij-portrait" alt="">
+      ? `<div class="rs-vedette">${portraitHtml(buteur, 'ij-portrait', me)}
            <div><div class="ij-nom">${escHtml(buteur.nom)}</div>
            <div class="modal-note">${T('resume.meilleurButeur')}</div>
            <div class="rs-classement">${buteur.seasonGoals}<span> ${T('resume.buts', { n: buteur.seasonGoals })}</span></div></div></div>`
@@ -923,7 +928,7 @@ async function presenterNouveauxMessages() {
     }
     const choix = await showModal({
       title: messageTitre(m), ico: '✉️', tapPourSuivant: true,
-      html: `<div class="modal-lettre">${messageCorps(m)}</div>
+      html: `<div class="modal-lettre">${assainirHtml(messageCorps(m))}</div>
              <p class="modal-note">${T('courrier.date', { saison: m.season, journee: m.day })}</p>`,
       actions: actions
     });
@@ -1334,6 +1339,12 @@ function reglerBrouille(message, index) {
 // qui dépassent la traduction : changer de langue retraduit tout le courrier ; corriger une
 // faute de frappe corrige enfin les parties en cours ; et une sauvegarde pèse des clés au
 // lieu de soixante lettres.
+// Les types de lettre que le jeu écrit. C'est une ÉNUMÉRATION, pas une chaîne libre : le
+// type entre dans une classe CSS (`t-<type>`), et une valeur importée qui sortirait des
+// guillemets fabriquerait un attribut (revue de la v145, R1 : `info" onmouseover="…`).
+const TYPES_COURRIER = new Set(['board', 'contrat', 'objectif', 'cup', 'transfert', 'info', 'club', 'presse', 'vestiaire']);
+function typeCourrier(m) { return TYPES_COURRIER.has(m && m.type) ? m.type : 'info'; }
+
 function pushInbox(cleTitre, cleCorps, params, type) {
   if (!G.inbox) G.inbox = [];
   G.inbox.unshift({ id: Date.now() + Math.random(), season: G.season, day: G.day + 1,
@@ -1414,6 +1425,197 @@ function portraitFor(id) {
   return PORTRAIT_DIR + 'j' + String(n).padStart(2, '0') + '.webp';
 }
 
+// ==================== Maillots ====================
+// Chaque équipe porte son maillot : `equipe.maillot = { corps, epaules }`, deux couleurs
+// `#rrggbb`, dans la sauvegarde. Le club incarné le règle dans l'écran Club ; les adversaires
+// le tirent de leur NOM, de façon déterministe — ils sont reconstruits à chaque saison, un
+// tirage au hasard leur ferait changer de maillot tous les ans. Le défaut reproduit les
+// portraits d'origine : `masques-maillots.py` a grisé le corps à B/197 précisément pour que
+// `multiply` par ce bleu redonne l'image.
+const MAILLOT_DEFAUT = Object.freeze({ corps: '#0474c5', epaules: '#ffffff' });
+// Le motif est STRICT — minuscules, six chiffres — parce qu'une couleur finit dans un attribut
+// `style`. Tout ce qui n'y répond pas est refusé à l'import et remplacé au rendu.
+const MOTIF_COULEUR = /^#[0-9a-f]{6}$/;
+function couleurValide(c) { return typeof c === 'string' && MOTIF_COULEUR.test(c); }
+function maillotValide(m) {
+  return !!m && typeof m === 'object' && !Array.isArray(m) && couleurValide(m.corps) && couleurValide(m.epaules);
+}
+// Douze couleurs lisibles sur un portrait — les pastilles de l'écran Club — et seize duos
+// pour les adversaires. Aucun duo n'a le corps du défaut : un adversaire ne porte jamais le
+// bleu du club incarné tant que celui-ci n'a rien réglé.
+const PALETTE_MAILLOTS = ['#0474c5', '#ffffff', '#141414', '#c81e28', '#0f193c', '#14803c',
+                          '#f0d21e', '#6e2896', '#e6640a', '#8c1a3c', '#1e9e8c', '#e63c8c'];
+const DUOS_MAILLOTS = [
+  ['#c81e28', '#ffffff'], ['#0f193c', '#c81e28'], ['#14803c', '#ffffff'], ['#f0d21e', '#141414'],
+  ['#141414', '#f0d21e'], ['#ffffff', '#c81e28'], ['#6e2896', '#ffffff'], ['#e6640a', '#141414'],
+  ['#8c1a3c', '#ffffff'], ['#1e9e8c', '#141414'], ['#ffffff', '#0f193c'], ['#e63c8c', '#141414'],
+  ['#141414', '#c81e28'], ['#f0d21e', '#14803c'], ['#0f193c', '#f0d21e'], ['#c81e28', '#141414']
+];
+function duoMaillot(nom) {
+  const s = String(nom || '');
+  let h = 0;
+  for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0;
+  const d = DUOS_MAILLOTS[h % DUOS_MAILLOTS.length];
+  return { corps: d[0], epaules: d[1] };
+}
+// Le seul lecteur : la balise si elle est valide, sinon le duo du nom, sinon le défaut. Rend
+// toujours un objet NEUF — l'appelant peut le poser sur l'équipe sans partager le défaut gelé.
+function maillotDe(equipe) {
+  if (equipe && maillotValide(equipe.maillot)) return { corps: equipe.maillot.corps, epaules: equipe.maillot.epaules };
+  if (!equipe || equipe.human) return { corps: MAILLOT_DEFAUT.corps, epaules: MAILLOT_DEFAUT.epaules };
+  return duoMaillot(equipe.name);
+}
+// Les sauvegardes d'avant la v176 n'ont aucune balise : chaque équipe de chaque poule reçoit la
+// sienne à l'installation. Idempotent — une balise valide n'est pas touchée.
+function normaliserMaillots() {
+  const poules = G.poules && G.poules.length ? G.poules : [G.teams || []];
+  poules.forEach(poule => (poule || []).forEach(t => { if (t && !maillotValide(t.maillot)) t.maillot = maillotDe(t); }));
+}
+// ==================== Plafond d'effectif ====================
+// Un effectif a un plafond, et c'est la SAUVEGARDE qu'il protège : `validerCandidat` refuse une
+// équipe de plus de 60 joueurs, et à 61 la partie ne se recharge plus — mesuré. 40 laisse vingt
+// de marge aux espoirs et aux renforts de fin de saison. Les joueurs PRÊTÉS comptent : ils
+// reviennent. Le règlement borne la feuille de match (14 + 2), pas l'effectif du club.
+const EFFECTIF_MAX = 40;
+function effectifPlein() {
+  return myTeam().players.length + ((G.loanedOut || []).length) >= EFFECTIF_MAX;
+}
+
+// ==================== Numéros de maillot ====================
+// Chaque joueur porte `num`, un ENTIER de 0 à 99, unique dans l'équipe qui le porte
+// (Règlement Sportif FFRS 6.2.8 B). Un entier et non un texte : le règlement interdit « 07 » à
+// côté de « 7 », et deux entiers ne peuvent pas se distinguer par un zéro devant.
+// LE 0 EST UN NUMÉRO : on ne teste jamais la vérité d'un numéro, toujours `numeroValide()`.
+function numeroValide(n) { return Number.isInteger(n) && n >= 0 && n <= 99; }
+// Les numéros portés dans une équipe, un joueur excepté — lui-même, quand on lui en cherche un.
+function numerosPris(equipe, saufId) {
+  const pris = new Set();
+  ((equipe && equipe.players) || []).forEach(j => { if (j.id !== saufId && numeroValide(j.num)) pris.add(j.num); });
+  return pris;
+}
+// Un effectif numéroté 1, 2, 3… sent la machine. Par poste, ce qu'on voit dans les salles : le 1
+// au gardien, les petits numéros aux défenseurs, la dizaine aux attaquants, puis les numéros
+// « de caractère ». Hors règlement — la FFRS n'impose que 0 à 99 — c'est une PRÉFÉRENCE.
+const NUMEROS_PREFERES = {
+  G: [1, 30, 31, 33, 35, 29, 40, 41, 39, 50],
+  D: [2, 3, 4, 5, 6, 7, 8, 22, 23, 24, 25, 26, 27, 28, 44, 55, 77],
+  A: [9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 71, 81, 88, 91, 96, 97]
+};
+// Le choix se déduit de l'IDENTITÉ du joueur, jamais du hasard : une sauvegarde d'avant reçoit
+// ses numéros à chaque chargement tant qu'elle n'a pas été réenregistrée, et un joueur ne doit
+// pas changer de maillot d'un démarrage à l'autre. Le gardien part toujours du 1.
+function numeroLibre(equipe, joueur) {
+  const pris = numerosPris(equipe, joueur.id);
+  const graine = Number.isInteger(joueur.id) ? Math.abs(joueur.id) : 0;
+  const preferes = NUMEROS_PREFERES[joueur.pos] || NUMEROS_PREFERES.A;
+  const depart = joueur.pos === 'G' ? 0 : graine % preferes.length;
+  for (let i = 0; i < preferes.length; i++) {
+    const n = preferes[(depart + i) % preferes.length];
+    if (!pris.has(n)) return n;
+  }
+  for (let i = 0; i < 100; i++) {
+    const n = (graine + i) % 100;
+    if (!pris.has(n)) return n;
+  }
+  // Cent joueurs dans une équipe : l'import en admet soixante. Un état impossible PLANTE, il
+  // ne rend pas `undefined` pour aller s'afficher trois écrans plus loin.
+  throw new Error('numeroLibre : les cent numéros sont pris dans ' + (equipe && equipe.name));
+}
+// L'ARRIVÉE dans une équipe : le joueur garde son numéro s'il est valide et libre, sinon il en
+// reçoit un. Rend le numéro porté. Fonctionne que le joueur soit déjà dans `players` ou non.
+function attribuerNumero(equipe, joueur) {
+  if (!numeroValide(joueur.num) || numerosPris(equipe, joueur.id).has(joueur.num)) joueur.num = numeroLibre(equipe, joueur);
+  return joueur.num;
+}
+// Le geste : rend `{ ok: true }`, ou le refus et sa raison — `invalide`, ou `pris` avec le
+// porteur. Aucun affichage ici : l'appelant choisit comment le dire.
+function changerNumero(joueur, n, equipe) {
+  const eq = equipe || myTeam();
+  if (!numeroValide(n)) return { ok: false, raison: 'invalide' };
+  const porteur = eq.players.find(j => j.id !== joueur.id && j.num === n);
+  if (porteur) return { ok: false, raison: 'pris', porteur };
+  joueur.num = n;
+  return { ok: true };
+}
+// Une équipe remise d'aplomb : les numéros valides et uniques sont GARDÉS — de deux doublons le
+// premier de l'effectif garde le sien —, les autres sont réattribués. Idempotent.
+function normaliserNumerosEquipe(equipe) {
+  const vus = new Set(), aRefaire = [];
+  ((equipe && equipe.players) || []).forEach(j => {
+    if (numeroValide(j.num) && !vus.has(j.num)) vus.add(j.num); else aRefaire.push(j);
+  });
+  // Deux temps : on efface d'abord. Sinon un doublon encore en place compterait comme « pris »
+  // pour celui qu'on traite avant lui, et l'ordre de traitement changerait le résultat.
+  aRefaire.forEach(j => { delete j.num; });
+  aRefaire.forEach(j => { j.num = numeroLibre(equipe, j); });
+  return equipe;
+}
+// Les sauvegardes d'avant la v179 n'ont aucun numéro : chaque joueur de chaque équipe de chaque
+// poule reçoit le sien à l'installation. Même parcours que `normaliserMaillots`.
+function normaliserNumeros() {
+  const poules = G.poules && G.poules.length ? G.poules : [G.teams || []];
+  poules.forEach(poule => (poule || []).forEach(t => { if (t) normaliserNumerosEquipe(t); }));
+}
+
+// Le SEUL point qui écrit un numéro dans du HTML. Rien si le numéro n'est pas valide : ce qui
+// sort d'ici est un entier de 0 à 99, qui ne peut pas s'échapper d'une balise. Et le 0 sort.
+function numeroHtml(p, classe) {
+  return numeroValide(p && p.num) ? `<span class="${classe || 'dossard'}">${p.num}</span>` : '';
+}
+// Le même, pour du TEXTE — fil du direct, ligne de pénalités : « n° 17 », ou rien. L'objet peut
+// être un joueur, un but ou une pénalité : tous portent `num`. Même refus que `numeroHtml`.
+function numeroTexte(o) {
+  return numeroValide(o && o.num) ? T('numero.court', { n: o.num }) : '';
+}
+// La saisie en cours, relevée à chaque frappe : quand `ask()` rend la main la fenêtre est
+// fermée, et ce que contient encore son champ n'est plus une garantie.
+let numeroSaisi = '';
+// « 07 » vaut 7 — le règlement ne distingue pas les deux (6.2.8 B). Tout le reste est refusé :
+// `\d` sans drapeau `u` ne prend que les chiffres ASCII, donc ni « ７ » ni « 1e1 » ni « -3 ».
+function lireNumeroSaisi(texte) {
+  return /^\d{1,2}$/.test(texte) ? parseInt(texte, 10) : null;
+}
+async function demanderNumero(playerId) {
+  const me = myTeam();
+  const p = me.players.find(x => x.id === playerId);
+  if (!p) return;
+  numeroSaisi = numeroValide(p.num) ? String(p.num) : '';
+  const pris = numerosPris(me, p.id);
+  const libres = [];
+  for (let n = 0; n < 100 && libres.length < 12; n++) if (!pris.has(n)) libres.push(n);
+  const valide = await ask({
+    title: T('numero.titre', { nom: p.nom }), ico: '🔢', okLabel: T('numero.valider'),
+    html: `<p class="modal-text">${T('numero.invite')}</p>
+      <input id="numeroChamp" class="numero-champ" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="3"
+        autocomplete="off" data-focus-initial value="${numeroSaisi}" aria-label="${escHtml(T('numero.titre', { nom: p.nom }))}"
+        oninput="numeroSaisi = this.value"
+        onkeydown="if (event.key === 'Enter') { event.preventDefault(); numeroSaisi = this.value; closeModal(true); }">
+      <p class="note">${T('numero.libres', { liste: libres.join(', ') })}</p>`
+  });
+  if (!valide) return;
+  const n = lireNumeroSaisi(numeroSaisi);
+  const issue = n === null ? { ok: false, raison: 'invalide' } : changerNumero(p, n, me);
+  if (!issue.ok) {
+    toast(issue.raison === 'pris' ? T('numero.pris', { n, nom: issue.porteur.nom }) : T('numero.invalide'), 'warn');
+    return;
+  }
+  toast(T('numero.change', { nom: p.nom, n }), 'good');
+  renderAll();
+}
+// Le tableau complet se trie par poste (le défaut) ou par numéro, comme une feuille de match.
+let triEffectif = 'poste';
+
+// Le portrait teinté : l'image, puis deux calques `multiply` découpés par les masques du corps
+// et des épaules. `maillotDe()` ne rend que des couleurs au motif : c'est ce qui autorise
+// l'interpolation dans `style`. Les masques suivent le nom du portrait, dérivé de l'identifiant.
+function portraitHtml(p, classe, equipe) {
+  const m = maillotDe(equipe);
+  const src = portraitFor(p.id);
+  const base = src.slice(0, -5);            // sans « .webp »
+  return `<span class="portrait ${classe || ''}" style="--m1:${m.corps};--m2:${m.epaules};--mc:url(${base}-corps.webp);--me:url(${base}-epaules.webp)">`
+    + `<img src="${src}" alt="" onerror="this.parentNode.style.visibility='hidden'"><i class="m1"></i><i class="m2"></i></span>`;
+}
+
 function makePlayer(pos, quality) {
   // quality ~ centre de gamme 55-80
   const base = quality + rnd(-8, 8);
@@ -1492,11 +1694,14 @@ function makeTeam(def, idx, qualBand) {
   for (let i = 0; i < 2; i++) players.push(makePlayer('G', quality));
   for (let i = 0; i < 6; i++) players.push(makePlayer('D', quality));
   for (let i = 0; i < 6; i++) players.push(makePlayer('A', quality));
-  return {
+  // Les numéros se posent sur l'ÉQUIPE, pas dans `makePlayer` : un numéro n'a de sens que par
+  // rapport aux treize autres. Les deux gardiens passent en tête — l'un d'eux porte le 1.
+  return normaliserNumerosEquipe({
     id: idx, name: def.name, short: def.short, human: !!def.human,
+    maillot: maillotDe({ human: !!def.human, name: def.name }),
     players,
     pts: 0, v: 0, vp: 0, dp: 0, n: 0, d: 0, bp: 0, bc: 0, forme5: []
-  };
+  });
 }
 
 
@@ -1807,6 +2012,7 @@ function simulateAITransferWindow(teams) {
     a.players = a.players.filter(p => p.id !== pA.id);
     b.players = b.players.filter(p => p.id !== pB.id);
     a.players.push(pB); b.players.push(pA);
+    attribuerNumero(a, pB); attribuerNumero(b, pA);   // chacun garde son numéro s'il est libre chez l'autre
   }
 }
 
@@ -1944,6 +2150,17 @@ function closeTeamConfirm() {
 
 function validateTeamChoice() {
   if (!tsPendingChoice) return;
+  // L'emplacement a pu devenir incertain, ou être en cours d'effacement, pendant le choix du club
+  // (revue de la v172, S26) : une partie neuve n'y adopterait pas la bonne génération.
+  const lu = lireSauvegarde(SLOT);
+  if (operationEnCours[SLOT] || (IS_NATIVE && natifCompromis) || lu.etat === 'incertain') {
+    if (operationEnCours[SLOT]) toast(T('toast.effacementEnCours', { n: SLOT }), 'warn');
+    else if (IS_NATIVE && natifCompromis) toast(T('toast.natifCompromis'), 'warn');
+    else toastIncertain(SLOT, lu.motif);
+    closeTeamConfirm();
+    backToMenu();
+    return;
+  }
   applyTeamChoice(tsPendingChoice.assoId);
   document.getElementById('tsConfirmOverlay').classList.remove('show');
   tsPendingChoice = null;
@@ -1966,11 +2183,9 @@ function backToMenu() {
   window.scrollTo(0, 0);
 }
 
-// Résumé d'un emplacement, ou null s'il est vide ou illisible.
-function resumeSlot(s) {
-  const lu = lireSauvegarde(s);
-  if (lu.etat === 'illisible') return { illisible: true, erreur: lu.erreur, octets: lu.octets };
-  const saved = lu.data;
+// Ce qu'on sait dire d'une sauvegarde sans la charger : de quoi reconnaître SA partie, au menu
+// comme dans le choix entre deux branches divergentes.
+function apercuPartie(saved) {
   if (!saved || !saved.G) return null;
   try {
     // `teams` n'est pas sérialisé : c'est une référence vers G.poules[G.pouleIdx].
@@ -1987,25 +2202,313 @@ function resumeSlot(s) {
   } catch (e) { return null; }
 }
 
+// Résumé d'un emplacement, ou null s'il est vide ou illisible.
+function resumeSlot(s) {
+  const lu = lireSauvegarde(s);
+  if (lu.etat === 'incertain') return { incertain: true, motif: lu.motif };
+  if (lu.etat === 'conflit') return { conflit: true, branches: lu.branches };
+  if (lu.etat === 'illisible') return { illisible: true, erreur: lu.erreur, octets: lu.octets };
+  return apercuPartie(lu.data);
+}
+
+// Deux branches divergentes ne se départagent pas toutes seules. Le joueur voit de chaque côté
+// le club, la division, la saison, la journée et la date d'enregistrement, et décide. « Plus
+// tard » ne touche à rien : les deux branches restent, le choix reviendra.
+//
+// L'ordre des écritures est le fond du correctif : la branche écartée est mise à l'abri sous
+// `<clé>_ecartee` AVANT que `_conflit` ne soit retiré, et n'est effacée qu'une fois l'autre
+// CHARGÉE puis ENREGISTRÉE. Une coupure au milieu laisse les deux branches en place — et comme
+// `_ecartee` compte dans la détection, le démarrage suivant repropose le choix.
+// Le FOYER DURABLE dans lequel une résolution range ses branches. En natif c'est Preferences,
+// la seule couche qui survive à une purge iOS. En navigateur c'est `localStorage`, et il doit
+// alors tenir le MÊME protocole : sans lui, choisir une branche écrasait la principale web
+// avant que l'autre soit ailleurs (revue de la v160, S11). `set` lève si le stockage refuse —
+// c'est ce que la transaction attend pour ne rien appliquer.
+function magasinDurable(Prefs) {
+  // Rien n'est écrit dans Preferences pendant un effacement natif, ni après une issue inconnue (revue de la
+  // v172, S26) : la résolution attend le verdict, puis lève si la mémoire est devenue douteuse.
+  if (Prefs) return { natif: true,
+    set: async (k, v) => { await attendreEcritureNative(); return Prefs.set({ key: k, value: v }); },
+    remove: async (k) => { await attendreEcritureNative(); return Prefs.remove({ key: k }); } };
+  return { natif: false,
+    set: async (k, v) => { localStorage.setItem(k, v); },
+    remove: async (k) => { localStorage.removeItem(k); } };
+}
+
+// Ce que le joueur voit d'une branche : club, division, saison, journée, date. Le même bloc
+// sert au choix et à l'export — il décrit une branche, pas une décision.
+function decrireBranche(b) {
+  const a = apercuPartie(b.copie.data) || {};
+  return `<div class="modal-sub">${escHtml(T('conflit.' + b.role))}</div>
+      <div class="modal-stat"><span>${escHtml(a.nom || '—')}</span><span>${escHtml(a.divLabel || '—')}</span></div>
+      <div class="modal-stat"><span>${escHtml(T('conflit.avancement', { saison: a.saison, journee: a.journee }))}</span><span>${escHtml(a.when || '—')}</span></div>`;
+}
+
+// Télécharger une branche AVANT toute destruction. C'est la seule issue quand le stockage web
+// refuse d'écrire et qu'une des parties n'existe que dans la mémoire de la page : elle ne peut
+// être mise à l'abri nulle part ailleurs, et un rechargement la ferait disparaître.
+function telechargerBranche(s, b) {
+  const a = apercuPartie(b.copie.data) || {};
+  const lien = document.createElement('a');
+  lien.href = URL.createObjectURL(new Blob([b.copie.raw], { type: 'application/json' }));
+  lien.download = `rhm-emplacement${s}-${b.role}-saison${a.saison || 'x'}-j${a.journee || 'x'}.json`;
+  document.body.appendChild(lien);
+  lien.click();
+  document.body.removeChild(lien);
+  URL.revokeObjectURL(lien.href);
+}
+
+// La boucle est voulue : le joueur exporte une branche, puis l'autre, puis referme. Sortir
+// après un seul export l'obligerait à rouvrir la fenêtre pour la seconde.
+async function proposerExportBranches(s, branches) {
+  for (;;) {
+    const choix = await showModal({
+      title: T('conflit.exportTitre', { n: s }), ico: '💾',
+      html: `<div class="modal-text">${escHtml(T('conflit.exportTexte'))}</div>` + branches.map(decrireBranche).join(''),
+      actions: branches.map((b, i) => ({ label: T('conflit.exporterBranche', { quoi: T('conflit.' + b.role) }), value: i }))
+        .concat([{ label: T('conflit.plusTard'), value: -1 }])
+    });
+    if (typeof choix !== 'number' || choix < 0) return;
+    telechargerBranche(s, branches[choix]);
+  }
+}
+
+async function resoudreConflitInteractif(s, branchesFournies) {
+  const branches = (branchesFournies && branchesFournies.length >= 2) ? branchesFournies : (conflits[s] || []);
+  if (branches.length < 2) { refreshMenu(); return; }
+  // Une branche qui n'existe QUE dans la mémoire de la page change ce qu'il faut dire au
+  // joueur : fermer ou recharger la ferait disparaître, et l'export doit rester à portée.
+  const memoire = branches.some(b => b.role === 'memoire');
+  let choix;
+  for (;;) {
+    choix = await showModal({
+      title: T('conflit.titre', { n: s }), ico: '⚖️',
+      html: `<div class="modal-text">${escHtml(T(memoire ? 'conflit.texteMemoire' : 'conflit.texte'))}</div>`
+        + branches.map(decrireBranche).join(''),
+      actions: branches.map((b, i) => ({ label: T('conflit.prendre.' + b.role), value: i, cls: i === 0 ? 'buy' : '' }))
+        .concat(memoire ? [{ label: T('conflit.exporterToutes'), value: -2 }] : [])
+        .concat([{ label: T('conflit.plusTard'), value: -1 }])
+    });
+    if (choix !== -2) break;
+    await proposerExportBranches(s, branches);
+  }
+  // Échap, clic sur le fond ou « plus tard » : aucune écriture, les deux branches restent.
+  if (typeof choix !== 'number' || choix < 0) { refreshMenu(); return; }
+
+  // L'EMPLACEMENT A-T-IL ÉTÉ EFFACÉ PENDANT QUE LA FENÊTRE ÉTAIT OUVERTE ? (revue de la v172, S26) Les
+  // branches ont été relevées avant. Les réécrire ressusciterait ce qu'un autre onglet a effacé.
+  if (IS_NATIVE && natifCompromis) { toast(T('toast.natifCompromis'), 'warn'); return; }
+  if (operationEnCours[s] || !branchesToujoursVivantes(s, branches)) {
+    refreshMenu();
+    toast(T('toast.emplacementEffaceEntreTemps', { n: s }), 'warn');
+    return;
+  }
+  operationEnCours[s] = true;
+  try {
+  const gardee = branches[choix], restantes = branches.filter((b, i) => i !== choix);
+  const Prefs = capPlugin('Preferences');
+  const magasin = magasinDurable(Prefs);
+  // Où cette branche vit DÉJÀ, dans le magasin qu'on va écrire. Une branche qui y est déjà n'a
+  // pas à être déplacée — c'est ce qui évite de l'écraser.
+  const cleDe = (b) => (magasin.natif ? b.cle : (b.cleWeb === undefined ? null : b.cleWeb));
+  const cle = saveKey(s);
+  // QUI OCCUPE QUOI (revue de la v167, S20). Une clé de rangement n'est LIBRE que si aucune
+  // branche ne s'y trouve — `_transac` comprise. La v167 l'écrivait d'office en première
+  // écriture : quand une branche écartée y dormait, elle était détruite avant d'avoir un autre
+  // foyer, et une coupure à cet instant l'emportait pour de bon.
+  const occupant = {};
+  branches.forEach(b => { const k = cleDe(b); if (CLES_RANGEMENT.indexOf(k) >= 0) occupant[k] = b; });
+  // Une branche est SANS FOYER quand sa seule existence durable est la clé qu'on va remplacer —
+  // la principale — ou qu'elle n'en a aucune. La copie que la page garde en mémoire n'en est
+  // pas un : c'est justement ce qu'une coupure emporte.
+  const sansFoyer = (b) => { const k = cleDe(b); return k === null || k === undefined || k === ''; };
+  const aLoger = restantes.filter(sansFoyer);
+  // La branche CHOISIE a besoin d'un JOURNAL tant que la principale n'est pas écrite : sans lui,
+  // une coupure pendant cette écriture la perdrait. Inutile si elle vit déjà ailleurs.
+  const journalNecessaire = sansFoyer(gardee);
+  const libres = CLES_RANGEMENT.filter(sfx => !occupant[sfx]);
+  // Au-delà, une branche n'aurait pas de foyer et serait perdue. L'état est improbable ; s'il
+  // survient, on préfère ne rien faire et le dire.
+  if (aLoger.length + (journalNecessaire ? 1 : 0) > libres.length) {
+    notifyError(T('conflit.titre', { n: s }), T('conflit.echec', { detail: 'à loger ' + aLoger.length + ', libres ' + libres.length }));
+    return;
+  }
+  // Le journal prend la DERNIÈRE clé libre, donc `_transac` quand elle l'est : « partie dont la
+  // reprise a été interrompue » est exactement ce qu'une coupure à cet endroit aurait produit.
+  // Les écartées se servent par le début — `_ecartee` décrit ce qui leur arrive, là où
+  // « session continuée pendant la panne » raconterait une histoire fausse au démarrage suivant.
+  const journal = journalNecessaire ? libres.pop() : null;
+  const destination = new Map();
+  // Celle qui occupe déjà une clé de rangement y reste : la déplacer, c'est risquer de l'écraser.
+  restantes.forEach(b => { const k = cleDe(b); if (CLES_RANGEMENT.indexOf(k) >= 0) destination.set(b, k); });
+  aLoger.forEach(b => destination.set(b, libres.shift()));
+  // La suite des écritures, dans l'ordre qui tient l'invariant : rien n'est remplacé avant que
+  // son contenu ait un autre foyer. AUCUNE écriture antérieure à celle de la principale ne vise
+  // une clé occupée, et c'est la matrice de coupures qui le prouve, frontière par frontière.
+  const suite = [];
+  if (journal) suite.push(['set', journal, gardee.copie.raw]);
+  // La MAP, pas `restantes` : une branche qui garde son foyer n'a pas de destination, et lui en
+  // inventer une écrirait dans une clé nommée `undefined`.
+  for (const [b, sfx] of destination) {
+    if (sfx !== cleDe(b)) suite.push(['set', sfx, b.copie.raw]);
+  }
+  suite.push(['set', '', gardee.copie.raw]);
+  if (journal) suite.push(['remove', journal]);
+  for (const sfx of CLES_RANGEMENT) {
+    if (sfx !== journal && ![...destination.values()].includes(sfx)) suite.push(['remove', sfx]);
+  }
+  try {
+    if (magasin.natif) {
+      // Preferences est asynchrone, et un seul WebView l'écrit : aucune course à sérialiser.
+      for (const [op, sfx, val] of suite) {
+        if (op === 'set') await magasin.set(cle + sfx, val); else await magasin.remove(cle + sfx);
+      }
+    } else {
+      // En navigateur, toute la transaction tient dans UNE section critique (revue de la v163,
+      // S16) : une autosauvegarde ou une autre résolution ne peut pas s'y glisser. La
+      // résolution reprend au passage le bail de la principale, qu'elle vient d'écrire.
+      await muterEmplacement(s, () => {
+        // Revérifié DANS la section critique : un autre onglet a pu effacer entre le choix et le verrou.
+        if (!branchesToujoursVivantes(s, branches)) throw new Error(EFFACE_ENTRE_TEMPS);
+        for (const [op, sfx, val] of suite) {
+          if (op === 'set') localStorage.setItem(cle + sfx, val); else localStorage.removeItem(cle + sfx);
+        }
+      });
+    }
+  } catch (e) {
+    if (e && e.message === EFFACE_ENTRE_TEMPS) {
+      refreshMenu();
+      toast(T('toast.emplacementEffaceEntreTemps', { n: s }), 'warn');
+      return;
+    }
+    console.error('résolution du conflit', e);
+    // Le choix n'est PAS appliqué : rien n'a bougé d'irréversible, le conflit reviendra. Mais
+    // si une branche n'existe qu'en mémoire, « réessaie plus tard » serait un mauvais conseil —
+    // elle ne survivra pas à la fermeture. On propose donc de la mettre à l'abri tout de suite.
+    if (memoire) await proposerExportBranches(s, branches);
+    else notifyError(T('conflit.titre', { n: s }), T('conflit.echec', { detail: e.message }));
+    refreshMenu();
+    return;
+  }
+  // En natif, la copie web n'est qu'un cache : son échec ne remet pas la transaction en cause.
+  // En navigateur, elle vient d'être écrite PAR la transaction, à l'étape 3.
+  if (magasin.natif) { try { localStorage.setItem(cle, gardee.copie.raw); } catch (e) {} }
+  cachedSaves[s] = gardee.copie.raw;
+  delete conflits[s];
+  conflitSignale[s] = false;
+  brancheExterneSignalee[s] = false;          // une prochaine collision devra se redire
+  natifAVerifier[s] = false;                  // la copie native est celle qu'on vient d'écrire
+  oublierOrigine(s);                          // et l'ambiguïté qu'il notait est tranchée
+  origineSession[s] = gardee.copie.savedAt || 0;
+  setSlot(s);
+  try {
+    hydrateSave(gardee.copie.data, undefined, branches.map(b => b.copie), generationDeDonnees(gardee.copie.data));
+    reprendreTutoriel();
+  } catch (e) {
+    console.error(e);
+    notifyError(T('conflit.titre', { n: s }), T('conflit.echec', { detail: e.message }));
+    refreshMenu();
+    return;                                   // l'écartée reste : le démarrage suivant reproposera
+  }
+  derniereEcritureNatif = null;
+  if (!(await saveLocalSerialise())) return;                   // pas même tenté : les écartées restent
+  try { await derniereEcritureNatif; } catch (e) { return; }   // enregistrement raté : les écartées restent
+  // 6. Chargée ET enregistrée : les branches écartées ont fait leur temps.
+  if (magasin.natif) {
+    for (const sfx of CLES_RANGEMENT) await magasin.remove(cle + sfx).catch(() => {});
+  } else {
+    // Ce qu'on a le droit de retirer : les clés qui portent EXACTEMENT une des branches qu'on
+    // vient d'arbitrer. Une clé dont le contenu a changé depuis porte autre chose, et cette
+    // autre chose n'a pas été soumise au joueur. Jamais notre propre foyer : il porte la partie
+    // en cours.
+    const arbitrees = restantes.map(b => b.copie.raw).concat([gardee.copie.raw]);
+    await muterEmplacement(s, () => {
+      const notre = foyerSession(s);
+      for (const sfx of CLES_RANGEMENT) {
+        if (arbitrees.indexOf(localStorage.getItem(cle + sfx)) >= 0) localStorage.removeItem(cle + sfx);
+      }
+      for (const k of clesSessionWeb(s)) {
+        if (k === notre) continue;
+        if (arbitrees.indexOf(localStorage.getItem(k)) >= 0) localStorage.removeItem(k);
+      }
+    }).catch(() => {});
+  }
+  } finally {
+    operationEnCours[s] = false;
+  }
+}
+
+// Les branches relevées par une fenêtre de choix sont-elles encore toutes vivantes, à l'identique ?
+const EFFACE_ENTRE_TEMPS = 'emplacement effacé pendant la résolution';
+function branchesToujoursVivantes(s, branches) {
+  const m = marqueurCourant(s);
+  if (marqueurIncertain(m)) return false;
+  return branches.every(b => { const c = analyserCopie(s, b.copie.raw, m); return c.etat === 'ok' && c.raw === b.copie.raw; });
+}
+
 function choisirSlot(s) {
+  // Pendant un effacement ou une résolution, l'emplacement n'est ni repris ni occupé (revue de la v172, S26).
+  if (operationEnCours[s]) { toast(T('toast.effacementEnCours', { n: s }), 'warn'); return; }
   setSlot(s);
   const r = resumeSlot(s);
+  // Un emplacement incertain se RELIT : une lecture native qui échouait peut réussir.
+  if (r && r.incertain) { reessayerEmplacement(s); return; }
+  // Deux branches divergentes : on choisit avant de charger quoi que ce soit. Les branches sont
+  // TRANSMISES — en navigateur, elles viennent du relevé synchrone et ne sont inscrites nulle
+  // part ailleurs (revue de la v160, S11).
+  if (r && r.conflit) { resoudreConflitInteractif(s, r.branches); return; }
   // Un emplacement abîmé passe aussi par continueGame() : c'est lui qui explique le
   // problème. Démarrer une partie par-dessus écraserait la sauvegarde sans un mot.
   if (r) continueGame(); else openTeamSelect();
 }
 
+// Ces refus-là ne passeront pas avec le temps : l'application n'a pas de quoi effacer de façon sûre.
+const MOTIFS_PERMANENTS = ['pontAbsent', 'pontProtocole', 'preferences'];
 async function effacerSlot(s, ev) {
   if (ev) ev.stopPropagation();
+  // Un effacement déjà en route sur cet emplacement, ou un import : le toucher de nouveau ne lance rien, et le
+  // joueur doit savoir pourquoi.
+  if (operationEnCours[s]) { toast(T('toast.effacementEnCours', { n: s }), 'warn'); return; }
   const r = resumeSlot(s);
   if (!r) return;
-  const quoi = r.illisible
-    ? `la sauvegarde illisible de l'emplacement ${s} (${r.octets} octets)`
-    : `la partie de ${r.nom} (${r.divLabel}, saison ${r.saison})`;
+  // Ce que la fenêtre montre : l'effacement refusera si l'emplacement a changé entre-temps.
+  const attendu = instantaneEmplacement(s);
+  const quoi = r.conflit
+    ? T('dlg.effacer.conflit', { n: s })
+    : r.incertain
+    ? T('dlg.effacer.' + cleIncertain(r.motif), { n: s })
+    : r.illisible
+    ? T('dlg.effacer.illisible', { n: s, octets: r.octets })
+    : T('dlg.effacer.partie', { club: r.nom, division: r.divLabel, saison: r.saison });
   if (!(await ask({ title: T('dlg.effacer.titre'), ico: '🗑️', danger: true, okLabel: T('dlg.effacer.ok'),
-      text: T('dlg.effacer.texte', { quoi }) }))) return;
-  clearLocal(s);
+      cancelLabel: T('dlg.effacer.annuler'), text: T('dlg.effacer.texte', { quoi }) }))) return;
+  const verdict = await clearLocal(s, attendu);
   refreshMenu();
+  if (!verdict || !verdict.efface) {
+    // Rien n'a été effacé (revue de la v172, S26). Le joueur doit le savoir AVANT de fermer l'application
+    // en croyant l'emplacement vide.
+    // Une autre opération tient l'emplacement — un effacement, un import : le joueur a confirmé, il doit savoir
+    // que rien n'a été lancé.
+    if (verdict && verdict.silencieux) { toast(T('toast.effacementEnCours', { n: s }), 'warn'); return; }
+    const motif = (verdict && verdict.motif) || 'erreur';
+    const detail = T('effacement.motif.' + motif) + (verdict && verdict.detail ? ' — ' + verdict.detail : '');
+    // Le texte suit la CAUSE et ce que l'emplacement portait : « ta partie est toujours là » ne veut rien dire
+    // pour une sauvegarde illisible, et « réessaie dans un instant » est faux quand cette version de
+    // l'application ne peut pas effacer de façon sûre — elle ne le pourra pas davantage au prochain essai.
+    const cle = (verdict && verdict.relancer) ? 'relancer'
+      : motif === 'change' ? 'change'
+      : MOTIFS_PERMANENTS.indexOf(motif) >= 0 ? 'version'
+      : (!r.conflit && !r.incertain && !r.illisible) ? 'texte' : 'neutre';
+    notifyError(T(cle === 'relancer' ? 'dlg.effacementEchec.titreRelancer' : 'dlg.effacementEchec.titre'),
+                T('dlg.effacementEchec.' + cle, { n: s, detail }));
+    return;
+  }
+  // La corbeille dont on vient de se servir n'existe plus : elle est partie avec la partie.
+  // Le confinement de la v169 a bien tenté de lui rendre le focus, mais elle a été retirée du
+  // document depuis — sans ce rattrapage, le focus retomberait sur `body`, c'est-à-dire nulle
+  // part, et la tabulation repartirait du début de la page (revue de la v169, C6).
+  const principal = document.querySelector('#menuSlots .menu-btn[data-slot="' + s + '"]');
+  if (principal) { try { principal.focus(); } catch (e) {} }
   toast(T('toast.emplacementEfface'), 'info');
 }
 
@@ -2013,7 +2516,7 @@ async function effacerSlot(s, ev) {
 // `versionName` du build Android par 4-outils/patch-version.py, qui refuse de s'appliquer
 // si les deux divergent. Le mode d'échec évité est réel : l'APK a annoncé « 1.0 » pendant
 // soixante-dix-sept versions parce que rien ne reliait le jeu à son numéro.
-const VERSION_JEU = '142';
+const VERSION_JEU = '183';
 
 function refreshMenu() {
   // Les textes de l'écran titre sont écrits ICI et non en HTML statique : sinon ils
@@ -2036,48 +2539,109 @@ function refreshMenu() {
     slots.innerHTML = '';
     for (let s = 1; s <= NB_SLOTS; s++) {
       const r = resumeSlot(s);
-      const abime = r && r.illisible;
+      const abime = r && (r.illisible || r.incertain);
+      const enConflit = r && r.conflit;
+      // Un conteneur NEUTRE, et deux commandes sœurs dedans (revue de la v169, C6). Ouvrir et
+      // effacer sont deux actions : une commande imbriquée dans une autre n'est ni atteignable
+      // au clavier, ni annonçable, et son contenu entre dans le nom de celle qui la contient.
+      const bloc = document.createElement('div');
+      bloc.className = 'menu-slot';
       const b = document.createElement('button');
-      b.className = 'menu-btn' + (r && !abime ? ' menu-btn-primary' : '') + (abime ? ' menu-btn-abime' : '');
+      b.type = 'button';
+      b.className = 'menu-btn' + (r && !abime && !enConflit ? ' menu-btn-primary' : '')
+        + (abime || enConflit ? ' menu-btn-abime' : '');
+      b.dataset.slot = s;
       b.onclick = () => choisirSlot(s);
       const label = document.createElement('span');
       label.className = 'menu-btn-label';
-      label.textContent = abime ? '⚠️ ' + T('menu.slot.illisible', { n: s })
+      label.textContent = enConflit ? '⚠️ ' + T('menu.slot.conflit', { n: s })
+        : (r && r.incertain) ? '⚠️ ' + T('menu.slot.' + cleIncertain(r.motif), { n: s })
+        : abime ? '⚠️ ' + T('menu.slot.illisible', { n: s })
         : r ? `▶ ${r.nom}` : '⚡ ' + T('menu.slot.libre', { n: s });
       const detail = document.createElement('span');
       detail.className = 'menu-btn-detail';
       // Une sauvegarde abîmée n'est pas effacée d'office : elle reste là, signalée, et
       // c'est au joueur de décider — il peut vouloir la récupérer autrement.
-      detail.textContent = abime
+      detail.textContent = enConflit
+        ? T('menu.slot.conflit.detail')
+        : (r && r.incertain)
+        ? T('menu.slot.' + cleIncertain(r.motif) + '.detail')
+        : abime
         ? T('menu.slot.illisible.detail', { n: r.octets })
         : r ? `${r.divLabel} · ${T('menu.slot.detail', { saison: r.saison, journee: r.journee })}${r.when ? ' — ' + r.when : ''}`
         : T('menu.slot.demarrer');
       b.appendChild(label); b.appendChild(detail);
+      bloc.appendChild(b);
       if (r) {
-        const del = document.createElement('span');
+        const del = document.createElement('button');
+        del.type = 'button';
         del.className = 'menu-slot-del';
-        del.textContent = '🗑️';
-        del.title = T('dlg.effacer.titre');
+        del.dataset.slot = s;
+        // Le nom accessible dit QUEL emplacement et QUOI on efface. Un lecteur d'écran qui
+        // annonce « bouton » sur une commande destructive ne sert à rien.
+        const nomEfface = enConflit ? T('menu.slot.effacer.conflit', { n: s })
+          : r.incertain ? T('menu.slot.effacer.incertain', { n: s })
+          : abime ? T('menu.slot.effacer.illisible', { n: s })
+          : T('menu.slot.effacer', { club: r.nom, n: s });
+        del.setAttribute('aria-label', nomEfface);
+        del.title = nomEfface;
+        // Le pictogramme est DÉCORATIF : sans cela il s'ajouterait au nom, et un jour où
+        // l'étiquette manquerait, le bouton s'appellerait « emoji corbeille ».
+        const ico = document.createElement('span');
+        ico.setAttribute('aria-hidden', 'true');
+        ico.textContent = '🗑️';
+        del.appendChild(ico);
         del.onclick = (ev) => effacerSlot(s, ev);
-        b.appendChild(del);
+        bloc.appendChild(del);
       }
-      slots.appendChild(b);
+      slots.appendChild(bloc);
     }
   }
 
-  // message de pied : prévient si le stockage local est indisponible
-  let storageOk = false;
-  try {
-    localStorage.setItem('rhm_test', '1');
-    localStorage.removeItem('rhm_test');
-    storageOk = true;
-  } catch (e) {}
-  foot.textContent = storageOk ? T('menu.pied.ok') : '⚠ ' + T('menu.pied.bloque');
+  // message de pied : prévient si le stockage local est indisponible. La même sonde que celle
+  // du contrôle avant import — deux façons de poser la question feraient deux vérités.
+  // Où la partie est sauvegardée se dit selon l'endroit où le jeu tourne (revue de la v172) : il n'y a pas
+  // de navigateur dans une application.
+  foot.textContent = stockageWebEcrivable() ? T(IS_NATIVE ? 'menu.pied.ok.natif' : 'menu.pied.ok')
+    : '⚠ ' + T(IS_NATIVE ? 'menu.pied.bloque.natif' : 'menu.pied.bloque');
+}
+
+// UN EMPLACEMENT INCERTAIN a quatre causes, et elles ne se disent pas de la même façon : une lecture qui a
+// échoué, un repère abîmé, une copie d'une version antérieure qui l'occupe, un effacement inachevé. Un seul
+// endroit les nomme — le menu, les toasts et les fenêtres disent tous la même chose.
+const CLES_INCERTAIN = { repere: 'repere', occupe: 'occupe', inacheve: 'inacheve' };
+function cleIncertain(motif) { return CLES_INCERTAIN[motif] || 'incertain'; }
+function toastIncertain(s, motif) { toast(T('toast.emplacement.' + cleIncertain(motif), { n: s }), 'warn'); }
+// Une application sans plugin Preferences est incomplète : réessayer n'y changera rien, et le dire évite au
+// joueur d'attendre quelque chose qui n'arrivera pas.
+let preferencesAbsentSignale = false;
+function signalerPreferencesAbsent() {
+  if (preferencesAbsentSignale) return;
+  preferencesAbsentSignale = true;
+  notifyError(T('dlg.preferencesAbsent.titre'), T('dlg.preferencesAbsent.texte'));
+}
+
+// Relire un emplacement incertain, d'un toucher (revue de la v172, S26).
+async function reessayerEmplacement(s) {
+  // Un effacement inachevé ne se relit pas : la mémoire de l'application porte peut-être un effacement dont on
+  // ignore s'il a atteint le disque. Seul un redémarrage tranche.
+  const lu = lireSauvegarde(s);
+  if (lu.etat === 'incertain' && lu.motif === 'inacheve') { toastIncertain(s, 'inacheve'); return; }
+  const Prefs = capPlugin('Preferences');
+  if (IS_NATIVE && !Prefs) { signalerPreferencesAbsent(); return; }
+  if (Prefs) { try { await relireEmplacement(Prefs, s); } catch (e) { console.warn('relecture de l\'emplacement ' + s, e); } }
+  else { try { await avecDelai(lireMarqueursDurablesWeb(), DELAI_LECTURE_MARQUEURS_MS); } catch (e) {} }
+  refreshMenu();
+  const r = resumeSlot(s);
+  if (r && r.incertain) toastIncertain(s, r.motif);
 }
 
 function continueGame() {
   const lu = lireSauvegarde();
   if (lu.etat === 'vide') { toast(T('toast.aucuneSauvegarde'), 'warn'); refreshMenu(); return; }
+  if (lu.etat === 'incertain') { reessayerEmplacement(SLOT); return; }
+  // « Continuer » ne tranche pas non plus : deux copies différentes se choisissent (v160, S11).
+  if (lu.etat === 'conflit') { resoudreConflitInteractif(SLOT, lu.branches); return; }
   if (lu.etat === 'illisible') {
     // Le diagnostic vient tôt : c'est ce qu'on copie pour signaler le problème. La
     // réassurance — rien n'est effacé — vient après, une fois le fait établi.
@@ -2087,7 +2651,8 @@ function continueGame() {
     return;
   }
   try {
-    hydrateSave(lu.data);
+    // Une partie REPRISE garde la génération de sa copie.
+    hydrateSave(lu.data, undefined, undefined, generationDeDonnees(lu.data));
     reprendreTutoriel();
   } catch (e) {
     console.error(e);
@@ -2205,6 +2770,75 @@ function modalIsOpen() {
 
 let modalTapHandler = null;
 
+// L'ACCESSIBILITÉ CLAVIER D'UNE FENÊTRE MODALE (audit du 9 septembre 2026, C5). Trois choses,
+// et il les faut toutes : le focus ENTRE dans la fenêtre, il y RESTE tant qu'elle est ouverte,
+// et il REVIENT d'où il venait quand la file est vide. Déplacer le focus sans le confiner ne
+// sert à rien — mesuré sur la v168 : une seule pression sur Tab ramenait sur le bouton qui
+// avait ouvert la fenêtre, derrière elle.
+let declencheurModale = null;      // ce qui avait le focus avant la PREMIÈRE modale de la file
+let fileModaleEnCours = false;
+let arrierePlanNeutralise = [];
+
+// Ce qui peut recevoir le focus dans la fenêtre. On NE SE SERT PAS de `offsetParent` pour juger
+// de la visibilité : il vaut `null` pour tout élément `position: fixed`, ce que la fenêtre est
+// justement — le piège est connu et coûte déjà cher au projet.
+const SELECTEUR_FOCALISABLE = 'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+function focalisablesModale() {
+  const ov = document.getElementById('modalOverlay');
+  if (!ov) return [];
+  return [...ov.querySelectorAll(SELECTEUR_FOCALISABLE)].filter(el => el.getClientRects().length > 0);
+}
+
+// Neutraliser l'ARRIÈRE-PLAN, jamais la fenêtre. `inert` retire d'un coup le focus, le clic et
+// la lecture par les technologies d'assistance ; `aria-hidden` double la mise pour les moteurs
+// qui ne connaissent pas encore `inert`. La pile de toasts est épargnée : elle porte
+// `aria-live`, et la rendre inerte ferait taire les annonces au moment où elles comptent.
+function neutraliserArrierePlan(actif) {
+  if (actif) {
+    if (arrierePlanNeutralise.length) return;
+    const ov = document.getElementById('modalOverlay');
+    for (const el of [...document.body.children]) {
+      if (el === ov || el.id === 'toastStack') continue;
+      arrierePlanNeutralise.push(el);
+      try { el.inert = true; } catch (e) {}
+      el.setAttribute('inert', '');
+      el.setAttribute('aria-hidden', 'true');
+    }
+  } else {
+    for (const el of arrierePlanNeutralise) {
+      try { el.inert = false; } catch (e) {}
+      el.removeAttribute('inert');
+      el.removeAttribute('aria-hidden');
+    }
+    arrierePlanNeutralise = [];
+  }
+}
+
+// Le focus ne revient que si le déclencheur EXISTE ENCORE et peut le recevoir : un écran
+// reconstruit entre-temps a pu le remplacer, et appeler `focus()` sur un élément détaché
+// laisserait le focus sur `body`, c'est-à-dire nulle part.
+function rendreLeFocusAuDeclencheur() {
+  const cible = declencheurModale;
+  declencheurModale = null;
+  if (!cible || !document.contains(cible) || cible.disabled) return;
+  if (cible.closest('[inert]')) return;
+  try { cible.focus(); } catch (e) {}
+}
+
+// LE CONFINEMENT. Posé sur le document et en CAPTURE : un écouteur sur la seule fenêtre ne
+// verrait pas la tabulation qui vient de l'extérieur, et un écouteur en phase de remontée
+// arriverait après que le navigateur a déjà choisi sa cible.
+document.addEventListener('keydown', (e) => {
+  if (e.key !== 'Tab' || !modalIsOpen()) return;
+  const ov = document.getElementById('modalOverlay');
+  const f = focalisablesModale();
+  if (!f.length) { e.preventDefault(); return; }
+  const premier = f[0], dernier = f[f.length - 1], actif = document.activeElement;
+  if (!ov.contains(actif)) { e.preventDefault(); (e.shiftKey ? dernier : premier).focus(); return; }
+  if (e.shiftKey && actif === premier) { e.preventDefault(); dernier.focus(); }
+  else if (!e.shiftKey && actif === dernier) { e.preventDefault(); premier.focus(); }
+}, true);
+
 function showModal(opts) {
   const ov = document.getElementById('modalOverlay');
   if (!ov || !document.getElementById('modalBox')) {
@@ -2228,6 +2862,15 @@ function modalPump() {
     document.getElementById('modalOverlay').classList.remove('show');
     return;
   }
+  // Le déclencheur est relevé à l'OUVERTURE DE LA FILE, pas à chaque passe : entre deux
+  // fenêtres enchaînées le focus est dans la précédente, et le relever à nouveau ferait revenir
+  // le focus sur un bouton qui n'existe plus.
+  if (!fileModaleEnCours) {
+    fileModaleEnCours = true;
+    const a = document.activeElement;
+    declencheurModale = (a && a !== document.body && a !== document.documentElement) ? a : null;
+  }
+  neutraliserArrierePlan(true);
   modalCurrent = next;
   const o = next.opts;
 
@@ -2274,8 +2917,13 @@ function modalPump() {
 
   document.getElementById('modalOverlay').classList.add('show');
   body.scrollTop = 0;
-  const last = foot.lastElementChild;
-  if (last) setTimeout(() => { try { last.focus(); } catch (e) {} }, 40);
+  // Le focus ENTRE dans la fenêtre, TOUT DE SUITE. Le report de quarante millisecondes laissait
+  // le temps de tabuler dans le vide, et c'est exactement là que le clavier s'échappait.
+  const focalisables = focalisablesModale();
+  const cible = body.querySelector('[data-focus-initial]') || foot.lastElementChild || focalisables[focalisables.length - 1] || box;
+  if (cible === box && !box.hasAttribute('tabindex')) box.setAttribute('tabindex', '-1');
+  // Un champ de saisie arrive SÉLECTIONNÉ : la première frappe remplace, elle ne s'ajoute pas.
+  try { cible.focus(); if (typeof cible.select === 'function') cible.select(); } catch (e) {}
 }
 
 function closeModal(value) {
@@ -2290,7 +2938,14 @@ function closeModal(value) {
   modalCurrent = null;
   if (cur) cur.resolve(value);
   if (modalQueue.length) modalPump();
-  else document.getElementById('modalOverlay').classList.remove('show');
+  else {
+    document.getElementById('modalOverlay').classList.remove('show');
+    // L'arrière-plan redevient utilisable AVANT qu'on lui rende le focus : un élément encore
+    // inerte refuserait de le recevoir, et le focus resterait sur `body`.
+    neutraliserArrierePlan(false);
+    fileModaleEnCours = false;
+    rendreLeFocusAuDeclencheur();
+  }
 }
 
 function notify(opts) {
@@ -2340,7 +2995,25 @@ document.addEventListener('keydown', e => {
 const NB_SLOTS = 4;
 const SLOT_KEY = 'rhm_slot_courant';
 function saveKey(slot) { return 'rhm_save_v2_' + slot; }
+// Les clés auxiliaires d'un emplacement. `_conflit` et `_ecartee` logent les branches qu'un
+// conflit met de côté ; `_transac` porte la branche choisie le temps d'une résolution, pour
+// qu'aucune écriture ne détruise sa dernière copie (revue de la v150, S3). `_illisible` garde
+// une copie abîmée qu'on a remplacée.
+const CLES_BRANCHE = ['', '_conflit', '_ecartee', '_transac'];
+const CLES_RANGEMENT = ['_ecartee', '_conflit', '_transac'];
+// Les MÊMES clés côté stockage web (revue de la v160, S11). Un navigateur sans Preferences a
+// besoin des mêmes foyers durables : sans eux, choisir une branche écraserait la principale
+// avant que l'autre soit rangée ailleurs, et une coupure au milieu perdrait une partie.
+const CLES_BRANCHE_WEB = ['', '_conflit', '_ecartee', '_transac'];
+// `_conflit` n'est écrite, côté web, que par la mise à l'abri d'une session dont la principale
+// avait changé sous ses pieds — et la résolution laisse en place une branche qui s'y trouve
+// déjà. Son libellé décrit donc cela, et reste vrai de quelque onglet qu'on le lise.
+const ROLES_WEB = { '': 'web', '_conflit': 'onglet', '_ecartee': 'ecartee', '_transac': 'transac' };
 
+// Deux notions, parce que ce sont deux choses (revue de la v152, S5). `SLOT` est
+// l'emplacement AFFICHÉ : celui que le menu montre, celui sur lequel le joueur agit. Il change
+// dès qu'on touche une vignette, y compris pour ouvrir une modale qu'on refermera sans rien
+// choisir.
 let SLOT = 1;
 try { const s = parseInt(localStorage.getItem(SLOT_KEY)); if (s >= 1 && s <= NB_SLOTS) SLOT = s; } catch (e) {}
 function setSlot(n) {
@@ -2348,13 +3021,533 @@ function setSlot(n) {
   try { localStorage.setItem(SLOT_KEY, String(n)); } catch (e) {}
 }
 
+// `SLOT_PARTIE` est l'emplacement de la partie CHARGÉE — sa destination d'enregistrement. Il ne
+// suit PAS l'affichage : consulter un autre emplacement et refermer sa modale sans choisir ne
+// doit pas déplacer une partie en cours. Il ne change qu'à l'installation d'une partie.
+let SLOT_PARTIE = null;
+function adopterEmplacement(n, origines, generation) {
+  SLOT_PARTIE = n;
+  // La FILIATION est relevée ICI et nulle part ailleurs (revue de la v162, S13). Cette fonction
+  // est le seul point qui fixe la destination d'une partie : nouvelle partie, chargement,
+  // import et résolution y passent tous. Indexée par emplacement, elle ne peut donc pas être
+  // transportée d'un emplacement à un autre.
+  if (n === null || n === undefined) return;
+  // La génération dans laquelle cette partie écrira (revue de la v172, S26). Une partie neuve ou importée
+  // prend celle de l'emplacement ; une partie REPRISE garde celle de sa copie, que l'appelant transmet —
+  // une résolution entamée avant un effacement ne doit pas adopter la génération qu'il a ouverte.
+  generationSession[n] = generation === undefined ? generationCourante(n) : generation;
+  emplacementEffaceSignale[n] = false;
+  noterFiliation(n);
+  // RIEN N'EST DEMANDÉ ET RIEN N'EST ATTENDU (revue de la v165, S19). La v165 réservait ici un
+  // foyer dans la section critique sans attendre la promesse : tant qu'une autre page tenait le
+  // verrou de l'emplacement, la partie était jouable et n'avait nulle part où s'écrire. Le foyer
+  // d'une session est maintenant dérivé de son identité, donc déjà là.
+  //
+  // Ce qu'on relève ici, c'est de QUOI cette session descend. Par défaut : les branches VIVANTES
+  // de l'emplacement — pour un chargement ordinaire il n'y en a qu'une, celle qu'on vient de
+  // lire. Les chemins qui disposent d'un emplacement — conflit tranché, import contrôlé —
+  // annoncent explicitement ce qu'ils ont absorbé. Ce qui apparaîtra APRÈS vient d'une autre
+  // session, n'est dans aucune de ces listes, et ne sera donc ni remplacé ni effacé.
+  noterAncetres(n, origines);
+}
+
+// La valeur durable EXACTE dont cette session est partie, par emplacement. C'est la seule chose
+// qui distingue « mon propre état antérieur » de « la branche d'un autre onglet » : les deux
+// sont des chaînes valides et différentes du cache mémoire, et la date ne les départage pas.
+const filiation = {};
+function noterFiliation(s) {
+  try { filiation[s] = localStorage.getItem(saveKey(s)); }
+  catch (e) { filiation[s] = undefined; }     // stockage fermé : rien à retenir, rien à protéger
+}
+// Une lecture impossible ne permet d'affirmer ni que la principale est la nôtre ni le contraire.
+// On ne bloque pas : l'écriture qui suit échouera de toute façon, et un blocage inventerait un
+// conflit là où il n'y a qu'un stockage fermé.
+function principaleEstNotre(s) {
+  if (filiation[s] === undefined) return true;
+  try { return descendDeNous(s, localStorage.getItem(saveKey(s))); } catch (e) { return true; }
+}
+// Null avec une partie chargée : son emplacement vient d'être effacé. Elle n'a plus de
+// destination, et c'est voulu — l'écrire ailleurs ressusciterait ce que le joueur a supprimé.
+function emplacementPartie() { return SLOT_PARTIE; }
+
 // Cache mémoire par emplacement : sur iOS le stockage web peut être purgé, et c'est lui
 // qui permet au menu (synchrone) de voir quand même les parties.
 const cachedSaves = {};
+// Emplacements dont la lecture native a ÉCHOUÉ au démarrage (revue de la v145, R3) : on n'y
+// écrit rien côté natif avant d'avoir réussi à relire. `origineSession` retient la date de la
+// copie dont la session est partie, pour savoir si la copie native relue est plus récente.
+const natifAVerifier = {};
+const origineSession = {};
+// Emplacements dont les copies ont DIVERGÉ (seconde revue de la v148, S1) : la partie restée
+// sur l'appareil et la session continuée pendant la panne. Tant qu'elles sont là, on n'écrit
+// rien dans cet emplacement — c'est le joueur qui tranche, pas la date.
+const conflits = {};
+// Le repère d'origine vit dans le stockage WEB : c'est le seul qui reste écrivable quand le
+// natif ne répond pas, et c'est justement là qu'il sert. Il retient la date de la copie dont
+// la session est partie, le jour où l'on n'a pas pu lire celle de l'appareil.
+// Le stockage web accepte-t-il d'écrire ? Un navigateur qui bloque le stockage lève à la
+// moindre approche, en lecture comme en écriture ; c'est l'écriture qui compte ici, parce
+// qu'une couche qui ne peut pas être écrite ne peut pas non plus être perdue. La sonde est
+// écrite puis retirée aussitôt : elle ne laisse rien derrière elle.
+function stockageWebEcrivable() {
+  try {
+    localStorage.setItem('rhm_test', '1');
+    localStorage.removeItem('rhm_test');
+    return true;
+  } catch (e) { return false; }
+}
+function cleOrigine(slot) { return saveKey(slot) + '_origine'; }
+function lireOrigine(slot) {
+  try { const v = localStorage.getItem(cleOrigine(slot)); return v === null ? null : Number(v); } catch (e) { return null; }
+}
+function poserOrigine(slot, savedAt) { try { localStorage.setItem(cleOrigine(slot), String(savedAt || 0)); } catch (e) {} }
+function oublierOrigine(slot) { try { localStorage.removeItem(cleOrigine(slot)); } catch (e) {} }
+// La dernière écriture native lancée par `saveLocal()`, pour que la résolution d'un conflit
+// puisse attendre un enregistrement RÉUSSI avant d'effacer la branche écartée.
+let derniereEcritureNatif = null;
 Object.defineProperty(window, 'cachedSaveJson', {
   get() { return cachedSaves[SLOT] || null; },
   set(v) { cachedSaves[SLOT] = v; }
 });
+
+// Cette session, pour la durée de ce document. Deux onglets du même jeu ont deux identités.
+const ID_SESSION = Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 10);
+
+// LE FOYER DE SESSION (revue de la v165, S18 et S19). La v163 accordait un bail : une session
+// recevait l'une des clés partagées de l'emplacement, et l'accord tenait vingt secondes. Deux
+// fenêtres restaient ouvertes, et Codex les a reproduites trois fois sur trois : la partie
+// devenait jouable AVANT que l'accord n'arrive, et l'accord se périmait sous une page toujours
+// ouverte — un onglet en arrière-plan peut être suspendu plus longtemps que n'importe quel
+// délai, il n'existe donc pas de délai correct.
+//
+// Un foyer ne s'accorde plus : il se DÉDUIT. Chaque session écrit dans `<clé>_s<son identité>`,
+// une clé que personne d'autre ne connaît, que personne ne peut lui reprendre, et qui existe
+// dès que la session existe. `pagehide` y écrit sans rien attendre et sans rien risquer.
+const PREFIXE_SESSION = '_s';
+function foyerSession(s) { return saveKey(s) + PREFIXE_SESSION + ID_SESSION; }
+// Les foyers de session PRÉSENTS pour un emplacement — le nôtre et ceux que d'autres pages ont
+// laissés. Un stockage fermé lève à la moindre approche : on rend une liste vide, pas une erreur.
+function clesSessionWeb(s) {
+  const p = saveKey(s) + PREFIXE_SESSION;
+  try { return Object.keys(localStorage).filter(k => k.indexOf(p) === 0).sort(); }
+  catch (e) { return []; }
+}
+
+// ═══ LA GÉNÉRATION D'UN EMPLACEMENT (revue de la v172, S26) ═══════════════════════════════════════════
+// Effacer, c'était retirer les clés une à une : cinq `Preferences.remove()` lancés sans être attendus,
+// puis le stockage web. Sous Android, attendre ces promesses n'aurait rien changé — le plugin appelle
+// `SharedPreferences.apply()` et résout AVANT que le fichier soit écrit — et deux magasins ne s'effacent
+// pas d'un coup par une suite de retraits. Tuée juste après l'annonce « Emplacement effacé », l'application
+// ressuscitait la partie huit fois sur neuf sur un Pixel 10.
+//
+// Un effacement ne retire donc plus des copies : il ouvre une GÉNÉRATION. L'emplacement porte un marqueur,
+// `<clé>_generation`, qui nomme sa génération vivante, et chaque copie écrite par le jeu dit la sienne.
+// Une copie d'une autre génération est MORTE : ni partie, ni branche, ni source de réparation, où qu'elle
+// dorme — principale, rangement, foyer de session, cache web, copie native. Effacer, c'est écrire UN
+// marqueur neuf ; retirer les copies n'est plus que du ménage.
+//
+// DEUX MARQUEURS PEUVENT DIVERGER — le natif restauré d'avant un effacement après une coupure de courant,
+// le web perdu par la WebView. Le plus RÉCENT l'emporte, et « récent » est un RANG, une horloge logique :
+// chaque effacement prend le plus grand rang connu plus un. Jamais la date, que rien ne garantit.
+const SUFFIXE_GENERATION = '_generation';
+function cleGeneration(s) { return saveKey(s) + SUFFIXE_GENERATION; }
+// Le protocole du pont Android `StockageDurable` (4-outils/natif/android/). Un pont qui en parle un autre
+// n'est pas utilisé : il pourrait ne pas écrire ce que le jeu croit.
+const PROTOCOLE_PONT_DURABLE = 2;
+// Les identités des copies qu'un effacement a relevées, et leurs lignées. Une copie d'une version ANTÉRIEURE
+// ne dit pas sa génération : elle n'est tenue pour morte que si l'effacement l'a vue, si elle descend d'une
+// copie qu'il a vue, ou si elle en est une ancêtre déclarée. Soixante-quatre : quelques clés natives et web,
+// une poignée de foyers, et jusqu'à douze ancêtres chacune (MAX_ANCETRES) ; illisibles et identités d'abord,
+// une troncature ne sacrifie que des ancêtres.
+const MAX_EFFACEES = 64;
+let nEffacement = 0;
+const MARQUEUR_ILLISIBLE = 'illisible';
+const MARQUEUR_INCONNU = 'inconnu';
+// Le marqueur que porte la couche NATIVE, tel qu'une lecture RÉUSSIE l'a rendu ou tel que nos propres
+// écritures l'ont fait : `undefined` tant qu'aucune lecture n'a réussi. Une lecture ratée ne le change
+// JAMAIS — elle ne prouve rien, et la partie chargée n'a pas à se croire effacée pour autant. Une seule
+// WebView écrit Preferences : ce que cette page sait est ce que l'appareil porte.
+const marqueursNatifs = {};
+// Le web en avance sur le natif, et le natif qu'on n'a pas pu rattraper : tant que c'est le cas, rien
+// n'adopte une génération que seul le cache web porte — iOS peut le purger.
+const reconciliationManquee = {};
+// La génération dans laquelle CETTE session écrit, par emplacement. `adopterEmplacement()` la fixe.
+const generationSession = {};
+// Un effacement ou une résolution en cours sur un emplacement : ni un second effacement, ni une reprise,
+// ni une création n'y démarrent pendant ce temps.
+const operationEnCours = {};
+// UN EFFACEMENT DONT L'ISSUE EST INCONNUE, dans cette page : ni ce que la mémoire de Preferences porte, ni ce
+// que la page croit, ne fait foi. L'emplacement est incertain jusqu'au redémarrage — ni présenté vide, ni
+// repris, ni recréé, ni importé —, et le menu demande de relancer le jeu.
+const emplacementDouteux = {};
+// Les copies natives MASQUÉES d'un emplacement, relevées par `etatEmplacement()` : une copie sans génération
+// dont on ne sait pas si elle est morte. Elle ne se présente pas, mais elle OCCUPE l'emplacement.
+const masqueesNatives = {};
+
+const estMarqueur = (m) => !!m && typeof m === 'object';
+function marqueurDepuisObjet(m) {
+  if (!m || typeof m !== 'object' || Array.isArray(m) || typeof m.gen !== 'string' || !m.gen
+      || !Number.isInteger(m.rang) || m.rang < 1) return MARQUEUR_ILLISIBLE;
+  return { v: 1, gen: m.gen, rang: m.rang,
+           effacees: Array.isArray(m.effacees) ? m.effacees.filter(x => typeof x === 'string').slice(0, MAX_EFFACEES) : [] };
+}
+function lireMarqueur(raw) {
+  if (raw === null || raw === undefined) return null;
+  if (typeof raw !== 'string') return MARQUEUR_ILLISIBLE;
+  try { return marqueurDepuisObjet(JSON.parse(raw)); } catch (e) { return MARQUEUR_ILLISIBLE; }
+}
+// LA PIERRE TOMBALE. Un stockage web PLEIN refuse une clé neuve, mais accepte qu'une grosse valeur soit
+// remplacée par une petite : quand le marqueur ne peut pas entrer, il prend la place de la copie la plus
+// lourde de l'emplacement — principale, rangement ou foyer. Elle compte comme marqueur, et comme copie
+// vide ; aucune écriture ne la remplace tant que la clé du marqueur ne porte pas au moins le même. C'est
+// justement quand le stockage est plein que le joueur a besoin d'effacer.
+const TAILLE_MAX_PIERRE = 8192;
+function pierreTombale(raw) {
+  if (typeof raw !== 'string' || raw.length > TAILLE_MAX_PIERRE || raw.indexOf('"marqueurEffacement"') < 0) return null;
+  try {
+    const o = JSON.parse(raw);
+    return (o && o.marqueurEffacement && !o.G) ? marqueurDepuisObjet(o.marqueurEffacement) : null;
+  } catch (e) { return null; }
+}
+// Le plus récent des deux, le premier à égalité.
+function plusRecent(a, b) {
+  if (!estMarqueur(a)) return estMarqueur(b) ? b : a;
+  if (!estMarqueur(b)) return a;
+  return b.rang > a.rang ? b : a;
+}
+// LE MARQUEUR DURABLE DU NAVIGATEUR (seconde relecture de la conception). `localStorage` n'est pas un point
+// durable : mesuré sous Chromium, un navigateur TUÉ jusqu'à une minute après l'écriture la perd — la
+// validation est groupée, cinq secondes puis environ soixante sous le limiteur de débit. Le marqueur est donc
+// AUSSI écrit dans IndexedDB, dans la base des verrous, par une transaction `{ durability: 'strict' }` attendue
+// avant l'annonce, et relu au démarrage. La clé `localStorage` reste le reflet SYNCHRONE dont les relevés,
+// `saveLocal` et `pagehide` ont besoin, et c'est elle que les autres onglets voient. Sans IndexedDB,
+// l'effacement se fait sur `localStorage` seul : c'est la garantie d'avant cette version, et elle est écrite.
+// Une IndexedDB présente mais en panne n'est pas une absence : l'effacement est alors refusé.
+const marqueursDurablesWeb = {};
+function cleMarqueurDurable(s) { return 'marqueur_' + s; }
+// IndexedDB ABSENTE, ou EN PANNE ? Absente — l'API manque, ou le navigateur la refuse d'emblée (fichier
+// local sous Safari, ancienne navigation privée de Firefox), ou elle ne répond pas du tout —, l'effacement se
+// fait sur `localStorage` seul : c'est la garantie d'avant cette version, écrite dans les limites. En PANNE —
+// elle existe ici et échoue —, il n'y a pas de point durable, et l'effacement est refusé.
+function indexedDBAbsente(e) {
+  try { if (typeof indexedDB === 'undefined' || !indexedDB || typeof indexedDB.open !== 'function') return true; }
+  catch (x) { return true; }
+  return !!e && (e.idbMuette === true || e.name === 'SecurityError' || e.name === 'InvalidStateError' || e.name === 'NotSupportedError');
+}
+// La base des verrous, ouverte avec une nouvelle tentative si la connexion en cache a été perdue.
+async function baseVerrousFraiche() {
+  try { return await ouvrirBaseVerrous(); }
+  catch (e) {
+    if (indexedDBAbsente(e)) throw e;
+    baseVerrous = null;
+    return ouvrirBaseVerrous();
+  }
+}
+async function lireMarqueursDurablesWeb() {
+  let bd;
+  try { bd = await baseVerrousFraiche(); } catch (e) { return; }
+  const lire = (base) => new Promise((res, rej) => {
+    let tx;
+    try { tx = base.transaction('verrous', 'readonly'); } catch (e) { rej(e); return; }
+    const magasin = tx.objectStore('verrous');
+    const lus = {};
+    for (let s = 1; s <= NB_SLOTS; s++) {
+      const req = magasin.get(cleMarqueurDurable(s));
+      req.onsuccess = () => { lus[s] = req.result === undefined ? null : lireMarqueur(req.result); };
+    }
+    tx.oncomplete = () => res(lus); tx.onerror = () => {}; tx.onabort = () => rej(tx.error || new Error('lecture interrompue'));
+  });
+  let lus;
+  // Une connexion perdue (WebKit la ferme sans prévenir) : une connexion neuve, une fois.
+  try { lus = await lire(bd); }
+  catch (e) { baseVerrous = null; try { lus = await lire(await ouvrirBaseVerrous()); } catch (x) { return; } }
+  for (let s = 1; s <= NB_SLOTS; s++) { if (lus[s] === null) delete marqueursDurablesWeb[s]; else if (lus[s] !== undefined) marqueursDurablesWeb[s] = lus[s]; }
+}
+// Les clés de COPIE d'un emplacement : quatre clés de branche et les foyers de session.
+function clesCopiesWeb(s) { return CLES_BRANCHE_WEB.map(sfx => saveKey(s) + sfx).concat(clesSessionWeb(s)); }
+// Le marqueur WEB : sa clé, toute pierre tombale de l'emplacement, et le marqueur durable relu au démarrage —
+// le plus récent des trois. Une clé ou une pierre illisible : on ne sait pas, l'emplacement est incertain.
+// Une lecture qui LÈVE se juge comme dans `etatEmplacement()` : si la couche refuse aussi d'écrire, aucune
+// copie n'a pu y survivre et le marqueur est tenu pour absent — un navigateur qui bloque le stockage reste
+// jouable ; sinon, INCONNU.
+function marqueurWeb(s) {
+  let cle;
+  const tombes = [];
+  try {
+    cle = localStorage.getItem(cleGeneration(s));
+    for (const k of clesCopiesWeb(s)) { const t = pierreTombale(localStorage.getItem(k)); if (t) tombes.push(t); }
+  } catch (e) {
+    if (stockageWebEcrivable()) return MARQUEUR_INCONNU;
+    return estMarqueur(marqueursDurablesWeb[s]) ? marqueursDurablesWeb[s] : null;
+  }
+  const m = lireMarqueur(cle);
+  if (m === MARQUEUR_ILLISIBLE || tombes.indexOf(MARQUEUR_ILLISIBLE) >= 0 || marqueursDurablesWeb[s] === MARQUEUR_ILLISIBLE) return MARQUEUR_ILLISIBLE;
+  return tombes.concat([marqueursDurablesWeb[s]]).reduce((a, b) => plusRecent(a, b), m);
+}
+function plateformeNative() {
+  try { return (window.Capacitor && typeof window.Capacitor.getPlatform === 'function') ? window.Capacitor.getPlatform() : null; }
+  catch (e) { return null; }
+}
+// LE marqueur d'un emplacement. En navigateur, le web, relu à chaque question : un autre onglet l'écrit.
+// En natif, le natif CONNU, et le web seulement s'il est en avance.
+function marqueurCourant(s) {
+  if (emplacementDouteux[s]) return MARQUEUR_INCONNU;
+  const web = marqueurWeb(s);
+  if (!IS_NATIVE) return web;
+  const natif = marqueursNatifs[s];
+  if (natif === undefined) return MARQUEUR_INCONNU;
+  if (natif === MARQUEUR_ILLISIBLE) return MARQUEUR_ILLISIBLE;
+  // Le web n'est qu'un cache : illisible ou inconnu, il ne remet pas en cause un natif lu.
+  if (!estMarqueur(web)) return natif;
+  if (estMarqueur(natif) && natif.rang >= web.rang) return natif;
+  // Le web est EN AVANCE : le natif a perdu un effacement. Le plus récent l'emporte, mais tant que le natif
+  // n'a pas été rattrapé, l'emplacement est incertain.
+  return reconciliationManquee[s] ? MARQUEUR_INCONNU : web;
+}
+function marqueurIncertain(m) { return m === MARQUEUR_INCONNU || m === MARQUEUR_ILLISIBLE; }
+function generationCourante(s) { const m = marqueurCourant(s); return estMarqueur(m) ? m.gen : null; }
+function generationDeDonnees(data) { const g = data && data.gen; return (typeof g === 'string' && g) ? g : null; }
+
+// UNE COPIE LUE DANS SON EMPLACEMENT : le verdict d'`analyserSauvegarde()`, sauf qu'une copie d'une
+// génération effacée est rendue VIDE, marquée morte, et qu'une copie dont on ne peut rien affirmer est
+// rendue vide, MASQUÉE : ni présentée, ni détruite. Aucun appelant n'a donc à s'en soucier pour ne pas la
+// ressusciter.
+function analyserCopie(s, raw, marqueur) {
+  if (raw === null || raw === undefined || raw === '') return analyserSauvegarde(raw);
+  if (pierreTombale(raw)) return { etat: 'vide', tombe: true };
+  const m = marqueur === undefined ? marqueurCourant(s) : marqueur;
+  const c = analyserSauvegarde(raw);
+  if (m === null) return c;
+  if (marqueurIncertain(m)) return { etat: 'vide', masquee: true, raw };
+  // La génération est lue AVANT la validation : une copie qui se lit mais échoue à la validation, et qui
+  // porte une autre génération, est morte comme les autres.
+  let gen = null, identite = null, anc = [];
+  if (c.etat === 'ok') { gen = generationDeDonnees(c.data); identite = identiteCopie(c); anc = ligneeDeclaree(c); }
+  else {
+    try {
+      const d = JSON.parse(raw);
+      gen = generationDeDonnees(d);
+      if (d && typeof d.ecr === 'string') identite = d.ecr;
+      if (d && Array.isArray(d.anc)) anc = d.anc.filter(x => typeof x === 'string');
+    } catch (e) {}
+  }
+  if (gen !== null) return gen === m.gen ? c : { etat: 'vide', morte: true, raw };
+  // SANS GÉNÉRATION : une copie d'une version antérieure. Morte si l'effacement l'a relevée, si elle descend
+  // d'une copie relevée — une vieille session qui continue la partie effacée déclare ses ancêtres —, ou si
+  // l'effacement l'a relevée comme ancêtre.
+  const empr = empreinte(raw);
+  const relevee = m.effacees.indexOf(empr) >= 0 || (identite && m.effacees.indexOf(identite) >= 0)
+    || anc.some(a => m.effacees.indexOf(a) >= 0);
+  if (relevee) return { etat: 'vide', morte: true, raw };
+  // Abîmée et jamais relevée : ce n'est pas une partie, on ne peut pas la ressusciter en la montrant. Elle
+  // reste ce qu'elle est, ILLISIBLE, et le menu le dit — la cacher laissait une création l'écraser.
+  if (c.etat !== 'ok') return c;
+  // Lisible, sans génération, jamais relevée : on ne sait pas d'où elle vient. Un onglet d'avant cette version
+  // a pu y créer une partie neuve — ou y réécrire la partie effacée. Elle n'est ni présentée — ce serait
+  // peut-être une résurrection —, ni tenue pour vide — une création l'écraserait. Elle OCCUPE l'emplacement,
+  // et seul un effacement confirmé la retire.
+  return { etat: 'vide', masquee: true, raw };
+}
+
+// L'IDENTITÉ d'une copie, et la LIGNÉE qu'elle déclare remplacer. Sans elles, une branche
+// retrouvée au démarrage suivant est indiscernable d'une divergence : deux copies valides et
+// différentes ne se départagent pas par la date, puisque celle qui a continué à jouer a
+// toujours la plus récente. Les copies écrites par ce jeu portent leur identité ; celles qui
+// viennent d'ailleurs — un fichier importé, une version antérieure — sont reconnues à
+// l'empreinte de leur contenu.
+let nEcriture = 0;
+function prochaineEcriture() { return ID_SESSION + '.' + (++nEcriture); }
+function empreinte(raw) {
+  let a = 0x811c9dc5, d = 5381;
+  for (let i = 0; i < raw.length; i++) {
+    const c = raw.charCodeAt(i);
+    a ^= c; a = Math.imul(a, 0x01000193);
+    d = (Math.imul(d, 33) + c) | 0;
+  }
+  // Longueur ET deux empreintes indépendantes : deux copies différentes qui les partageraient
+  // toutes les trois seraient confondues, et l'une serait tenue pour remplacée. Soixante-quatre
+  // bits à longueur égale rendent ce cas hors de portée.
+  return 'e' + raw.length.toString(36) + '.' + (a >>> 0).toString(36) + '.' + (d >>> 0).toString(36);
+}
+function identiteCopie(copie) {
+  if (!copie || typeof copie.raw !== 'string') return null;
+  const e = copie.data && copie.data.ecr;
+  return (typeof e === 'string' && e) ? e : empreinte(copie.raw);
+}
+function ligneeDeclaree(copie) {
+  const l = copie && copie.data && copie.data.anc;
+  return Array.isArray(l) ? l.filter(x => typeof x === 'string') : [];
+}
+
+// CE QUE CETTE SESSION A LE DROIT DE REMPLACER. Relevé à l'adoption — tout ce que l'emplacement
+// portait alors — puis complété par chacune de ses propres écritures. Borné : un emplacement n'a
+// qu'une poignée de clés, et nos écritures se remplacent l'une l'autre.
+const ancetres = {};
+const MAX_ANCETRES = 12;
+function noterAncetres(s, origines) {
+  const vus = [];
+  const ajouter = (id) => { if (id && vus.indexOf(id) < 0) vus.push(id); };
+  const copies = (origines && origines.length) ? origines : sourcesWeb(s).branches.map(b => b.copie);
+  copies.forEach(copie => {
+    ajouter(identiteCopie(copie));
+    // Ce qu'une copie déclare remplacer, nous le remplaçons aussi : elle ne porte rien de moins.
+    ligneeDeclaree(copie).forEach(ajouter);
+  });
+  ancetres[s] = vus;
+}
+function ajouterAncetre(s, id) {
+  const l = ancetres[s] || (ancetres[s] = []);
+  if (id && l.indexOf(id) < 0) l.push(id);
+  // On sacrifie les plus anciennes après la première : celle de l'origine est la plus
+  // susceptible de dormir encore quelque part.
+  while (l.length > MAX_ANCETRES) l.splice(1, 1);
+}
+// La copie qui occupe une clé partagée est-elle une que nous remplaçons ? Absente : oui.
+// Exactement celle que nous y avons laissée : oui, sans rien analyser. Sinon il faut la lire.
+function descendDeNous(s, raw) {
+  if (raw === null || raw === undefined) return true;
+  // Une pierre tombale n'est la branche de personne, et ne se remplace qu'une fois son marqueur ailleurs :
+  // c'est à l'appelant de l'y recopier. Elle passe AVANT le court-circuit de la filiation, qui a pu la relever.
+  if (pierreTombale(raw)) return false;
+  // Une copie MASQUÉE non plus, même relevée par la filiation : la remplacer, c'est détruire ce qu'on n'a pas
+  // su identifier.
+  if (analyserCopie(s, raw).masquee) return false;
+  if (raw === filiation[s]) return true;
+  // Une copie d'une génération effacée n'appartient à aucune branche : on peut la remplacer.
+  if (analyserCopie(s, raw).morte) return true;
+  return (ancetres[s] || []).indexOf(identiteCopie(analyserSauvegarde(raw))) >= 0;
+}
+
+// LA PROMOTION, et elle n'a lieu QUE dans la section critique. Notre branche prend la place de
+// la principale si celle-ci porte encore une copie dont nous descendons. Sinon une autre session
+// y a écrit : sa branche reste intacte, la nôtre reste chez nous, et le menu présentera les deux
+// au joueur.
+function consoliderPrincipale(s) {
+  const json = cachedSaves[s];
+  if (!json) return false;
+  // L'emplacement a été effacé depuis que cette session l'a adopté : sa branche est morte-née, et la
+  // promouvoir la ressusciterait (revue de la v172, S26).
+  if (!generationToujoursValide(s)) { retirerFoyerSession(s); return false; }
+  let actuelle;
+  try { actuelle = localStorage.getItem(saveKey(s)); } catch (e) { return false; }
+  // Notre copie y est déjà. On GARDE notre foyer quand même — voir plus bas.
+  if (actuelle === json) return true;
+  // Une PIERRE TOMBALE porte l'effacement tant que la clé du marqueur ne le porte pas. La remplacer d'abord,
+  // c'était perdre le marqueur à la première promotion : on l'y recopie, ou on renonce.
+  const tombe = pierreTombale(actuelle);
+  if (tombe && !marqueurRecopieDepuisTombe(s, tombe)) return false;
+  if (!tombe && !descendDeNous(s, actuelle)) {
+    // Notre branche reste à part. On ne l'annonce « mise à l'abri » qu'après avoir relu notre
+    // foyer et l'y avoir retrouvée à l'identique (revue de la v165, S18).
+    signalerBrancheExterne(s, abriVerifie(s, PREFIXE_SESSION + ID_SESSION, json), json);
+    return false;
+  }
+  try { localStorage.setItem(saveKey(s), json); }
+  catch (e) { return false; }            // la branche reste dans notre foyer : rien n'est perdu
+  filiation[s] = json;
+  // NOTRE FOYER RESTE (v183). `actuelle`, lue plus haut, peut être PÉRIMÉE : deux onglets sont
+  // deux processus, et `localStorage` n'est pas cohérent de l'un à l'autre à la milliseconde.
+  // La section critique sérialise le temps, pas la fraîcheur d'une lecture. Mesuré : A sort de
+  // sa section à 0,3 ms, B entre à 1,1 ms et lit encore la principale d'avant A — il la croit
+  // sienne et promeut par-dessus. Si A avait retiré son foyer, sa branche n'existerait plus.
+  // En le gardant, la pire issue est une DIVERGENCE que le menu présente, jamais une perte.
+  // Le foyer porte le même contenu que la principale : il ne vieillit pas tant que la session
+  // vit, et la suivante le nettoie à sa première promotion, puisqu'elle en descend.
+  nettoyerFoyersSupplantes(s, json);
+  return true;
+}
+// Notre foyer n'est retiré que dans UN cas : l'emplacement a été effacé, et notre branche est
+// morte-née. Jusqu'à la v182 on le retirait aussi après chaque promotion, pour ne pas laisser
+// une seconde copie ; c'est ce retrait qui coûtait une branche quand un autre onglet promouvait
+// sur la foi d'une lecture périmée (voir `consoliderPrincipale`).
+function retirerFoyerSession(s) {
+  try { localStorage.removeItem(foyerSession(s)); } catch (e) {}
+}
+// Les foyers laissés par d'autres sessions dont nous portons déjà le contenu. Sans ce ménage,
+// chaque rechargement laisserait une clé de plus derrière lui et finirait par saturer le
+// stockage. On ne retire QUE ce qu'on remplace démontrablement, et jamais le nôtre.
+function nettoyerFoyersSupplantes(s, json) {
+  const notre = foyerSession(s);
+  for (const k of clesSessionWeb(s)) {
+    if (k === notre) continue;
+    try {
+      const raw = localStorage.getItem(k);
+      if (raw === null) continue;
+      if (raw === json || analyserCopie(s, raw).morte
+          || (ancetres[s] || []).indexOf(identiteCopie(analyserSauvegarde(raw))) >= 0) {
+        localStorage.removeItem(k);
+      }
+    } catch (e) {}
+  }
+}
+
+// MIGRATION. La v165 tenait une comptabilité de baux, `<clé>_bail`. Elle ne décrit plus rien :
+// aucun relevé ne la lit, et la laisser ferait croire à un mécanisme disparu.
+try { for (let s = 1; s <= NB_SLOTS; s++) localStorage.removeItem(saveKey(s) + '_bail'); } catch (e) {}
+
+// « Ta partie est mise à l'abri » ne se dit qu'après avoir RELU une copie durable identique à
+// la branche annoncée (revue de la v165, S18). L'écriture a pu échouer, ou n'avoir jamais eu
+// lieu : l'affirmer sans vérifier revient à inviter le joueur à fermer la seule page qui porte
+// sa partie. Une lecture impossible n'est pas une preuve : c'est un non.
+function abriVerifie(s, sfx, json) {
+  try { return localStorage.getItem(saveKey(s) + sfx) === json; } catch (e) { return false; }
+}
+
+// Signalé UNE fois par emplacement : l'autosauvegarde repasse à chaque changement, et un toast
+// par tour ferait un mur. Sans foyer durable disponible, ce n'est plus un signalement mais une
+// urgence : la branche courante n'existe que dans cette page, et l'export est proposé tout de
+// suite (revue de la v162, S13).
+// UNE SESSION DONT L'EMPLACEMENT A ÉTÉ EFFACÉ (revue de la v172, S26). Tout ce qu'on écrirait appartiendrait
+// à une génération morte : on n'écrit plus rien, et la partie perd sa destination, comme après un
+// effacement dans la même page. Le joueur l'apprend une fois — sa partie n'existe plus que dans cette page,
+// et l'export reste possible.
+//
+// Seul un marqueur CONNU et d'une autre génération prouve un effacement. Un marqueur absent ne tue jamais
+// une session — sa perte fait déjà revivre les copies. Inconnu ou illisible, on ne conclut rien : la
+// partie chargée n'a pas à se croire effacée parce qu'une lecture a échoué.
+const emplacementEffaceSignale = {};
+function generationToujoursValide(s) {
+  const m = marqueurCourant(s);
+  if (!estMarqueur(m) || (generationSession[s] || null) === m.gen) return true;
+  if (SLOT_PARTIE === s) SLOT_PARTIE = null;
+  if (!emplacementEffaceSignale[s]) {
+    emplacementEffaceSignale[s] = true;
+    toast(T('toast.emplacementEffaceAilleurs', { n: s }), 'warn');
+  }
+  return false;
+}
+// LA COPIE QU'ON ÉCRIT est-elle encore vivante ? `generationToujoursValide()` juge la SESSION ; ici on juge la
+// COPIE, par la génération qu'elle porte. Une écriture native partie avant un effacement peut être servie
+// après lui — le fil des plugins la garde en file — et la page a pu, entre-temps, créer une partie neuve dans
+// le même emplacement : la session y est alors valide, mais cette copie-là est morte-née.
+function copieEncoreVivante(slot, json) {
+  const m = marqueurCourant(slot);
+  if (!estMarqueur(m)) return true;
+  let gen = null;
+  try { gen = generationDeDonnees(JSON.parse(json)); } catch (e) {}
+  return gen === m.gen;
+}
+// La pierre tombale recopiée dans la clé du marqueur, sauf si celle-ci porte déjà un effacement au moins
+// aussi récent. Rend faux si la recopie est impossible : la pierre tombale doit alors rester.
+function marqueurRecopieDepuisTombe(s, tombe) {
+  if (!estMarqueur(tombe)) return false;
+  try {
+    const cle = lireMarqueur(localStorage.getItem(cleGeneration(s)));
+    if (estMarqueur(cle) && cle.rang >= tombe.rang) return true;
+    localStorage.setItem(cleGeneration(s), JSON.stringify(tombe));
+    return true;
+  } catch (e) { return false; }
+}
+
+const brancheExterneSignalee = {};
+function signalerBrancheExterne(s, abri, json) {
+  if (brancheExterneSignalee[s]) return;
+  brancheExterneSignalee[s] = true;
+  if (abri) { toast(T('toast.brancheExterne', { n: s }), 'warn'); return; }
+  const copie = analyserSauvegarde(json);
+  notifyError(T('conflit.abriImpossibleTitre', { n: s }), T('conflit.abriImpossible', { n: s }));
+  if (copie.etat === 'ok') proposerExportBranches(s, [{ role: 'memoire', cle: null, cleWeb: null, copie }]);
+}
 
 // Une sauvegarde qui échoue doit se voir. Signalée UNE fois, puis silence jusqu'au prochain
 // succès : l'autosauvegarde repasse toutes les 700 ms, un toast à chaque tour ferait un mur.
@@ -2369,7 +3562,16 @@ function noterSauvegardeReussie() { echecSauvegardeSignale = false; }
 
 function saveLocal() {
   if (typeof G === 'undefined' || !G) return false;
+  // La destination est celle de la PARTIE, capturée une fois pour les trois couches. Le
+  // stockage web s'écrivait auparavant avec l'emplacement affiché, avant même que le garde-fou
+  // natif ait son mot à dire.
+  const emp = emplacementPartie();
+  if (emp === null) return false;
+  if (!generationToujoursValide(emp)) return false;
   let json;
+  // L'identité de cette écriture et la lignée qu'elle remplace sont inscrites DANS la copie :
+  // c'est la seule forme qui survive à la mort de la page (revue de la v165, S18).
+  const ecr = prochaineEcriture();
   try {
     // `teams` et `schedule` ne sont PAS sérialisés : ce sont des références vers
     // G.poules[G.pouleIdx] et G.calendriers[G.pouleIdx]. Les écrire dupliquerait la poule
@@ -2378,23 +3580,42 @@ function saveLocal() {
     const refTeams = G.teams, refSchedule = G.schedule;
     delete G.teams; delete G.schedule;
     try {
-      json = JSON.stringify({ G, nextPlayerId, savedAt: Date.now() });
+      // La génération de la copie (revue de la v172, S26). Absente pour un emplacement jamais effacé : ses
+      // copies gardent exactement la forme qu'elles avaient avant cette version.
+      const donnees = { schema: SCHEMA_SAUVEGARDE, G, nextPlayerId, savedAt: Date.now(), ecr, anc: (ancetres[emp] || []).slice() };
+      if (generationSession[emp]) donnees.gen = generationSession[emp];
+      json = JSON.stringify(donnees);
     } finally {
       G.teams = refTeams; G.schedule = refSchedule;  // rétablies quoi qu'il arrive
     }
   } catch (e) { return false; }
-  cachedSaveJson = json;
+  cachedSaves[emp] = json;
+  ajouterAncetre(emp, ecr);
   // La couche qui fait foi dépend de la cible. Sur natif, Preferences est la seule durable
   // (iOS purge le stockage web) : c'est SON verdict qu'on attend, par la promesse. Sur
   // navigateur, c'est localStorage, et un quota plein doit se dire tout de suite.
   const Prefs = capPlugin('Preferences');
   let ok = false;
-  try { localStorage.setItem(saveKey(SLOT), json); ok = true; }
-  catch (e) { if (!Prefs) signalerEchecSauvegarde(e); }
+  // DEUX CIBLES, DEUX RÉGIMES. En natif, la couche web n'est qu'un cache : un seul WebView
+  // l'écrit, Preferences est la couche durable, et il n'y a aucune course à arbitrer — la
+  // principale s'écrit donc directement, comme avant.
+  //
+  // En navigateur, la principale est PARTAGÉE entre les onglets. On n'y touche pas ici : on
+  // écrit dans NOTRE FOYER, et lui seul (revue de la v165, S18 et S19). Il est à nous par
+  // construction — aucune autre session ne l'écrit, aucune ne peut nous le prendre, et il n'a
+  // pas à nous être accordé. C'est ce qui rend cette fonction sûre depuis `pagehide`, qui ne
+  // peut attendre aucune promesse. La promotion vers la principale, elle, demande la section
+  // critique : c'est `consoliderPrincipale()` qui s'en charge.
   if (Prefs) {
-    Prefs.set({ key: saveKey(SLOT), value: json })
-      .then(noterSauvegardeReussie)
-      .catch(signalerEchecSauvegarde);
+    try { localStorage.setItem(saveKey(emp), json); filiation[emp] = json; } catch (e) {}
+  } else {
+    try { localStorage.setItem(foyerSession(emp), json); ok = true; }
+    catch (e) { signalerEchecSauvegarde(e); }
+    if (!ok) return false;
+  }
+  if (Prefs) {
+    derniereEcritureNatif = ecrireNatif(Prefs, emp, json);
+    derniereEcritureNatif.then(noterSauvegardeReussie).catch(signalerEchecSauvegarde);
     ok = true;   // verdict provisoire : le natif tranche à la résolution de la promesse
   } else if (ok) {
     noterSauvegardeReussie();
@@ -2402,22 +3623,173 @@ function saveLocal() {
   return ok;
 }
 
+// Écrit la copie native — sauf si la lecture native de cet emplacement avait échoué au
+// démarrage : on ne remplace pas ce qu'on n'a pas pu lire (revue de la v145, R3). On retente
+// d'abord la lecture ; si elle échoue encore, rien n'est écrit et l'appelant le signale comme
+// un échec de sauvegarde. Si la copie native est PLUS RÉCENTE que celle dont la session est
+// partie, l'appareil garde la sienne et la session est mise de côté sous `<clé>_conflit`.
+// Plus ancienne, abîmée ou absente : écriture normale, la vigilance est levée.
+// Par EMPLACEMENT, pas un booléen unique (seconde revue de la v148) : un conflit sur le
+// second emplacement ne doit pas être avalé par celui du premier.
+const conflitSignale = {};
+function signalerConflitNatif(slot) {
+  if (conflitSignale[slot]) return;
+  conflitSignale[slot] = true;
+  toast(T('toast.natifPlusRecent', { n: slot }), 'warn');
+}
+async function ecrireNatif(Prefs, slot, json) {
+  const cle = saveKey(slot);
+  // Un effacement en cours, ou dont l'issue est inconnue (revue de la v172, S26). Capacitor Android sert les
+  // appels de plugin dans l'ordre sur un seul fil : une écriture postée pendant l'effacement passerait après
+  // lui, et son `apply()` écrirait toute la vue mémoire — l'effacement compris, avant qu'on sache s'il a eu
+  // lieu. On attend donc son verdict, et on n'écrit plus rien si la mémoire est devenue douteuse.
+  await attendreEcritureNative();
+  // Conflit pas encore tranché : AUCUNE clé native de cet emplacement n'est réutilisée. La
+  // v149 rangeait ici la partie en cours dans `_conflit` — c'est-à-dire par-dessus la branche
+  // qui s'y trouvait (revue de la v150, S2). Une clé occupée n'est pas un espace libre. Plus
+  // aucun chemin ne charge une partie dans un emplacement en conflit : ce garde-fou est un
+  // filet, et un filet ne détruit rien.
+  if (conflits[slot] && conflits[slot].length >= 2) {
+    signalerConflitNatif(slot);
+    return;
+  }
+  if (natifAVerifier[slot]) {
+    const res = await Prefs.get({ key: cle });           // rejette → l'appelant signale, rien n'est écrit
+    // Après chaque attente, l'emplacement a pu être effacé : une écriture partie avant ne doit pas
+    // atterrir après (revue de la v172, S26).
+    if (!generationToujoursValide(slot) || !copieEncoreVivante(slot, json)) return;
+    const natif = analyserCopie(slot, res && res.value);
+    if (natif.etat === 'ok' && natif.savedAt > (origineSession[slot] || 0)) {
+      await attendreEcritureNative();
+      await Prefs.set({ key: cle + '_conflit', value: json });
+      signalerConflitNatif(slot);
+      return;                                             // la vigilance reste : la copie native n'est pas la nôtre
+    }
+    if (natif.etat === 'illisible' && natif.raw) await Prefs.set({ key: cle + '_illisible', value: natif.raw }).catch(() => {});
+    // On vient de relire la copie de l'appareil et de la reconnaître : il n'y a plus
+    // d'ambiguïté à lever, et le repère doit partir. Sans ça, une sauvegarde native en retard
+    // d'un tour ressemblerait à une divergence au démarrage suivant.
+    natifAVerifier[slot] = false;
+    oublierOrigine(slot);
+  }
+  await attendreEcritureNative();
+  if (!generationToujoursValide(slot) || !copieEncoreVivante(slot, json)) return;
+  await Prefs.set({ key: cle, value: json });
+}
+
 // Trois états, là où l'ancienne version en confondait deux : une sauvegarde ABSENTE et
 // une sauvegarde CORROMPUE renvoyaient toutes deux `null`, et le jeu annonçait « aucune
 // partie » à un joueur dont la partie existait mais était abîmée.
-function lireSauvegarde(slot) {
-  const s = slot || SLOT;
-  let raw = null;
-  try { raw = localStorage.getItem(saveKey(s)); } catch (e) {}
-  if (!raw) raw = cachedSaves[s] || null;
+//
+// Une copie, d'où qu'elle vienne — web, cache mémoire, Preferences natives — est lue et
+// validée ICI, et nulle part ailleurs : JSON, présence de `G`, puis la même forme que celle
+// exigée à l'import. La copie valide porte sa date, pour être comparée aux autres.
+function analyserSauvegarde(raw) {
   if (!raw) return { etat: 'vide' };
+  if (typeof raw !== 'string') return { etat: 'illisible', erreur: 'type inattendu', octets: 0 };
   try {
     const data = JSON.parse(raw);
-    if (!data || !data.G) return { etat: 'illisible', erreur: 'structure inattendue', octets: raw.length };
-    return { etat: 'ok', data };
+    if (!data || !data.G) return { etat: 'illisible', erreur: 'structure inattendue', octets: raw.length, raw };
+    validerCandidat(data);
+    return { etat: 'ok', data, savedAt: data.savedAt || 0, octets: raw.length, raw };
   } catch (e) {
-    return { etat: 'illisible', erreur: e.message, octets: raw.length };
+    return { etat: 'illisible', erreur: e.message, octets: raw.length, raw };
   }
+}
+
+// La règle des deux lecteurs : la plus RÉCENTE des copies valides ; à défaut la première
+// illisible, pour son diagnostic ; à défaut, vide.
+function meilleureCopie(copies) {
+  const valides = copies.filter(c => c.etat === 'ok');
+  if (valides.length) return valides.reduce((a, b) => (b.savedAt > a.savedAt ? b : a));
+  return copies.find(c => c.etat === 'illisible') || { etat: 'vide' };
+}
+
+// Tout ce que le NAVIGATEUR porte pour un emplacement : les quatre clés de branche web et le
+// cache mémoire, chacun dans son propre `try` (audit du 9 septembre 2026, C3) — une chaîne
+// abîmée ne cache plus une copie saine, et une clé qui ne se lit pas n'est pas une absence.
+//
+// Relevé SYNCHRONE, parce que le menu l'est. C'est la même fonction que celle qu'utilise le
+// contrôle avant import : deux relevés qui divergeraient seraient deux vérités, et c'est ce
+// genre d'écart qui a laissé passer S4, puis S10, puis S11.
+function sourcesWeb(s) {
+  const copies = {};
+  let lisible = true;
+  // Les quatre clés historiques, PLUS le foyer de chaque session qui a laissé quelque chose ici
+  // (revue de la v165, S18). Une branche oubliée de l'inventaire serait une branche perdue :
+  // ni le menu, ni le contrôle avant import, ni l'effacement ne la verraient.
+  const cles = CLES_BRANCHE_WEB.concat(clesSessionWeb(s).map(k => k.slice(saveKey(s).length)));
+  // Le marqueur une fois pour tout le relevé : chaque copie est jugée contre le même.
+  const marqueur = marqueurCourant(s);
+  for (const sfx of cles) {
+    try {
+      copies[sfx] = analyserCopie(s, localStorage.getItem(saveKey(s) + sfx), marqueur);
+    } catch (e) {
+      lisible = false;
+      copies[sfx] = { etat: 'indisponible', erreur: e.message || String(e), octets: 0 };
+    }
+  }
+  // Le cache mémoire ne peut pas échouer à être lu : c'est un objet du programme, pas un
+  // stockage. Il vient EN DERNIER, pour que le dédoublonnage garde le rôle d'une clé durable
+  // quand il ne fait que redire ce qu'elle porte déjà.
+  const cache = analyserCopie(s, cachedSaves[s] || null, marqueur);
+  const candidates = cles.filter(sfx => copies[sfx].etat === 'ok')
+    .map(sfx => ({ role: roleWeb(sfx), cle: null, cleWeb: sfx, copie: copies[sfx] }));
+  if (cache.etat === 'ok') candidates.push({ role: 'memoire', cle: null, cleWeb: null, copie: cache });
+  const distinctes = candidates.filter((x, i) => candidates.findIndex(y => y.copie.raw === x.copie.raw) === i);
+  const masquees = cles.filter(sfx => copies[sfx].masquee);
+  return { copies, principale: copies[''], cache, lisible, branches: brancheseVivantes(distinctes), toutes: distinctes, marqueur, masquees };
+}
+
+// Le rôle d'une clé web : ce que le joueur en lira dans la fenêtre de choix. Un foyer de session
+// est « cette page » quand c'est le nôtre, « une autre session » sinon — et c'est vrai de
+// quelque onglet qu'on le lise.
+function roleWeb(sfx) {
+  if (ROLES_WEB[sfx]) return ROLES_WEB[sfx];
+  return sfx === PREFIXE_SESSION + ID_SESSION ? 'page' : 'onglet';
+}
+
+// LA SUPPLANTATION. Une copie qui déclare en remplacer une autre la rend inutile : celle-ci ne
+// porte rien qu'elle n'ait déjà. C'est ce qui sépare « ma branche, plus récente » d'une vraie
+// divergence une fois la page morte — la date ne le dit pas, et la mémoire ne survit pas.
+// Sans cela, le moindre rechargement après une fermeture présenterait un conflit au joueur.
+function brancheseVivantes(distinctes) {
+  const remplacees = [];
+  distinctes.forEach(x => ligneeDeclaree(x.copie).forEach(id => { if (remplacees.indexOf(id) < 0) remplacees.push(id); }));
+  if (!remplacees.length) return distinctes;
+  const restantes = distinctes.filter(x => remplacees.indexOf(identiteCopie(x.copie)) < 0);
+  // Une lignée circulaire ne doit pas tout effacer : annoncer un emplacement vide alors qu'il
+  // porte des parties serait le pire des verdicts. Dans le doute, on les garde toutes.
+  return restantes.length ? restantes : distinctes;
+}
+
+// Les deux copies sont analysées SÉPARÉMENT (audit du 9 septembre 2026, C3) : une chaîne web
+// abîmée ne cache plus un cache mémoire sain, et une copie web vieillie — recopie refusée par
+// le quota — ne double plus un cache plus récent.
+function lireSauvegarde(slot) {
+  const s = slot || SLOT;
+  // Un marqueur qu'on ne sait pas lire ne dit pas quelles copies sont mortes (revue de la v172, S26) :
+  // l'emplacement n'est ni vide, ni une partie. Il est INCERTAIN, et le menu le dit.
+  const m = marqueurCourant(s);
+  if (marqueurIncertain(m)) return { etat: 'incertain', motif: emplacementDouteux[s] ? 'inacheve' : m === MARQUEUR_ILLISIBLE ? 'repere' : 'lecture' };
+  // Un emplacement dont les copies ont divergé n'a PAS de meilleure copie : rendre l'une des
+  // deux reviendrait à trancher en silence, ce que la v148 faisait au démarrage.
+  if (conflits[s] && conflits[s].length >= 2) return { etat: 'conflit', branches: conflits[s] };
+  const w = sourcesWeb(s);
+  // DEUX COPIES VALIDES ET DIFFÉRENTES NE SE DÉPARTAGENT PAS PAR LA DATE (revue de la v160,
+  // S11) : celle qui a continué à jouer a forcément la plus récente. C'est au joueur de
+  // trancher, et le menu doit le lui dire avant de charger quoi que ce soit.
+  //
+  // Le relevé a déjà écarté les copies qu'une autre REMPLACE : notre propre écriture en attente,
+  // la principale dont un foyer de session descend. Ce qui reste à deux est une vraie divergence.
+  if (w.branches.length >= 2) return { etat: 'conflit', branches: w.branches };
+  // Aucune partie vivante, mais une copie MASQUÉE (revue de la v172, S26) : l'emplacement est occupé par ce
+  // qu'on ne sait pas identifier. Ni partie, ni libre.
+  if (!w.branches.length && (w.masquees.length || masqueesNatives[s])) return { etat: 'incertain', motif: 'occupe' };
+  // Une copie saine qui dort sous une clé auxiliaire est une SOURCE, pas un décor : quand elle
+  // est la seule, elle vaut mieux qu'un emplacement annoncé illisible.
+  if (w.branches.length === 1) return w.branches[0].copie;
+  return meilleureCopie([w.principale, w.cache]);
 }
 
 // Conservée pour les appelants qui ne veulent que la donnée. Une sauvegarde illisible y
@@ -2427,44 +3799,937 @@ function loadLocalRaw(slot) {
   return r.etat === 'ok' ? r.data : null;
 }
 
-function clearLocal(slot) {
+// L'EFFACEMENT D'UN EMPLACEMENT (revue de la v172, S26). Une promesse : `{ efface: true }` une fois
+// l'effacement DURABLE, `{ efface: false, motif, detail }` sinon — et alors RIEN n'a changé, ni les copies,
+// ni la mémoire, ni la partie chargée. L'appelant n'annonce l'effacement qu'au premier cas.
+//
+// `attendu` est ce que la fenêtre de confirmation montrait (`instantaneEmplacement()`). Si l'emplacement a
+// changé depuis — un autre onglet l'a effacé puis y a créé une partie —, on ne détruit pas ce que le joueur
+// n'a jamais vu : l'effacement est refusé, et le dit.
+//
+// Le point durable est UNE écriture, celle du marqueur neuf :
+//
+//   · Android : le pont `StockageDurable`, qui pose le marqueur et retire les copies natives dans un seul
+//     `commit()`, et ne répond qu'une fois le fichier écrit. Sans pont, ou d'un autre protocole,
+//     l'effacement est REFUSÉ : `Preferences` n'offre aucun accusé d'écriture, et annoncer sur la foi de
+//     sa promesse est exactement le défaut corrigé ici ;
+//   · iOS : `Preferences.set()` du marqueur, attendu, puis RELU — `UserDefaults` accepte sans rien dire une
+//     valeur qu'il n'enregistre pas. Il la remet à `cfprefsd`, que la mise à mort de l'application n'emporte
+//     pas. Ce n'est pas un accusé d'écriture sur le disque, et aucune API de Capacitor n'en donne : c'est une
+//     limite, écrite ;
+//   · navigateur : le marqueur dans IndexedDB, transaction stricte attendue — `localStorage` n'est validé
+//     sur le disque que par lots, jusqu'à une minute plus tard —, puis sa clé `localStorage`, dans la section
+//     critique de l'emplacement : une pierre tombale y occupe une clé que les autres onglets promeuvent sous
+//     le même verrou. Sans IndexedDB, `localStorage` seul : la garantie d'avant, écrite dans les limites.
+//
+// Tout le reste vient APRÈS : oublier l'emplacement en mémoire, retirer les copies mortes. Une coupure au
+// milieu laisse des copies mortes, que le marqueur tient pour vides et que le démarrage suivant retire.
+function clearLocal(slot, attendu) {
   const s = slot || SLOT;
+  if (operationEnCours[s]) return Promise.resolve({ efface: false, motif: 'enCours', silencieux: true });
+  operationEnCours[s] = true;
+  const fin = (v) => { operationEnCours[s] = false; return v; };
+  const travail = IS_NATIVE ? effacerNatif(s, attendu) : effacerNavigateur(s, attendu);
+  return travail.then(fin, (e) => fin({ efface: false, motif: 'erreur', detail: messageErreur(e) }));
+}
+
+function messageErreur(e) { return (e && e.message) || String(e); }
+function estQuota(e) {
+  return !!e && (e.name === 'QuotaExceededError' || e.name === 'NS_ERROR_DOM_QUOTA_REACHED' || e.code === 22 || e.code === 1014);
+}
+
+// Ce que la fenêtre de confirmation montre d'un emplacement : son état, et l'identité et la lignée de chaque
+// copie qu'il porte.
+function instantaneEmplacement(s) {
+  const lu = lireSauvegarde(s);
+  const copies = lu.etat === 'ok' ? [lu]
+    : lu.etat === 'conflit' ? lu.branches.map(b => b.copie)
+    : (lu.etat === 'illisible' && lu.raw) ? [lu] : [];
+  return { etat: lu.etat, copies: copies.map(c => ({ id: identiteCopie(c), anc: ligneeDeclaree(c) })).filter(x => x.id) };
+}
+// EST-CE ENCORE CE QUE LE JOUEUR A VU ? Chaque copie présente doit être l'une de celles qu'on montrait, ou une
+// écriture de CETTE page qui les remplace : revenir au menu, ou passer en arrière-plan, réenregistre la partie
+// affichée sous une identité neuve, et ce n'est pas un changement d'emplacement (revue de la v172, S26). Une
+// copie venue d'une AUTRE session en est un — c'est justement ce que ce contrôle protège.
+function memeEmplacement(a, b) {
+  if (!a || !b || a.etat !== b.etat || a.copies.length !== b.copies.length) return false;
+  const ids = a.copies.map(x => x.id);
+  return b.copies.every(x => ids.indexOf(x.id) >= 0
+    || (x.id.indexOf(ID_SESSION + '.') === 0 && x.anc.some(y => ids.indexOf(y) >= 0)));
+}
+
+function marqueurNeuf(connus, effacees) {
+  const rang = connus.reduce((r, m) => (estMarqueur(m) ? Math.max(r, m.rang) : r), 0) + 1;
+  // LES EFFACEMENTS PRÉCÉDENTS NE S'OUBLIENT PAS. Un stockage lent — `localStorage` valide par lots, jusqu'à
+  // une minute plus tard — peut rendre, au démarrage d'après, une copie que le ménage avait retirée. Si un
+  // second effacement a eu lieu entre-temps et que son marqueur ne relevait que ses propres copies, celle-ci
+  // reparaîtrait sans que rien ne la dise morte : mesuré sur l'émulateur, une fois sur dix. Le marqueur neuf
+  // hérite donc des identités déjà relevées, les siennes d'abord : une troncature ne sacrifie que les plus
+  // anciennes.
+  const heritees = connus.reduce((l, m) => (estMarqueur(m) ? l.concat(m.effacees) : l), []);
+  const toutes = effacees.concat(heritees);
+  return { v: 1, gen: 'g.' + ID_SESSION + '.' + (++nEffacement) + '.' + Math.random().toString(36).slice(2, 8), rang,
+           effacees: toutes.filter((x, i) => x && toutes.indexOf(x) === i).slice(0, MAX_EFFACEES) };
+}
+
+// Ce que l'effacement relève : les empreintes des copies ILLISIBLES d'abord — elles ne se reconnaissent
+// qu'ainsi —, puis les identités de toutes les copies lisibles, où qu'elles soient.
+function identitesRelevees(s, natives) {
+  const ids = [];
+  const noter = (x) => { if (x && ids.indexOf(x) < 0) ids.push(x); };
+  const brutes = [];
+  for (const k of CLES_BRANCHE_WEB.concat(['_illisible']).map(sfx => saveKey(s) + sfx).concat(clesSessionWeb(s))) {
+    try { const raw = localStorage.getItem(k); if (raw && !pierreTombale(raw)) brutes.push(raw); } catch (e) {}
+  }
+  (natives || []).forEach(raw => { if (raw) brutes.push(raw); });
+  if (cachedSaves[s]) brutes.push(cachedSaves[s]);
+  const analyses = brutes.map(raw => ({ raw, c: analyserSauvegarde(raw) }));
+  analyses.forEach(x => { if (x.c.etat !== 'ok') noter(empreinte(x.raw)); });
+  analyses.forEach(x => { if (x.c.etat === 'ok') noter(identiteCopie(x.c)); });
+  // Puis les LIGNÉES : une ancêtre déclarée d'une copie effacée est la même partie, en plus ancien. Sans
+  // elles, une vieille copie restée sous une autre clé serait masquée pour toujours ; et une vieille session
+  // qui continue la partie effacée évince ses ancêtres au-delà de douze écritures, mais garde la première.
+  analyses.forEach(x => {
+    if (x.c.etat === 'ok') { ligneeDeclaree(x.c).forEach(noter); return; }
+    try { const d = JSON.parse(x.raw); if (d && Array.isArray(d.anc)) d.anc.forEach(a => { if (typeof a === 'string') noter(a); }); } catch (e) {}
+  });
+  return ids;
+}
+
+// Le point durable est passé : l'emplacement n'a plus rien en mémoire.
+function oublierEmplacement(s) {
   cachedSaves[s] = null;
-  try { localStorage.removeItem(saveKey(s)); } catch (e) {}
+  natifAVerifier[s] = false;
+  delete conflits[s];
+  conflitSignale[s] = false;
+  // La filiation et les ancêtres décrivaient un emplacement qui n'existe plus. Les garder ferait prendre la
+  // première écriture du prochain occupant pour la branche d'un autre onglet.
+  delete filiation[s];
+  delete ancetres[s];
+  masqueesNatives[s] = false;
+  brancheExterneSignalee[s] = false;
+  origineSession[s] = 0;
+  // La partie chargée venait de cet emplacement : elle n'en a plus. Mieux vaut ne plus l'enregistrer nulle
+  // part que la faire réapparaître, et une autosauvegarde en attente n'a plus rien à écrire.
+  if (SLOT_PARTIE === s) { SLOT_PARTIE = null; clearTimeout(autosaveTimer); autosaveTimer = null; }
+}
+
+// LE MÉNAGE WEB d'un emplacement marqué : les copies MORTES partent — jamais une vivante, jamais une masquée —,
+// les repères qui décrivaient les anciennes copies aussi, puis le marqueur rejoint sa clé et les pierres
+// tombales partent. Dans cet ordre : le marqueur écrit avant qu'une pierre tombale ne parte, jamais l'inverse.
+// Le marqueur est relu ici, jamais transporté : un autre onglet a pu en poser un plus récent.
+function menageWeb(s) {
+  const m = marqueurCourant(s);
+  if (!estMarqueur(m)) return;
+  try {
+    for (const k of clesCopiesWeb(s)) {
+      const raw = localStorage.getItem(k);
+      if (raw === null || pierreTombale(raw)) continue;
+      if (analyserCopie(s, raw, m).morte) localStorage.removeItem(k);
+    }
+    const illisible = localStorage.getItem(saveKey(s) + '_illisible');
+    if (illisible !== null && m.effacees.indexOf(empreinte(illisible)) >= 0) localStorage.removeItem(saveKey(s) + '_illisible');
+    localStorage.removeItem(saveKey(s) + '_bail');
+    // `_origine` n'est PAS du ménage : elle protège une divergence non tranchée d'un emplacement VIVANT, et le
+    // ménage passe à chaque démarrage. Elle part au point durable d'un effacement, ou quand il n'y a plus
+    // aucune copie vivante (`accorderMarqueurs`).
+  } catch (e) {}
+  try {
+    const cle = lireMarqueur(localStorage.getItem(cleGeneration(s)));
+    if (!estMarqueur(cle) || cle.rang < m.rang) localStorage.setItem(cleGeneration(s), JSON.stringify(m));
+    const ecrit = lireMarqueur(localStorage.getItem(cleGeneration(s)));
+    if (!estMarqueur(ecrit)) return;
+    for (const k of clesCopiesWeb(s)) {
+      const tombe = pierreTombale(localStorage.getItem(k));
+      if (tombe && estMarqueur(tombe) && ecrit.rang >= tombe.rang) localStorage.removeItem(k);
+    }
+  } catch (e) {}
+}
+
+// La pierre tombale, quand la clé du marqueur ne peut pas être écrite (stockage plein). D'abord un marqueur
+// COMPACT dans sa propre clé, s'il y tient sans l'allonger ; sinon la pierre dans la copie la plus lourde de
+// l'emplacement. Un remplacement qui raccourcit une valeur est accepté même stockage plein.
+function poserMarqueurSansPlace(s, nouveau) {
+  const compact = JSON.stringify(Object.assign({}, nouveau, { effacees: [] }));
+  try {
+    const actuel = localStorage.getItem(cleGeneration(s));
+    if (actuel !== null && actuel.length >= compact.length) { localStorage.setItem(cleGeneration(s), compact); return true; }
+  } catch (e) {}
+  const pierre = JSON.stringify({ marqueurEffacement: nouveau });
+  const lourdes = [];
+  for (const k of clesCopiesWeb(s)) {
+    try { const raw = localStorage.getItem(k); if (raw && raw.length > pierre.length && !pierreTombale(raw)) lourdes.push({ k, n: raw.length }); } catch (e) {}
+  }
+  lourdes.sort((a, b) => b.n - a.n);
+  for (const x of lourdes) { try { localStorage.setItem(x.k, pierre); return true; } catch (e) {} }
+  return false;
+}
+
+// NAVIGATEUR, en trois temps. La PRÉPARATION lit et décide, sans rien écrire. Le POINT DURABLE écrit le
+// marqueur dans IndexedDB et attend sa validation. L'APPLICATION pose la clé `localStorage` — ce que voient les
+// autres onglets et les relevés synchrones —, oublie l'emplacement et fait le ménage. Tout cela dans la
+// section critique de l'emplacement : une pierre tombale y occupe des clés que les autres onglets promeuvent
+// sous le même verrou, et ce que la fenêtre montrait y est relu.
+// `durable` : le marqueur qu'IndexedDB porte, relu dans la transaction — un autre onglet a pu l'écrire.
+function preparerEffacementNavigateur(s, attendu, durable) {
+  // Un stockage qui ne se lit pas ne s'efface pas : ce qu'on y croit vide n'est qu'illisible, et une panne
+  // passagère cache peut-être les copies qui reviendront avec elle.
+  try { localStorage.getItem(cleGeneration(s)); }
+  catch (e) { return { verdict: { efface: false, motif: 'web', detail: messageErreur(e) } }; }
+  const avant = marqueurWeb(s);
+  if (avant === MARQUEUR_INCONNU) return { verdict: { efface: false, motif: 'web', detail: T('effacement.webIllisible') } };
+  if (attendu) {
+    const maintenant = instantaneEmplacement(s);
+    // Déjà vide : ce que le joueur voulait est fait, par quelqu'un d'autre.
+    if (maintenant.etat === 'vide') return { verdict: { efface: true, deja: true } };
+    if (!memeEmplacement(attendu, maintenant)) return { verdict: { efface: false, motif: 'change' } };
+  }
+  // Le rang : au-dessus de TOUS les marqueurs lisibles — la clé, chaque pierre tombale, le durable. Un
+  // marqueur illisible n'a pas de rang, et ne doit pas faire oublier ceux qu'on sait lire.
+  return { nouveau: marqueurNeuf(marqueursLisiblesWeb(s).concat([durable]), identitesRelevees(s)) };
+}
+function marqueursLisiblesWeb(s) {
+  const l = [];
+  try {
+    const cle = lireMarqueur(localStorage.getItem(cleGeneration(s)));
+    if (estMarqueur(cle)) l.push(cle);
+    for (const k of clesCopiesWeb(s)) { const t = pierreTombale(localStorage.getItem(k)); if (estMarqueur(t)) l.push(t); }
+  } catch (e) {}
+  if (estMarqueur(marqueursDurablesWeb[s])) l.push(marqueursDurablesWeb[s]);
+  return l;
+}
+// Aucune copie web de l'emplacement : ni branche, ni foyer, ni copie abîmée — les pierres tombales ne sont
+// pas des copies. Un stockage qui ne se lit pas et n'écrit pas n'a rien pu garder.
+function aucuneCopieWeb(s) {
+  try {
+    for (const k of clesCopiesWeb(s).concat([saveKey(s) + '_illisible'])) {
+      const raw = localStorage.getItem(k);
+      if (raw !== null && !pierreTombale(raw)) return false;
+    }
+    return true;
+  } catch (e) { return false; }   // une lecture ratée ne prouve pas une absence
+}
+function appliquerEffacementNavigateur(s, nouveau) {
+  // N'importe quelle exception, pas seulement le quota, dont le nom change d'un navigateur à l'autre : si la
+  // pierre tombale passe, c'était une question de place. Et si RIEN ne s'écrit mais que l'emplacement n'a
+  // aucune copie web, la partie ne vivait qu'en mémoire : l'oublier, c'est l'effacer.
+  let pose = true;
+  try { localStorage.setItem(cleGeneration(s), JSON.stringify(nouveau)); }
+  catch (e) {
+    pose = poserMarqueurSansPlace(s, nouveau);
+    if (!pose && !aucuneCopieWeb(s)) return { efface: false, motif: 'web', detail: messageErreur(e) };
+  }
+  oublierEmplacement(s);
+  // Le repère d'origine décrivait la partie effacée : il part avec elle, au point durable.
+  oublierOrigine(s);
+  if (pose) menageWeb(s);
+  return { efface: true };
+}
+function effacerNavigateur(s, attendu) {
+  const verrous = navigator.locks;
+  if (verrous && typeof verrous.request === 'function') {
+    return verrous.request('rhm_emplacement_' + s, () => effacerNavigateurDurable(s, attendu));
+  }
+  // Sans verrou web, les transactions IndexedDB elles-mêmes sérialisent : elles occupent la file de
+  // l'emplacement, la même que `muterEmplacement()`.
+  return effacerNavigateurDurable(s, attendu);
+}
+async function effacerNavigateurDurable(s, attendu) {
+  try { await baseVerrousFraiche(); }
+  catch (e) {
+    if (!indexedDBAbsente(e)) return { efface: false, motif: 'webDurable', detail: messageErreur(e) };
+    // IndexedDB absente ici : `localStorage` seul, la garantie d'avant cette version.
+    const p = preparerEffacementNavigateur(s, attendu, null);
+    return p.verdict || appliquerEffacementNavigateur(s, p.nouveau);
+  }
+  return effacerNavigateurTransactions(s, attendu);
+}
+// Une transaction IndexedDB `readwrite` STRICTE sur la file de l'emplacement. `corps(magasin, rendre)` est
+// appelé une fois la transaction en tête de file, et ne doit enchaîner que des requêtes du même magasin : un
+// `await` en sortirait sans le dire. La promesse rend ce que `corps` a rendu une fois la transaction VALIDÉE,
+// et rejette si elle est annulée. Une connexion perdue est retentée une fois — une transaction qui n'a pas
+// pu être créée n'a rien écrit. BORNÉE : au-delà de DELAI_PONT_MS, la transaction est abandonnée ; si elle ne
+// répond même pas à l'abandon, l'erreur porte `issueInconnue` — elle a pu valider.
+async function transactionStricte(s, corps) {
+  try { return await transactionStricteUneFois(await baseVerrousFraiche(), s, corps); }
+  catch (e) {
+    if (!e || !e.connexionPerdue) throw e;
+    baseVerrous = null;
+    return transactionStricteUneFois(await ouvrirBaseVerrous(), s, corps);
+  }
+}
+function transactionStricteUneFois(bd, s, corps) {
+  return new Promise((res, rej) => {
+    let tx, sortie, echec = null, fini = false;
+    try { tx = bd.transaction('verrous', 'readwrite', { durability: 'strict' }); }
+    catch (e) { e.connexionPerdue = true; rej(e); return; }
+    const magasin = tx.objectStore('verrous');
+    const terminer = () => { fini = true; clearTimeout(abandon); clearTimeout(sansReponse); };
+    const abandon = setTimeout(() => {
+      if (fini) return;
+      echec = Object.assign(new Error('IndexedDB ne valide pas'), { expiree: true });
+      try { tx.abort(); } catch (x) {}
+    }, DELAI_PONT_MS);
+    const sansReponse = setTimeout(() => {
+      if (fini) return;
+      fini = true;
+      rej(Object.assign(new Error('IndexedDB ne répond pas'), { issueInconnue: true }));
+    }, 2 * DELAI_PONT_MS);
+    // La requête place la transaction dans la file du magasin — c'est elle qui sérialise.
+    const req = magasin.put(1, 'emplacement_' + s);
+    // `echouer` sert aux rappels IMBRIQUÉS — une requête lancée par le corps : une exception y échapperait à
+    // ce `try`, et deviendrait une erreur non rattrapée de la page.
+    const echouer = (e) => { echec = e; try { tx.abort(); } catch (x) {} };
+    req.onsuccess = () => {
+      try { corps(magasin, (v) => { sortie = v; }, echouer); }
+      catch (e) { echouer(e); }
+    };
+    // Validée malgré un abandon demandé trop tard : elle a eu lieu, c'est ce qui compte.
+    tx.oncomplete = () => { if (fini) return; terminer(); (echec && !echec.expiree) ? rej(echec) : res(sortie); };
+    tx.onabort = () => {
+      if (fini) return;
+      terminer();
+      const e = echec || tx.error || new Error('transaction interrompue');
+      // Annulée avant d'avoir rien appliqué, sur une connexion perdue : on peut retenter.
+      if (!echec && tx.error && (tx.error.name === 'UnknownError' || tx.error.name === 'InvalidStateError')) e.connexionPerdue = true;
+      rej(e);
+    };
+    tx.onerror = () => {};
+  });
+}
+// DEUX TRANSACTIONS. Un `await` ne tient pas dans une transaction, et l'annonce ne doit pas précéder la
+// validation du marqueur durable : la première l'écrit, la seconde l'applique. Entre les deux, un autre onglet
+// a pu passer — sans verrou web — ; la seconde relit donc le marqueur durable et l'emplacement, et renonce en
+// rendant le marqueur d'avant si l'un ou l'autre a changé. Tout retour arrière COMPARE : il ne repose la valeur
+// d'avant que si IndexedDB porte encore notre marqueur, jamais par-dessus celui d'un autre onglet.
+async function effacerNavigateurTransactions(s, attendu) {
+  let nouveau = null, precedent = null, applique = false;
+  const cle = cleMarqueurDurable(s);
+  const rendrePrecedentSiNotre = (magasin, valeurLue) => {
+    if (valeurLue !== JSON.stringify(nouveau)) return;
+    if (precedent === null) magasin.delete(cle); else magasin.put(precedent, cle);
+  };
+  let verdict;
+  try {
+    verdict = await transactionStricte(s, (magasin, rendre, echouer) => {
+      const lu = magasin.get(cle);
+      lu.onsuccess = () => {
+        try {
+          precedent = lu.result === undefined ? null : lu.result;
+          const durable = lireMarqueur(precedent);
+          if (durable === null) delete marqueursDurablesWeb[s]; else marqueursDurablesWeb[s] = durable;
+          const p = preparerEffacementNavigateur(s, attendu, durable);
+          if (p.verdict) { rendre(p.verdict); return; }
+          nouveau = p.nouveau;
+          magasin.put(JSON.stringify(nouveau), cle);
+        } catch (e) { echouer(e); }
+      };
+    });
+  } catch (e) {
+    // Sans réponse même à l'abandon : le marqueur a pu être validé. Rien ne fait plus foi dans cette page.
+    if (e && e.issueInconnue) { emplacementDouteux[s] = true; oublierSession(s); return { efface: false, motif: 'webDurable', detail: messageErreur(e), relancer: true }; }
+    return { efface: false, motif: 'webDurable', detail: messageErreur(e) };
+  }
+  if (verdict) return verdict;
+  // ── LE POINT DURABLE EST PASSÉ ──
+  // Le cache du marqueur durable ne reçoit `nouveau` qu'une fois appliqué : la seconde transaction relit
+  // l'emplacement, et le juger contre `nouveau` le ferait paraître déjà vide.
+  try {
+    verdict = await transactionStricte(s, (magasin, rendre, echouer) => {
+      const lu = magasin.get(cle);
+      lu.onsuccess = () => {
+        try {
+          if (lu.result !== JSON.stringify(nouveau)) { rendre({ efface: false, motif: 'change' }); return; }
+          const p = preparerEffacementNavigateur(s, attendu, nouveau);
+          const v = p.verdict ? (p.verdict.deja ? { efface: false, motif: 'change' } : p.verdict)
+            : appliquerEffacementNavigateur(s, nouveau);
+          if (v.efface) applique = true; else rendrePrecedentSiNotre(magasin, lu.result);
+          rendre(v);
+        } catch (e) { echouer(e); }
+      };
+    });
+  } catch (e) {
+    // Appliqué, et le marqueur durable validé par la première : c'est fait, quoi qu'il soit arrivé à la seconde.
+    if (applique) { marqueursDurablesWeb[s] = nouveau; return { efface: true }; }
+    verdict = null;
+    // Ni appliqué, ni rendu : le marqueur durable survit à un effacement qu'on va dire manqué. Le rendre, en
+    // comparant ; sinon, rien ne fait plus foi dans cette page.
+    try {
+      await transactionStricte(s, (magasin, rendre, echouer) => {
+        const lu = magasin.get(cle);
+        lu.onsuccess = () => { try { rendrePrecedentSiNotre(magasin, lu.result); } catch (e) { echouer(e); } };
+      });
+      if (lireMarqueur(precedent) === null) delete marqueursDurablesWeb[s]; else marqueursDurablesWeb[s] = lireMarqueur(precedent);
+      return { efface: false, motif: 'webDurable', detail: messageErreur(e) };
+    } catch (x) {
+      emplacementDouteux[s] = true;
+      oublierSession(s);
+      return { efface: false, motif: 'webDurable', detail: messageErreur(e), relancer: true };
+    }
+  }
+  if (verdict.efface) marqueursDurablesWeb[s] = nouveau;
+  // Refusé dans la seconde : le marqueur d'avant a été rendu avec elle.
+  else if (lireMarqueur(precedent) === null) delete marqueursDurablesWeb[s];
+  else marqueursDurablesWeb[s] = lireMarqueur(precedent);
+  return verdict;
+}
+// La page ne se fie plus à ce qu'elle a de l'emplacement : ni cache, ni conflit, ni partie qui y écrit.
+function oublierSession(s) {
+  cachedSaves[s] = null;
+  delete conflits[s];
+  if (SLOT_PARTIE === s) { SLOT_PARTIE = null; clearTimeout(autosaveTimer); autosaveTimer = null; }
+}
+
+// NATIF.
+//
+// L'ÉTAT NATIF COMPROMIS. Une écriture du pont dont l'issue est inconnue — un rejet, un refus sans retour de
+// la mémoire, un répertoire non synchronisé, un pont qui ne répond pas —, que le jeu n'a pas pu défaire, et
+// dont la mémoire de SharedPreferences porte peut-être le résultat : la moindre écriture Preferences, de
+// n'importe quel emplacement, l'écrirait sur le disque. Jusqu'au redémarrage, plus aucune écriture native.
+let natifCompromis = false;
+let natifCompromisSignale = false;
+function signalerNatifCompromis() {
+  if (natifCompromisSignale) return;
+  natifCompromisSignale = true;
+  toast(T('toast.natifCompromis'), 'warn');
+}
+// LA SUSPENSION DES ÉCRITURES NATIVES. Capacitor Android sert tous les appels de plugin sur UN fil, dans
+// l'ordre. Une sauvegarde postée pendant qu'un effacement attend le pont passe après lui, et son `apply()`
+// écrit toute la vue mémoire — y compris un effacement dont l'issue n'est pas encore connue. Pendant un
+// effacement natif, les écritures Preferences attendent donc son verdict, puis revérifient l'état compromis.
+let suspensionNatif = null;
+function suspendreNatif() {
+  let lever;
+  const attente = new Promise(r => { lever = r; });
+  suspensionNatif = attente;
+  return () => { if (suspensionNatif === attente) suspensionNatif = null; lever(); };
+}
+async function attendreEcritureNative() {
+  while (suspensionNatif) await suspensionNatif;
+  if (natifCompromis) { signalerNatifCompromis(); throw new Error(T('effacement.motif.compromis')); }
+}
+// Un appel au pont qui ne répond pas ne doit pas geler l'emplacement pour toujours. Le délai n'est pas une
+// attente d'état : c'est la borne au-delà de laquelle l'issue est tenue pour INCONNUE.
+const DELAI_PONT_MS = 20000;
+// La relecture des marqueurs durables au démarrage : au-delà, le menu s'affiche sans eux.
+const DELAI_LECTURE_MARQUEURS_MS = 6000;
+function avecDelai(promesse, ms) {
+  let minuterie;
+  return Promise.race([promesse, new Promise((_, rej) => {
+    minuterie = setTimeout(() => rej(Object.assign(new Error('pas de réponse en ' + Math.round(ms / 1000) + ' s'), { delai: true })), ms);
+  })]).finally(() => clearTimeout(minuterie));
+}
+async function lireNatifBorne(Prefs, cle) {
+  const r = await avecDelai(Prefs.get({ key: cle }), DELAI_PONT_MS);
+  return (r && typeof r.value === 'string') ? r.value : null;
+}
+async function effacerNatif(s, attendu) {
+  if (natifCompromis) return { efface: false, motif: 'compromis', relancer: true };
   const Prefs = capPlugin('Preferences');
-  if (Prefs) Prefs.remove({ key: saveKey(s) }).catch(() => {});
+  // Preferences absent en natif : le chemin du navigateur viderait le web et laisserait la copie native.
+  if (!Prefs) return { efface: false, motif: 'preferences' };
+  const lever = suspendreNatif();
+  try { return await effacerNatifSuspendu(Prefs, s, attendu); }
+  finally { lever(); }
+}
+async function effacerNatifSuspendu(Prefs, s, attendu) {
+  const cleM = cleGeneration(s);
+  // L'ÉTAT D'AVANT, clé par clé : ce que le jeu reposera si l'issue est inconnue. Une lecture ratée le rend
+  // incomplet — on ne pourra alors pas défaire.
+  const avant = {};
+  let avantComplet = true;
+  try {
+    avant[cleM] = await lireNatifBorne(Prefs, cleM);
+    marqueursNatifs[s] = lireMarqueur(avant[cleM]);
+  } catch (e) {
+    avantComplet = false;
+    // Une relecture ratée ne dit rien de nouveau : ce qu'on savait reste vrai, une seule WebView écrit.
+    // Si on ne savait rien, on ne peut pas ranger l'effacement après le dernier.
+    if (marqueursNatifs[s] === undefined) return { efface: false, motif: 'lecture', detail: messageErreur(e) };
+  }
+  if (attendu) {
+    const maintenant = instantaneEmplacement(s);
+    if (!memeEmplacement(attendu, maintenant)) return { efface: false, motif: 'change' };
+  }
+  const copies = CLES_BRANCHE.concat(['_illisible']).map(sfx => saveKey(s) + sfx);
+  const natives = [];
+  for (const k of copies) {
+    try { avant[k] = await lireNatifBorne(Prefs, k); if (avant[k]) natives.push(avant[k]); }
+    catch (e) { avantComplet = false; }
+  }
+  const nouveau = marqueurNeuf([marqueursNatifs[s]].concat(marqueursLisiblesWeb(s)), identitesRelevees(s, natives));
+  const v = await ecrireMarqueurNatif(Prefs, s, JSON.stringify(nouveau), true);
+  if (!v.ecrit) {
+    if (!v.issueInconnue) return { efface: false, motif: v.motif, detail: v.detail };
+    // ISSUE INCONNUE. D'abord, reposer l'état d'avant par une écriture durable : si elle aboutit, rien n'a
+    // changé, et c'est un refus ordinaire.
+    const retour = avantComplet ? await reposerEtatNatif(Prefs, avant) : { repose: false };
+    if (retour.repose) return { efface: false, motif: v.motif, detail: v.detail };
+    // Défaire a échoué. Que porte la mémoire ? Sous Android, cette lecture est servie APRÈS l'écriture du pont,
+    // sur le même fil : elle dit ce que la prochaine écriture enverrait au disque. Si le pont ET le retour ont
+    // tous deux dépassé leur délai, elle attendrait derrière eux : on ne la tente pas.
+    let vu;
+    if (!(v.expire && retour.expire) && avant[cleM] !== undefined) {
+      try { vu = await lireNatifBorne(Prefs, cleM); } catch (e) { vu = undefined; }
+    }
+    if (!v.memoireSale && vu !== undefined && vu === avant[cleM]) {
+      // Un rejet ou un silence, et la mémoire porte encore le marqueur d'avant : le pont n'a rien posé — il pose
+      // tout ou rien. Un refus. Quand le pont a DIT que sa mémoire était sale, une clé relue ne suffit pas.
+      return { efface: false, motif: v.motif, detail: v.detail };
+    }
+    // Le marqueur neuf est peut-être en mémoire, peut-être sur le disque. Rien de ce que cette page lit ne fait
+    // plus foi : l'emplacement est DOUTEUX, ni vide ni partie, et plus rien n'est écrit jusqu'au redémarrage.
+    natifCompromis = true;
+    natifCompromisSignale = true;
+    emplacementDouteux[s] = true;
+    oublierSession(s);
+    return { efface: false, motif: v.motif, detail: v.detail, relancer: true };
+  }
+  // ── LE POINT DURABLE EST PASSÉ ──
+  marqueursNatifs[s] = nouveau;
+  reconciliationManquee[s] = false;
+  oublierEmplacement(s);
+  oublierOrigine(s);
+  if (v.retirerEnsuite) {
+    // iOS : toutes les suppressions postées dans le même tour, et attendues sous la suspension — une création
+    // qui suivrait ne doit pas voir sa principale retirée par un retrait arrivé après elle.
+    await avecDelai(Promise.all(copies.map(k => Prefs.remove({ key: k }).catch(() => {}))), DELAI_PONT_MS).catch(() => {});
+  }
+  menageWeb(s);
+  // Le ménage sous verrou n'est pas attendu : l'effacement est fait, et une IndexedDB muette ne doit pas
+  // retenir l'annonce.
+  muterEmplacement(s, () => menageWeb(s)).catch(() => {});
+  return { efface: true };
+}
+// Reposer, par UNE écriture durable, ce que les clés portaient avant. `repose` seulement sur un accusé complet.
+async function reposerEtatNatif(Prefs, avant) {
+  const poser = {}, retirer = [];
+  Object.keys(avant).forEach(k => { if (avant[k] === null) retirer.push(k); else poser[k] = avant[k]; });
+  const pont = capPlugin('StockageDurable');
+  if (pont && typeof pont.ecrire === 'function') {
+    try {
+      const r = await avecDelai(pont.ecrire(Object.keys(poser).length ? { poser, retirer } : { retirer }), DELAI_PONT_MS);
+      return { repose: !!(r && r.ecrit === true && r.repertoire === true) };
+    } catch (e) { return { repose: false, expire: !!(e && e.delai) }; }
+  }
+  // Sans pont (iOS) : Preferences, relu pour vérifier. Ce n'est pas un accusé disque, c'est ce qu'on a.
+  try {
+    for (const k of Object.keys(poser)) await avecDelai(Prefs.set({ key: k, value: poser[k] }), DELAI_PONT_MS);
+    for (const k of retirer) await avecDelai(Prefs.remove({ key: k }), DELAI_PONT_MS);
+    for (const k of Object.keys(avant)) { if (await lireNatifBorne(Prefs, k) !== avant[k]) return { repose: false }; }
+    return { repose: true };
+  } catch (e) { return { repose: false, expire: !!(e && e.delai) }; }
+}
+
+// L'écriture durable du marqueur natif. `retirer` : les copies natives partent dans la MÊME écriture.
+async function ecrireMarqueurNatif(Prefs, s, json, retirer) {
+  if (natifCompromis) return { ecrit: false, motif: 'compromis' };
+  const copies = CLES_BRANCHE.concat(['_illisible']).map(sfx => saveKey(s) + sfx);
+  const pont = capPlugin('StockageDurable');
+  if (pont && typeof pont.ecrire === 'function') {
+    let v;
+    try { v = await avecDelai(pont.version(), DELAI_PONT_MS); }
+    catch (e) { return { ecrit: false, motif: 'pontProtocole', detail: messageErreur(e) }; }
+    if (!v || v.protocole !== PROTOCOLE_PONT_DURABLE) return { ecrit: false, motif: 'pontProtocole', detail: 'protocole ' + (v && v.protocole) };
+    if (natifCompromis) return { ecrit: false, motif: 'compromis' };
+    let r;
+    try { r = await avecDelai(pont.ecrire(retirer ? { poser: { [cleGeneration(s)]: json }, retirer: copies } : { poser: { [cleGeneration(s)]: json } }), DELAI_PONT_MS); }
+    catch (e) { return { ecrit: false, motif: 'erreur', detail: messageErreur(e), issueInconnue: true, expire: !!(e && e.delai) }; }
+    // L'ACCUSÉ, c'est `commit()` réussi ET le répertoire `shared_prefs` synchronisé : `SharedPreferencesImpl`
+    // retire son `.bak` après le fsync du fichier, et sans celui du répertoire, une coupure de courant peut
+    // rendre le fichier d'avant. `commit()` a pourtant écrit : ce n'est pas un refus, c'est une issue inconnue.
+    if (r && r.ecrit === true && r.repertoire === true) return { ecrit: true, retirerEnsuite: false };
+    // `memoireSale` : le pont DIT que sa mémoire porte l'écriture — commit() fait, ou retour impossible.
+    if (r && r.ecrit === true) return { ecrit: false, motif: 'repertoire', detail: String(r.repertoire), issueInconnue: true, memoireSale: true };
+    if (r && r.ecrit === false && r.retabli === true) return { ecrit: false, motif: 'refus' };
+    return { ecrit: false, motif: 'refus', issueInconnue: true, memoireSale: true };
+  }
+  if (plateformeNative() === 'android') return { ecrit: false, motif: 'pontAbsent' };
+  try { await avecDelai(Prefs.set({ key: cleGeneration(s), value: json }), DELAI_PONT_MS); }
+  catch (e) { return (e && e.delai) ? { ecrit: false, motif: 'erreur', detail: messageErreur(e), issueInconnue: true } : { ecrit: false, motif: 'preferences', detail: messageErreur(e) }; }
+  // iOS : `Preferences.set` résout même quand UserDefaults refuse la valeur (au-delà de sa taille). Le marqueur
+  // est RELU ; absent ou différent, l'issue est inconnue — le jeu repose l'état d'avant.
+  let relu;
+  try { relu = await lireNatifBorne(Prefs, cleGeneration(s)); }
+  catch (e) { return { ecrit: false, motif: 'relecture', detail: messageErreur(e), issueInconnue: true }; }
+  if (relu !== json) return { ecrit: false, motif: 'relecture', detail: T('effacement.marqueurNonRelu'), issueInconnue: true };
+  return { ecrit: true, retirerEnsuite: retirer };
 }
 
 // En natif, on relit d'abord le stockage durable et on le recopie dans le cache synchrone,
 // pour que le menu (qui est synchrone) voie la partie même si le stockage web a été purgé.
-async function initStorage() {
-  const Prefs = capPlugin('Preferences');
-  if (!Prefs) return;
-  // Les quatre emplacements sont relus : le menu doit tous les montrer, pas seulement
-  // celui en cours.
-  for (let s = 1; s <= NB_SLOTS; s++) {
+// Relit TOUTES les sources d'un emplacement — les quatre clés natives, la copie web, le cache
+// mémoire — et reconstruit ce qu'il porte : les branches distinctes, et si une lecture a
+// échoué. UNE seule fonction, pour le démarrage comme pour le contrôle avant un import, en
+// natif comme en navigateur : deux relevés qui divergeraient seraient deux vérités, et c'est ce
+// genre d'écart qui a laissé passer S4 puis S10.
+//
+// Chaque source dans SON try (audit du 9 septembre 2026, C3), et TOUTES lues avant la moindre
+// écriture (seconde revue de la v148, S1) : une panne native n'empêche pas de lire le web, une
+// chaîne web abîmée n'empêche pas de garder le natif — sur iOS, qui purge le stockage web,
+// c'est le cas utile. Quatre copies natives, pas une : la principale, la branche mise de côté
+// par un conflit, celle qu'un choix interrompu a écartée, celle qu'une transaction protège.
+async function etatEmplacement(Prefs, s) {
+  // Le marqueur natif d'abord (revue de la v172, S26) : c'est lui qui dit quelles copies sont vivantes.
+  // Une lecture ratée n'apprend rien et ne change pas ce qu'on savait.
+  let marqueurNatif = 'non-lu';
+  if (Prefs) {
     try {
-      const res = await Prefs.get({ key: saveKey(s) });
-      if (!res || !res.value) continue;
-      let localRaw = null;
-      try { localRaw = localStorage.getItem(saveKey(s)); } catch (e) {}
-      const nativeAt = (JSON.parse(res.value).savedAt) || 0;
-      const localAt = localRaw ? ((JSON.parse(localRaw).savedAt) || 0) : -1;
-      if (nativeAt >= localAt) {
-        cachedSaves[s] = res.value;
-        try { localStorage.setItem(saveKey(s), res.value); } catch (e) {}
-      }
+      const res = await Prefs.get({ key: cleGeneration(s) });
+      marqueurNatif = lireMarqueur(res && res.value);
+      marqueursNatifs[s] = marqueurNatif;
     } catch (e) {
-      console.warn('initStorage slot ' + s, e);
+      console.warn('lecture du marqueur natif ' + s + ' indisponible', e);
+      marqueurNatif = 'indisponible';
     }
   }
+  const marqueur = marqueurCourant(s);
+  const lireNatif = async (cle) => {
+    // Sans couche native — le navigateur — ces clés n'existent pas, et c'est une ABSENCE
+    // CERTAINE, pas une lecture ratée (revue de la v157, S10). La distinction est tout le
+    // sujet : une absence laisse l'import passer, une lecture ratée le refuse.
+    if (!Prefs) return { etat: 'vide' };
+    try {
+      const res = await Prefs.get({ key: cle });
+      return analyserCopie(s, res && res.value, marqueur);
+    } catch (e) {
+      // INDISPONIBLE, pas illisible (revue de la v145, R3) : on n'a pas lu la copie, on ne sait
+      // rien d'elle. Elle ne sera ni réparée ni écrasée tant qu'une relecture n'aura pas réussi.
+      console.warn('lecture native ' + cle + ' indisponible', e);
+      return { etat: 'indisponible', erreur: e.message || String(e), octets: 0 };
+    }
+  };
+  const ROLES = { '': 'appareil', '_conflit': 'session', '_ecartee': 'ecartee', '_transac': 'transac' };
+  const copies = {};
+  for (const sfx of CLES_BRANCHE) copies[sfx] = await lireNatif(saveKey(s) + sfx);
+  const natif = copies[''];
+  // Le relevé WEB est fait par la MÊME fonction que celle du menu (revue de la v160, S11) :
+  // quatre clés de branche et le cache mémoire, chacun dans son try. Le cache est une source
+  // comme les autres (revue de la v157, S10) — `saveLocal()` le remplit AVANT d'écrire le
+  // stockage web, et un quota plein s'arrête entre les deux.
+  const w = sourcesWeb(s);
+  // Une copie qu'on n'a pas lue n'est en DANGER que si la couche sait écrire : c'est alors
+  // l'import qui l'écraserait. Quand la couche est entièrement fermée — navigateur qui bloque
+  // le stockage, mode restreint — elle ne peut rien recevoir, donc rien y perdre, et le jeu
+  // invite justement le joueur à passer par l'import (`menu.pied.bloque`).
+  const webEcrivable = w.lisible || stockageWebEcrivable();
+  const local = (w.principale.etat === 'indisponible' && !webEcrivable)
+    ? { etat: 'vide', erreur: w.principale.erreur, octets: 0 }
+    : w.principale;
+  const localRaw = local.etat === 'illisible' ? local.raw : null;
+  const cache = w.cache;
+  // N'IMPORTE LAQUELLE des lectures ratée rend l'emplacement incertain : ce qu'on n'a pas lu
+  // n'est pas une absence, et agir sur le reste reviendrait à écraser une branche inconnue.
+  const incertain = CLES_BRANCHE.some(sfx => copies[sfx].etat === 'indisponible') || (!w.lisible && webEcrivable)
+    || marqueurIncertain(marqueur);
+
+  // Deux copies valides et DIFFÉRENTES : elles ont divergé. On ne tranche pas — surtout pas par
+  // la date, que la session a forcément la plus récente puisqu'elle a continué à jouer.
+  // Chaque branche sait de quelle clé elle vient : la résolution en a besoin pour ne jamais
+  // écrire dans une clé dont le contenu n'a pas d'autre foyer. `_transac` vient en dernier,
+  // pour que le dédoublonnage préfère le rôle d'une clé stable.
+  const candidates = CLES_BRANCHE.filter(sfx => copies[sfx].etat === 'ok')
+    .map(sfx => ({ role: ROLES[sfx], cle: sfx, cleWeb: null, copie: copies[sfx] }));
+  // Les sources WEB EN DERNIER : quand elles redisent ce qu'une clé native porte déjà — le cas
+  // ordinaire — le dédoublonnage garde le rôle de la clé native, plus précis.
+  w.branches.forEach(x => candidates.push(x));
+  // TOUT ce que l'emplacement porte, sans distinction de source. C'est cette liste que regarde
+  // le contrôle avant import : y installer un fichier détruirait tout ce qui n'est pas retenu.
+  const branches = candidates.filter((x, i) => candidates.findIndex(y => y.copie.raw === x.copie.raw) === i);
+
+  // Ce qui ne peut pas être départagé SANS LE JOUEUR — deux copies natives différentes, ou une
+  // divergence que le repère d'origine désigne. Un simple retard du web sur le natif n'en fait
+  // pas partie : la sauvegarde écrit le web avant le natif, une fermeture entre les deux suffit
+  // à les décaler, et demander un arbitrage à chaque démarrage serait insupportable. Ce
+  // décalage-là se résout par la date, comme avant — mais il interdit tout de même l'import.
+  const origine = lireOrigine(s);
+  const natives = branches.filter(x => x.cle !== null);
+  let aArbitrer = natives.length >= 2 ? natives : [];
+  if (!aArbitrer.length && origine !== null && natif.etat === 'ok' && local.etat === 'ok'
+      && natif.raw !== local.raw && natif.savedAt !== origine && local.savedAt > origine) {
+    // La copie web n'a pas de clé native : la résolution lui en donnera une.
+    aArbitrer = [{ role: 'appareil', cle: '', cleWeb: null, copie: natif },
+                 { role: 'session', cle: null, cleWeb: '', copie: local }];
+  }
+  // Une divergence purement WEB n'est PAS inscrite dans `conflits` : cette table ne se vide, en
+  // navigateur, ni par un relevé natif ni par rien d'autre, et le conflit y resterait collé
+  // après sa résolution. Le menu la calcule à chaque passage par `lireSauvegarde()`, qui est
+  // synchrone et n'a besoin de personne pour se souvenir.
+  // Les copies natives masquées occupent l'emplacement (revue de la v172, S26) ; un relevé natif réussi les
+  // recompte, un relevé sans couche native n'en apprend rien.
+  if (Prefs && marqueurNatif !== 'indisponible') masqueesNatives[s] = CLES_BRANCHE.some(sfx => copies[sfx].masquee);
+  const masquee = !!masqueesNatives[s] || w.masquees.length > 0;
+  return { incertain, copies, natif, local, localRaw, cache, web: w, branches, aArbitrer, marqueurNatif, marqueur, masquee };
+}
+
+// Vrai seulement si l'on SAIT que l'emplacement peut recevoir une partie importée : toutes ses
+// sources relues sans erreur, et aucune divergence (revue de la v152, S4). Une lecture ratée
+// n'est pas une permission, et relire une seule source ne dit rien des autres.
+//
+// EN NAVIGATEUR AUSSI (revue de la v157, S10). La version précédente y rendait
+// `!(conflits[s] && ...)`, c'est-à-dire toujours vrai : `conflits` n'est rempli que par
+// `initStorage()` et par cette fonction, et aucun des deux ne s'exécute sans couche native. Un
+// import allait donc s'installer par-dessus le stockage web et le cache sans les avoir lus.
+async function emplacementSurPourImport(s) {
+  const Prefs = capPlugin('Preferences');
+  const etat = await etatEmplacement(Prefs, s);
+  // La vigilance native ne se note QUE s'il y a un natif : en navigateur, l'incertitude vient
+  // de la copie web, et rien de natif n'est en attente de relecture.
+  if (Prefs) natifAVerifier[s] = etat.incertain;
+  // Le verdict transporte l'IDENTITÉ des sources en cause, pas seulement le motif (revue de la
+  // v160, S12) : sans elle, impossible de savoir si la mémoire est en jeu — donc impossible de
+  // savoir si conseiller un rechargement détruirait une partie.
+  const sources = etat.branches.map(x => x.role);
+  if (etat.incertain) return { sur: false, motif: 'incertain', sources };
+  // Une copie MASQUÉE occupe l'emplacement (revue de la v172, S26) : on ne sait pas si c'est une partie, et
+  // l'écraser serait peut-être une perte.
+  if (etat.masquee && !etat.branches.length) return { sur: false, motif: 'occupe', sources };
+  // TOUTES les sources : deux copies différentes, où qu'elles soient, et l'import en détruirait
+  // une. Celles qui exigent un arbitrage sont en plus enregistrées, pour que le menu le dise.
+  if (etat.aArbitrer.length >= 2) { conflits[s] = etat.aArbitrer; refreshMenu(); return { sur: false, motif: 'conflit', sources }; }
+  // Un conflit natif ENREGISTRÉ ne se lève que par un relevé natif réussi. Sans couche native
+  // sous la main — `capPlugin()` relit `window.Capacitor` à chaque appel et peut rendre `null`
+  // un instant — ce relevé n'a vu aucune clé native : il n'a rien appris qui permette de
+  // l'effacer, et l'effacer désarmerait le garde-fou de `ecrireNatif()`.
+  if (Prefs) delete conflits[s];
+  if (conflits[s] && conflits[s].length >= 2) return { sur: false, motif: 'conflit', sources };
+  // Deux copies lues sans erreur qui ne disent pas la même chose. Ce n'est ni un conflit à
+  // trancher ni une lecture ratée, et le refus doit le dire (v160).
+  if (etat.branches.length >= 2) return { sur: false, motif: 'divergent', sources };
+  return { sur: true, motif: null, sources };
+}
+
+// En natif, on relit d'abord le stockage durable et on le recopie dans le cache synchrone,
+// pour que le menu (qui est synchrone) voie la partie même si le stockage web a été purgé.
+// Au démarrage, puis à chaque toucher d'un emplacement incertain : le marqueur le plus récent rattrape la
+// couche en retard, et les copies mortes partent (revue de la v172, S26). Rien ici n'est nécessaire à la
+// durabilité — le marqueur le plus récent suffit à tenir ces copies pour mortes —, mais une copie morte
+// occupe de la place, et un marqueur resté seul dans le stockage web, qu'iOS peut purger, doit rejoindre
+// la couche native avant de disparaître avec lui.
+async function accorderMarqueurs(Prefs, s, etat) {
+  if (etat.marqueurNatif === 'indisponible' || etat.marqueurNatif === 'non-lu') return;
+  // Pendant un effacement natif, aucune écriture : elle passerait après lui sur le fil des plugins.
+  if (natifCompromis || suspensionNatif) return;
+  const natif = marqueursNatifs[s], web = marqueurWeb(s);
+  // Un natif ILLISIBLE n'est pas « absent » : on ne connaît pas son rang, et seul un effacement le remplace.
+  if (estMarqueur(web) && (natif === null || (estMarqueur(natif) && web.rang > natif.rang))) {
+    const v = await ecrireMarqueurNatif(Prefs, s, JSON.stringify(web), false);
+    if (v.ecrit) { marqueursNatifs[s] = web; reconciliationManquee[s] = false; }
+    else reconciliationManquee[s] = true;
+  }
+  const courant = marqueurCourant(s);
+  if (!estMarqueur(courant)) return;
+  // Plus aucune copie vivante : le repère d'origine ne protège plus rien, et une origine périmée inventerait
+  // un faux conflit à la prochaine partie.
+  if (!etat.branches.length) oublierOrigine(s);
+  for (const sfx of CLES_BRANCHE) {
+    // Mortes pour de bon : les perdre en route ne change rien.
+    if (etat.copies[sfx] && etat.copies[sfx].morte) Prefs.remove({ key: saveKey(s) + sfx }).catch(() => {});
+  }
+  try {
+    const res = await Prefs.get({ key: saveKey(s) + '_illisible' });
+    if (res && res.value && courant.effacees.indexOf(empreinte(res.value)) >= 0) Prefs.remove({ key: saveKey(s) + '_illisible' }).catch(() => {});
+  } catch (e) {}
+  menageWeb(s);
+}
+
+// UN emplacement relu et installé dans le cache, comme au démarrage. Un emplacement incertain se relit
+// d'un toucher : une lecture native qui échouait peut réussir, et le joueur n'a pas à relancer le jeu.
+async function relireEmplacement(Prefs, s) {
+  {
+    const etat = await etatEmplacement(Prefs, s);
+    await accorderMarqueurs(Prefs, s, etat);
+    // Un marqueur qu'on ne sait pas lire, ou un natif qu'on n'a pas pu rattraper : rien n'est chargé ni
+    // réparé. Aucune copie n'est présentée — on ne sait pas lesquelles sont mortes.
+    if (marqueurIncertain(marqueurCourant(s))) {
+      delete conflits[s];
+      cachedSaves[s] = null;
+      natifAVerifier[s] = true;
+      return;
+    }
+    // Deux listes, deux usages : `aArbitrer` décide s'il faut demander au joueur, `branches`
+    // dit tout ce que l'emplacement porte — et c'est là qu'on va chercher une copie de secours
+    // quand la principale est illisible.
+    const { incertain: natifIncertain, natif, local, localRaw, branches, aArbitrer } = etat;
+    natifAVerifier[s] = natifIncertain;
+    if (aArbitrer.length >= 2) {
+      conflits[s] = aArbitrer;
+      origineSession[s] = 0;
+      return;
+    }
+    delete conflits[s];
+    // Une copie valide qui dort sous une clé de conflit est une SOURCE, pas un décor : quand
+    // elle est la seule saine, elle vaut mieux qu'un emplacement annoncé vide.
+    // Les foyers DURABLES seulement (v159) : le cache mémoire est vide au démarrage, donc
+    // ceci ne change rien au chemin réel — mais un second relevé dans le même contexte
+    // JavaScript le trouverait rempli, et une partie saine dormant sous une clé de conflit
+    // cesserait d'être vue. Une copie de secours est une question de stockage.
+    const durables = branches.filter(x => x.role !== 'memoire');
+    const secours = durables.length === 1 ? [durables[0].copie] : [];
+    const choisie = meilleureCopie([natif, local].concat(secours));
+    origineSession[s] = choisie.etat === 'ok' ? (choisie.savedAt || 0) : 0;
+    if (choisie.etat !== 'ok') return;   // rien de sain : on ne touche à rien, le menu dira « illisible »
+    // Le cache mémoire d'abord : c'est lui que le menu (synchrone) lit, et il ne dépend
+    // d'aucune écriture. Quota web plein ou stockage web bloqué, la partie se charge quand même.
+    cachedSaves[s] = choisie.raw;
+    if (natifIncertain) {
+      // On n'a pas tout lu : on ne répare rien, et on note de quelle copie la session part —
+      // c'est ce repère qui permettra de voir la divergence au démarrage d'après.
+      poserOrigine(s, choisie.savedAt);
+      return;
+    }
+    oublierOrigine(s);
+    // Réparation croisée : la copie qui n'est pas la retenue est réécrite depuis la bonne.
+    // Une copie ABÎMÉE n'est pas détruite avant d'avoir été mise de côté sous une clé voisine.
+    if (local.raw !== choisie.raw) {
+      try {
+        if (local.etat === 'illisible' && localRaw) localStorage.setItem(saveKey(s) + '_illisible', localRaw);
+        localStorage.setItem(saveKey(s), choisie.raw);
+      } catch (e) { console.warn('initStorage web ' + s, e); }
+    }
+    // Pendant un état natif compromis, aucune réparation : elle écrirait la mémoire douteuse sur le disque.
+    // Ni pendant un effacement natif, ni après une issue inconnue : la réparation écrirait la mémoire douteuse
+    // sur le disque. Et une copie MASQUÉE n'est pas remplacée : on ne sait pas ce qu'elle porte.
+    if (natif.etat !== 'indisponible' && natif.raw !== choisie.raw && !natifCompromis && !suspensionNatif && !natif.masquee) {
+      if (natif.etat === 'illisible' && natif.raw) Prefs.set({ key: saveKey(s) + '_illisible', value: natif.raw }).catch(() => {});
+      Prefs.set({ key: saveKey(s), value: choisie.raw }).catch(e => console.warn('initStorage natif ' + s, e));
+    }
+  }
+}
+
+async function initStorage() {
+  const Prefs = capPlugin('Preferences');
+  if (!Prefs) {
+    // Navigateur : pas de relevé natif. Les copies mortes des emplacements effacés partent, et une pierre
+    // tombale rejoint la clé du marqueur, dans la section critique de chacun.
+    if (!IS_NATIVE) {
+      // Le marqueur DURABLE d'abord : c'est lui qui fait foi si le navigateur a été tué avant d'écrire
+      // `localStorage`. Borné : une base qui ne répond pas ne gèle pas le menu — l'emplacement vaut alors ce
+      // que vaut `localStorage`, et c'est écrit dans les limites.
+      const lecture = lireMarqueursDurablesWeb();
+      const menage = () => {
+        for (let s = 1; s <= NB_SLOTS; s++) {
+          if (estMarqueur(marqueurWeb(s))) muterEmplacement(s, () => menageWeb(s)).catch(() => {});
+        }
+      };
+      let aTemps = true;
+      await avecDelai(lecture, DELAI_LECTURE_MARQUEURS_MS).catch(e => { aTemps = false; console.warn('marqueurs durables', e); });
+      menage();
+      // Arrivée en retard : le menu est refait et le ménage repasse. Une partie effacée présentée entre-temps
+      // cesse de l'être, au lieu d'attendre le redémarrage suivant.
+      if (!aTemps) lecture.then(() => { menage(); refreshMenu(); }).catch(() => {});
+    }
+    return;
+  }
+  // Les quatre emplacements sont relus : le menu doit tous les montrer, pas seulement
+  // celui en cours.
+  for (let s = 1; s <= NB_SLOTS; s++) await relireEmplacement(Prefs, s);
+}
+
+// La décision « la principale est-elle encore la nôtre ? » puis l'écriture doivent être
+// INDIVISIBLES entre onglets. `localStorage` n'offre aucun compare-and-swap, et une
+// revendication écrite puis relue ne marche pas : mesuré sur deux pages d'un même contexte,
+// 200 courses sur 200 où les DEUX pages croient l'avoir obtenue, avec ou sans tour de boucle —
+// le cache de chaque moteur de rendu ne reçoit l'écriture de l'autre qu'après coup. Le verrou
+// web sérialise réellement, et sous verrou une lecture voit bien l'écriture du détenteur
+// précédent.
+//
+// Il peut manquer d'une WebView ancienne : on écrit alors sans lui. Le contrôle d'ancêtre reste
+// et c'est LUI qui interdit d'écraser une branche ; le verrou ajoute qu'aucune ne se perd par
+// deux écritures simultanées.
+// Le REPLI du verrou web, quand une WebView ancienne ne l'offre pas : une transaction
+// IndexedDB. Deux transactions `readwrite` sur le même magasin ne se recouvrent jamais, et
+// c'est le seul autre mécanisme du navigateur qui sérialise réellement entre onglets —
+// mesuré : deux pages incrémentant un compteur PARTAGÉ de `localStorage` à l'intérieur de la
+// transaction rendent 120 incréments sur 120, aucun perdu. Une revendication écrite dans
+// `localStorage` puis relue, elle, laisse les deux pages croire qu'elles l'ont obtenue : 200
+// courses sur 200, le cache de chaque moteur de rendu ne recevant l'écriture de l'autre
+// qu'après coup.
+let baseVerrous = null;
+// L'ouverture est BORNÉE (revue de la v172, S26) : sous certaines versions de WebKit, `open()` ne répond
+// jamais. Un effacement qui l'attendrait garderait le verrou de l'emplacement pour toujours, sans rien dire.
+// Au-delà du délai, IndexedDB est tenue pour indisponible ici — l'effacement se fait alors sur `localStorage`
+// seul —, et une ouverture tardive est refermée sans servir : elle ne doit pas écrire le marqueur d'un
+// effacement déjà déclaré manqué.
+const DELAI_IDB_MS = 5000;
+function ouvrirBaseVerrous() {
+  if (baseVerrous) return baseVerrous;
+  const promesse = new Promise((res, rej) => {
+    let d, expiree = false;
+    const minuterie = setTimeout(() => {
+      expiree = true;
+      rej(Object.assign(new Error('IndexedDB ne répond pas'), { idbMuette: true }));
+    }, DELAI_IDB_MS);
+    try { d = indexedDB.open('rhm_verrous', 1); } catch (e) { clearTimeout(minuterie); rej(e); return; }
+    d.onupgradeneeded = () => { try { d.result.createObjectStore('verrous'); } catch (e) {} };
+    d.onsuccess = () => {
+      clearTimeout(minuterie);
+      const bd = d.result;
+      if (expiree) { try { bd.close(); } catch (e) {} return; }
+      // Une connexion que le navigateur ferme — WebKit le fait — ne doit pas rester en cache : la transaction
+      // suivante lèverait, et plus aucun effacement n'aboutirait avant un rechargement.
+      bd.onclose = bd.onversionchange = () => { try { bd.close(); } catch (e) {} if (baseVerrous === promesse) baseVerrous = null; };
+      res(bd);
+    };
+    d.onerror = () => { clearTimeout(minuterie); rej(d.error || new Error('indexedDB indisponible')); };
+    d.onblocked = () => { clearTimeout(minuterie); rej(new Error('indexedDB bloquée')); };
+  });
+  baseVerrous = promesse;
+  // Une base qui n'a pas pu s'ouvrir doit pouvoir être retentée : on ne garde pas l'échec.
+  promesse.catch(() => { if (baseVerrous === promesse) baseVerrous = null; });
+  return promesse;
+}
+
+async function avecTransactionIndexedDB(s, action) {
+  const bd = await ouvrirBaseVerrous();
+  return new Promise((res, rej) => {
+    const tx = bd.transaction('verrous', 'readwrite');
+    let sortie, echec = null;
+    // La requête fait deux choses : elle place la transaction dans la file du magasin — c'est
+    // ELLE qui sérialise — et elle la garde vivante le temps du rappel.
+    const req = tx.objectStore('verrous').put(1, 'emplacement_' + s);
+    req.onsuccess = () => { try { sortie = action(); } catch (e) { echec = e; } };
+    tx.oncomplete = () => (echec ? rej(echec) : res(sortie));
+    tx.onerror = () => rej(tx.error || echec || new Error('transaction interrompue'));
+    tx.onabort = () => rej(tx.error || echec || new Error('transaction interrompue'));
+  });
+}
+
+// LE point de passage de toute mutation d'un emplacement. Verrou web s'il existe, transaction
+// IndexedDB sinon — et ÉCHEC s'il n'y a ni l'un ni l'autre. Il n'y a plus de troisième voie :
+// exécuter l'action telle quelle, c'est ce qui perdait une branche (revue de la v163, S15).
+//
+// L'action doit être SYNCHRONE. Une transaction IndexedDB se referme dès que sa file de
+// requêtes se vide : rendre une promesse reviendrait à quitter la section critique sans le dire.
+function muterEmplacement(s, action) {
+  const verrous = navigator.locks;
+  if (verrous && typeof verrous.request === 'function') return verrous.request('rhm_emplacement_' + s, action);
+  return avecTransactionIndexedDB(s, action);
+}
+
+// Le chemin ORDINAIRE d'un enregistrement. Une sauvegarde qui ne peut pas être sérialisée
+// n'écrit RIEN : mieux vaut un échec signalé qu'une branche perdue en silence.
+function saveLocalSerialise() {
+  if (typeof G === 'undefined' || !G) return Promise.resolve(false);
+  const emp = emplacementPartie();
+  if (emp === null) return Promise.resolve(false);
+  // L'enregistrement lui-même n'a plus besoin d'être sérialisé : il va dans notre foyer, que
+  // personne d'autre n'écrit. C'est la PROMOTION vers la principale — une clé partagée — qui
+  // demande la section critique. Une sérialisation impossible ne coûte donc plus une branche :
+  // elle coûte une promotion, et la branche attend dans son foyer (revue de la v165, S15).
+  const ecrit = saveLocal();
+  return muterEmplacement(emp, () => consoliderPrincipale(emp)).then(() => ecrit).catch(e => {
+    console.warn('promotion non sérialisable', e);
+    signalerEchecSauvegarde(e);
+    return ecrit;
+  });
 }
 
 let autosaveTimer = null;
 function scheduleAutosave() {
   if (typeof G === 'undefined' || !G) return;
   clearTimeout(autosaveTimer);
-  autosaveTimer = setTimeout(saveLocal, 700);
+  autosaveTimer = setTimeout(() => { saveLocalSerialise().catch(e => console.warn('sauvegarde', e)); }, 700);
 }
 
 // Sauvegarde immédiate quand l'app passe en arrière-plan : iOS et Android peuvent tuer
@@ -2476,7 +4741,11 @@ function flushSave() {
 document.addEventListener('visibilitychange', () => {
   if (document.hidden) { flushSave(); audioPause(); } else { audioReprendre(); }
 });
-window.addEventListener('pagehide', flushSave);
+// `pagehide` n'a plus rien à rendre ni à demander : il écrit dans le foyer de la session, que
+// personne d'autre ne convoite, et la session meurt avec sa branche en sûreté. Le document
+// suivant — un rechargement en est un — la retrouvera et la promouvra, puisqu'elle déclare
+// remplacer la principale dont elle descend.
+window.addEventListener('pagehide', () => { flushSave(); });
 
 let lastTeamChoice = null;
 // Le choix porte sur une ASSOCIATION (indice dans CLUBS_ASSOS), plus sur un créneau de
@@ -2511,6 +4780,8 @@ function updateBranding() {
 }
 
 function newGame() {
+  // Une partie neuve appartient à l'emplacement qu'on vient de choisir dans le menu, dans sa génération.
+  adopterEmplacement(SLOT, undefined, generationCourante(SLOT));
   nextPlayerId = 1;
   const divIdx = 0; // départ en Régional, plancher de la pyramide
   const teams = buildDivisionTeams(divIdx);
@@ -2907,12 +5178,12 @@ function genPenalties(team, side) {
     else if (roll < 0.94) { type = 'majeure'; dur = 5; faute = pick(FAUTES_MAJEURES); shorthand = true; endsOnGoal = false; }
     else if (roll < 0.985) { type = 'mec'; dur = 10; faute = pick(FAUTES_MEC); shorthand = false; endsOnGoal = false; }
     else { type = 'pm'; dur = 5; faute = pick(FAUTES_GRAVES); shorthand = true; endsOnGoal = false; }
-    pens.push({ minute, nom: p.nom, team: team.short, side, type, dur, faute, shorthand, endsOnGoal });
+    pens.push({ minute, nom: p.nom, num: p.num, team: team.short, side, type, dur, faute, shorthand, endsOnGoal });
     p.seasonPenalties = (p.seasonPenalties || 0) + 1;
     if (type === 'mineure') {
       minors[p.id] = (minors[p.id] || 0) + 1;
       if (minors[p.id] === 3) {
-        pens.push({ minute, nom: p.nom, team: team.short, side, type: 'mec', dur: 10, shorthand: false, endsOnGoal: false,
+        pens.push({ minute, nom: p.nom, num: p.num, team: team.short, side, type: 'mec', dur: 10, shorthand: false, endsOnGoal: false,
           faute: "3e penalite mineure -- meconduite additionnelle (art. 10.1.7)" });
       }
     }
@@ -2922,7 +5193,7 @@ function genPenalties(team, side) {
     if (estFauteDeCrosse(faute)) {
       crosses[p.id] = (crosses[p.id] || 0) + 1;
       if (crosses[p.id] === 3) {
-        pens.push({ minute, nom: p.nom, team: team.short, side, type: 'exc', dur: 0, shorthand: false, endsOnGoal: false,
+        pens.push({ minute, nom: p.nom, num: p.num, team: team.short, side, type: 'exc', dur: 0, shorthand: false, endsOnGoal: false,
           faute: "3e infraction à la crosse — exclusion (art. 10.1.7 C)" });
         exclus.add(p.id);
       }
@@ -2999,7 +5270,7 @@ function simulateMatch(home, away) {
       // but en supériorité si l'adversaire a une prison 2'/5' active à cette minute
       const oppPens = side === 'home' ? pensA : pensH;
       const pp = !enOr && oppPens.some(p => p.shorthand && minute >= p.minute && minute < p.minute + p.dur);
-      scorers.push({ side, minute, nom: field[idx].nom, id: field[idx].id, team: team.short,
+      scorers.push({ side, minute, nom: field[idx].nom, num: field[idx].num, id: field[idx].id, team: team.short,
                      pp, prolongation: enOr });
       field[idx].seasonGoals = (field[idx].seasonGoals || 0) + 1;
     }
@@ -3184,6 +5455,9 @@ async function upgradeInfra(kind) {
   G.budget -= cost;
   G.club[kind]++;
   G.upgradesThisSeason++;
+  // Le relevé d'avant travaux sert ici, et nulle part ailleurs : c'est le passage de
+  // « insuffisant » à « suffisant » qui vaut confirmation.
+  confirmerTravauxSuffisants(suffisantAvant);
   // un sponsor déjà signé mais devenu hors de portée (rétrogradation) n'est pas retiré rétroactivement
   renderAll();
 }
@@ -3206,7 +5480,6 @@ async function buyLoge() {
   G.budget -= cost;
   G.club.loges++;
   G.upgradesThisSeason++;
-  confirmerTravauxSuffisants(suffisantAvant);
   renderAll();
 }
 function sponsorSigned(idx) {
@@ -3770,7 +6043,7 @@ function simulatePlayoffMatch(home, away) {
       const minute = irnd(1, 50);
       const oppPens = side === 'home' ? pensA : pensH;
       const pp = oppPens.some(p => p.shorthand && minute >= p.minute && minute < p.minute + p.dur);
-      scorers.push({ side, minute, nom: field[idx].nom, id: field[idx].id, team: team.short, pp });
+      scorers.push({ side, minute, nom: field[idx].nom, num: field[idx].num, id: field[idx].id, team: team.short, pp });
       field[idx].seasonGoals = (field[idx].seasonGoals || 0) + 1;
     }
   }
@@ -4284,6 +6557,10 @@ function audioDebloquer() {
 
 // ==================== Écran Réglages ====================
 function renderOptions() {
+  // La note de la carte Sauvegarde, selon l'endroit où le jeu tourne et dans la langue du joueur. Le texte
+  // vient du dictionnaire du jeu, jamais d'une saisie : il peut porter son gras.
+  const note = document.getElementById('noteSauvegarde');
+  if (note) note.innerHTML = T(IS_NATIVE ? 'sauvegarde.note.natif' : 'sauvegarde.note.web');
   const box = document.getElementById('optionsPanel');
   if (!box) return;
   // Pied des Réglages : c'est l'écran où l'on va chercher un numéro pour signaler un défaut.
@@ -4825,7 +7102,7 @@ function playerRow(p, opts = {}) {
     : '—';
   return `<tr class="${p.starter && opts.mine ? 'sel' : ''}" style="${p.injured ? 'opacity:.55' : ''}">
     <td data-label="${escHtml(T('colonne.pos'))}"><span class="pos ${p.pos}">${p.pos}</span></td>
-    <td data-label="${escHtml(T('colonne.nom'))}" class="nomcell"><img src="${portraitFor(p.id)}" class="portrait-thumb" alt="">${clubBadge}${escHtml(p.nom)} ${p.starter && opts.mine ? '<span class="starterDot">●</span>' : ''}${injBadge}</td>
+    <td data-label="${escHtml(T('colonne.nom'))}" class="nomcell">${portraitHtml(p, 'portrait-thumb', opts.equipe)}${clubBadge}${numeroHtml(p)} ${escHtml(p.nom)} ${p.starter && opts.mine ? '<span class="starterDot">●</span>' : ''}${injBadge}</td>
     <td data-label="${escHtml(T('colonne.age'))}">${p.age}</td>
     <td data-label="${escHtml(T('stat.general'))}"><b>${ov}</b>${opts.apport ? pastilleApport(p) : ''}</td>
     <td data-label="${escHtml(T('stat.tir'))}">${p.tir}</td><td data-label="${escHtml(T('stat.def'))}">${p.def}</td><td data-label="${escHtml(T('stat.vit'))}">${p.vit}</td><td data-label="${escHtml(T('stat.gar'))}">${p.pos === 'G' ? p.gar : '—'}</td>
@@ -4863,8 +7140,8 @@ function playerCard(p) {
   if (p.injured) {
     return `<div class="player-card injured" title="${escHtml(T('joueur.indisponible'))}">
       <span class="card-pos" style="background:${posColor}">${p.pos}</span>
-      <img src="${portraitFor(p.id)}" class="card-portrait" alt="">
-      <div class="card-name">${p.nom}</div>
+      ${portraitHtml(p, 'card-portrait', myTeam())}
+      <div class="card-name">${numeroHtml(p, 'card-num')} ${p.nom}</div>
       <div class="card-overall-label">${T('stat.general')}</div>
       <div class="card-overall">${ov}</div>
       <div class="card-stats">${statLine}</div>
@@ -4874,8 +7151,8 @@ function playerCard(p) {
   return `<div class="player-card ${p.starter ? 'selected' : ''}" onclick="toggleStarter(${p.id});renderEffectif();">
     <span class="card-pos" style="background:${posColor}">${p.pos}</span>
     ${badgeLigne}
-    <img src="${portraitFor(p.id)}" class="card-portrait" alt="">
-    <div class="card-name">${p.nom}</div>
+    ${portraitHtml(p, 'card-portrait', myTeam())}
+    <div class="card-name">${numeroHtml(p, 'card-num')} ${p.nom}</div>
     ${mentionDuo}
     <div class="card-overall-label">${T('stat.general')}</div>
     <div class="card-overall">${ov}</div>
@@ -4965,7 +7242,7 @@ function tuileEdition(p, attribut, action, classe, gestionnaire) {
   return `<button class="edit-tuile ${classe}" ${attribut}="${p.id}" onclick="${gestionnaire}(${p.id})"
       title="${escHtml(p.nom)}">
       <span class="tuile-photo">
-        <img src="${portraitFor(p.id)}" alt="" onerror="this.style.visibility='hidden'">
+        ${portraitHtml(p, 'tuile-img', myTeam())}
         <span class="tuile-pos" style="background:${COULEUR_POSTE[p.pos]}">${T('poste.' + p.pos + '.court')}</span>
       </span>
       <span class="tuile-nom">${escHtml(p.nom)}</span>
@@ -5087,7 +7364,7 @@ function slotJoueur(team, p) {
   // affichait 112 : le même joueur se regardait de deux façons opposées selon l'écran.
   return `<span class="ligne-slot" title="${escHtml(p.nom + ' — ' + T('poste.' + p.pos))}">`
     + `<span class="slot-photo">`
-    + `<img src="${portraitFor(p.id)}" alt="" onerror="this.style.visibility='hidden'">`
+    + portraitHtml(p, 'slot-img', team)
     + `<span class="slot-pos" style="background:${COULEUR_POSTE[p.pos]}">${T('poste.' + p.pos + '.court')}</span>`
     + `</span>`
     + `<span class="slot-nom">${escHtml(nomCourtEquipe(team, p))}</span></span>`;
@@ -5245,10 +7522,16 @@ function renderEffectif() {
   const me = myTeam();
   const sorted = [...me.players].sort((a, b) => (a.pos > b.pos ? 1 : a.pos < b.pos ? -1 : overall(b) - overall(a)));
   const cards = sorted.map(p => playerCard(p)).join('');
-  const rows = sorted.map(p => playerRow(p, {
+  // Un blessé aussi change de numéro : le bouton est commun aux deux branches.
+  const boutonNumero = p => `<button class="btn" data-numero="${p.id}" onclick="demanderNumero(${p.id})"
+                 aria-label="${escHtml(T('numero.titre', { nom: p.nom }))}">${T('numero.bouton', { n: numeroValide(p.num) ? p.num : '—' })}</button>`;
+  const parNumero = (a, b) => (numeroValide(a.num) ? a.num : 100) - (numeroValide(b.num) ? b.num : 100);
+  const rows = (triEffectif === 'numero' ? [...me.players].sort(parNumero) : sorted).map(p => playerRow(p, {
     mine: true,
-    actions: p.injured ? `<span class="tag">${T('joueur.indisponible')}</span> <button class="btn sell" onclick="sellPlayer(${p.id})">${T('effectif.vendre')}</button>`
-      : `<button class="btn ${p.consigne === 'prudent' ? 'buy' : ''}" onclick="basculerConsigne(${p.id})"
+    equipe: me,
+    actions: p.injured ? `<span class="tag">${T('joueur.indisponible')}</span> ${boutonNumero(p)} <button class="btn sell" onclick="sellPlayer(${p.id})">${T('effectif.vendre')}</button>`
+      : `${boutonNumero(p)}
+              <button class="btn ${p.consigne === 'prudent' ? 'buy' : ''}" onclick="basculerConsigne(${p.id})"
                  title="${escHtml(T('effectif.calmer.info'))}">🧊 ${p.consigne === 'prudent' ? T('effectif.sousConsigne') : T('effectif.calmer')}</button>
               <button class="btn sell" onclick="sellPlayer(${p.id})">${T('effectif.vendre')}</button>
               <button class="btn" onclick="loanPlayer(${p.id})">${T('effectif.preter')}</button>`
@@ -5262,7 +7545,7 @@ function renderEffectif() {
   const nField = me.players.filter(p => p.pos !== 'G' && p.starter).length;
   const totalWage = me.players.reduce((s, p) => s + (p.salaire || 0), 0);
   const objRows = me.players.filter(p => p.objective).map(p =>
-    `<li style="list-style:none;display:flex;align-items:center;gap:6px;margin-bottom:4px"><img src="${portraitFor(p.id)}" class="portrait-thumb sm" alt="">${T('effectif.objectifLigne', { nom: escHtml(p.nom), cible: p.objective.target, buts: p.seasonGoals || 0 })}
+    `<li style="list-style:none;display:flex;align-items:center;gap:6px;margin-bottom:4px">${portraitHtml(p, 'portrait-thumb sm', me)}${T('effectif.objectifLigne', { nom: escHtml(p.nom), cible: p.objective.target, buts: p.seasonGoals || 0 })}
      ${(p.seasonGoals || 0) >= p.objective.target ? `<span class="tag" style="color:var(--vert)">${T('effectif.objectifAtteint')} ✓</span>` : ''}</li>`).join('');
   document.getElementById('tab-effectif').innerHTML = `
     ${bandeau('effectif', DIVISIONS[G.divIdx].label, T('ecran.effectif.label'),
@@ -5327,7 +7610,7 @@ function renderEffectif() {
       <table>
         <tr><th>${T('colonne.joueur')}</th><th>${T('colonne.matchs')}</th><th>${T('colonne.buts')}</th><th>${T('colonne.penalites')}</th></tr>
         ${[...me.players].sort((a,b)=>(b.seasonGoals||0)-(a.seasonGoals||0)).slice(0,8).map(p =>
-          `<tr><td><img src="${portraitFor(p.id)}" class="portrait-thumb sm" alt="">${p.nom}</td><td>${p.seasonGames||0}</td><td><b>${p.seasonGoals||0}</b></td><td>${p.seasonPenalties||0}</td></tr>`
+          `<tr><td>${portraitHtml(p, 'portrait-thumb sm', me)}${numeroHtml(p)} ${p.nom}</td><td>${p.seasonGames||0}</td><td><b>${p.seasonGoals||0}</b></td><td>${p.seasonPenalties||0}</td></tr>`
         ).join('')}
       </table>
     </div>
@@ -5336,6 +7619,11 @@ function renderEffectif() {
       <details class="depliant" ${completDeplie ? 'open' : ''} ontoggle="memoriserDepliageComplet(this)">
         <summary>📄 ${T('effectif.complet')} <span class="tag">${T('effectif.completCompte', { n: me.players.length })}</span>${
           nBlesses ? `<span class="depliant-badge alerte">${T('effectif.indisponibles', { n: nBlesses })}</span>` : ''}</summary>
+      <p class="note"><label>${T('effectif.tri')}
+        <select data-tri-effectif onchange="triEffectif = this.value; renderEffectif()">
+          <option value="poste" ${triEffectif === 'poste' ? 'selected' : ''}>${T('effectif.tri.poste')}</option>
+          <option value="numero" ${triEffectif === 'numero' ? 'selected' : ''}>${T('effectif.tri.numero')}</option>
+        </select></label></p>
       <table class="responsive-cards">
         <tr><th>${T('colonne.pos')}</th><th>${T('colonne.nom')}</th><th>${T('colonne.age')}</th><th>${T('stat.general')}</th><th>${T('stat.tir')}</th><th>${T('stat.def')}</th><th>${T('stat.vit')}</th><th>${T('stat.gar')}</th><th>${T('stat.agr')}</th><th>${T('stat.forme')}</th><th>${T('stat.moral')}</th><th>${T('stat.potentiel')}</th><th>${T('colonne.contrat')}</th><th>${T('colonne.valeur')}</th><th></th></tr>
         ${rows}
@@ -5556,6 +7844,7 @@ function renderTransferts() {
       const blocked = !canSell(team, p);
       return playerRow(p, {
         apport: true,
+        equipe: team,
         club: team.short,
         actions: `<button class="btn buy" ${G.budget < price || blocked ? 'disabled' : ''}
           onclick="buyPlayer(${team.id},${p.id})">${T('transferts.acheter', { prix: euros(price) })}</button>
@@ -5571,6 +7860,9 @@ function renderTransferts() {
       const price = Math.round(playerValue(p) * 1.1 * premium / 10) * 10;
       return playerRow(p, {
         apport: true,
+        // Un joueur repéré n'a pas d'objet équipe : le duo se déduit du nom de son club, le même
+        // que portera ce club s'il devient adversaire un jour.
+        equipe: { name: clubName },
         club: `${clubName} (${DIVISIONS[divIdx].label})`,
         actions: `<button class="btn buy" ${G.budget < price ? 'disabled' : ''}
           onclick="buyScoutPlayer(${p.id})">${T('transferts.recruter', { prix: euros(price) })}</button>`
@@ -5657,6 +7949,53 @@ function infraTierImage(key, level, maxLevel) {
   return INFRA_DIR + base + '_' + paliers[idx] + '.webp';
 }
 
+// Le dépliant « Maillot » de l'écran Club. Mémorisé comme le tableau complet de l'effectif :
+// ce gestionnaire ne re-rend pas, il n'a donc pas besoin du garde de réentrance des ententes.
+let maillotDeplie = false;
+function memoriserDepliageMaillot(el) { maillotDeplie = !!el.open; }
+
+function pastillesMaillot(zone, actuel) {
+  return PALETTE_MAILLOTS.filter(couleurValide).map(c => {
+    const on = c === actuel;
+    return `<button type="button" class="pastille${on ? ' actif' : ''}" data-zone="${zone}" data-couleur="${c}"
+      style="--pastille:${c}" onclick="choisirMaillot('${zone}', '${c}')" aria-pressed="${on}"
+      aria-label="${escHtml(T('club.maillot.' + zone))} ${c}"></button>`;
+  }).join('');
+}
+
+function depliantMaillot() {
+  const me = myTeam();
+  const m = maillotDe(me);
+  const modele = me.players[0];
+  const zone = (z) => `<div class="maillot-zone"><b>${T('club.maillot.' + z)}</b>
+      <div class="maillot-pastilles">${pastillesMaillot(z, m[z])}
+        <label class="pastille libre" title="${escHtml(T('club.maillot.autre'))}"><input type="color" data-zone="${z}" value="${m[z]}"
+          onchange="choisirMaillot('${z}', this.value)" aria-label="${escHtml(T('club.maillot.autre'))}"><span aria-hidden="true">✎</span></label>
+      </div></div>`;
+  return `<details class="depliant maillot" ${maillotDeplie ? 'open' : ''} ontoggle="memoriserDepliageMaillot(this)">
+    <summary>🎽 ${T('club.maillot.titre')}</summary>
+    <p class="note">${T('club.maillot.note')}</p>
+    <div class="maillot-corps">
+      <div class="maillot-apercu">${modele ? portraitHtml(modele, 'card-portrait', me) : ''}</div>
+      <div class="maillot-zones">${zone('corps')}${zone('epaules')}</div>
+    </div>
+  </details>`;
+}
+
+// Une pastille : la balise du club est REMPLACÉE par un objet neuf, puis tout est re-rendu par
+// `renderAll()` — la convention des réglages de club (prix du billet, communication) — parce que
+// les portraits vivent sur tous les écrans : mesuré, l'effectif rendu avant le choix gardait
+// l'ancien bleu jusqu'à la prochaine action. Le dépliant rouvre grâce à `maillotDeplie`, et son
+// gestionnaire `toggle` ne re-rend pas : pas de boucle. `renderAll()` programme l'autosauvegarde.
+function choisirMaillot(zone, couleur) {
+  if ((zone !== 'corps' && zone !== 'epaules') || !couleurValide(couleur)) return;
+  const me = myTeam();
+  const neuf = maillotDe(me);
+  neuf[zone] = couleur;
+  me.maillot = neuf;
+  renderAll();
+}
+
 function renderClub() {
   const c = G.club;
   const infraCard = (kind, imgKey, label, desc) => {
@@ -5735,6 +8074,7 @@ function renderClub() {
     <p class="note">${T('club.capacite', { placesHtml: `<b style="color:var(--tan)">${nombreLocal(stadiumCapacity())}</b>` })}
     ${T('club.chantiers', { chantiersHtml: `<b style="color:${G.upgradesThisSeason >= MAX_UPGRADES_PER_SEASON ? 'var(--rouge)' : 'var(--vert)'}">${MAX_UPGRADES_PER_SEASON - G.upgradesThisSeason}/${MAX_UPGRADES_PER_SEASON}</b>` })}</p>
     ${regleRepliable(`<p>${T('club.classe.regle')}</p><p>${T('club.chantiers.info')}</p>`)}
+    ${depliantMaillot()}
     <div class="lineup-grid" style="grid-template-columns:repeat(auto-fill,minmax(280px,1fr))">
       ${infraCard('stade', 'club', '🏟️ ' + T('infra.stade.label'), T('infra.stade.desc'))}
       ${infraCard('confort', 'tribune', '🪑 ' + T('infra.confort.label'), T('infra.confort.desc'))}
@@ -5787,7 +8127,7 @@ function showReport() {
   const { m, res, home, away } = G.lastReport;
   const isPlayoff = !!G.lastReport.playoff;
   const goals = res.scorers.map(s =>
-    `<li style="list-style:none;display:flex;align-items:center;gap:6px;margin-bottom:3px">${s.minute}' — <img src="${portraitFor(s.id)}" class="portrait-thumb sm" alt="">${s.nom} <span class="tag">(${s.team})</span></li>`).join('');
+    `<li style="list-style:none;display:flex;align-items:center;gap:6px;margin-bottom:3px">${s.minute}' — ${portraitHtml(s, 'portrait-thumb sm', s.side === 'home' ? home : away)}${numeroHtml(s)} ${s.nom} <span class="tag">(${s.team})</span></li>`).join('');
   const otHtml = res.wentOT ? `<p class="tag">${T('rapport.prolongation')}</p>` : '';
   const others = isPlayoff ? '' : `<p class="tag">${T('rapport.autres')} ` + G.schedule[G.day - 1]
     .filter(x => x !== m)
@@ -5801,7 +8141,7 @@ function showReport() {
   const finTag = fin ? `<p class="tag">${T('rapport.recette', { montantHtml: `<b style="color:${fin.total>=0?'var(--vert)':'var(--rouge)'}">${euros(fin.total)}</b>` })}</p>` : '';
   const cardsHtml = (res.penalties && res.penalties.length)
     ? `<p class="tag"><b>${T('colonne.penalites')} :</b> ` + res.penalties.map(p =>
-        `${p.minute}' ${PENALTY_LABEL[p.type]} ${escHtml(p.nom)} (${escHtml(p.team)}, ${fauteLabel(p.faute)}, ${p.dur}')`
+        `${p.minute}' ${PENALTY_LABEL[p.type]} ${numeroTexte(p)} ${escHtml(p.nom)} (${escHtml(p.team)}, ${fauteLabel(p.faute)}, ${p.dur}')`
       ).join(' • ') + `</p>`
     : `<p class="tag">${T('rapport.aucunePenalite')}</p>`;
   box.innerHTML = `
@@ -6238,11 +8578,11 @@ function renderInbox() {
   const items = (G.inbox || []);
   const typeIcon = { board: '📋', contrat: '📝', objectif: '🎯', cup: '🏆', transfert: '💰', info: 'ℹ️' };
   const rows = items.slice().reverse().map(m => `
-    <div class="msg t-${m.type || 'info'}">
-      <span class="ic">${typeIcon[m.type] || 'ℹ️'}</span>
+    <div class="msg t-${typeCourrier(m)}">
+      <span class="ic">${typeIcon[typeCourrier(m)] || 'ℹ️'}</span>
       <div class="tx">
-        <b>${messageTitre(m)}</b>
-        <p>${messageCorps(m)}</p>
+        <b>${escHtml(messageTitre(m))}</b>
+        <p>${assainirHtml(messageCorps(m))}</p>
         <span class="q">${T('courrier.date', { saison: m.season, journee: m.day })}</span>
       </div>
     </div>`).join('');
@@ -6310,7 +8650,7 @@ function renderHistorique() {
 // En natif, le téléchargement navigateur n'existe pas : on écrit le fichier puis on ouvre
 // la feuille de partage du système (AirDrop, Mail, Fichiers...). En web, téléchargement classique.
 async function exportSaveFile() {
-  const json = JSON.stringify({ G, nextPlayerId, savedAt: Date.now() });
+  const json = JSON.stringify({ schema: SCHEMA_SAUVEGARDE, G, nextPlayerId, savedAt: Date.now() });
   const filename = `rhm-saison${G.season}-j${G.day}.json`;
 
   const Filesystem = capPlugin('Filesystem');
@@ -6354,50 +8694,65 @@ document.getElementById('btnSave').addEventListener('click', () => {
 });
 
 // ---------------- Chargement d'une sauvegarde (fichier ou stockage local) ----------------
-// Ce qu'une lettre a le droit de contenir : un portrait, du gras, des notes. On ne peut donc
-// pas échapper le corps des messages — ce serait afficher les balises en clair. On retire
-// ce qui EXÉCUTE, et on laisse le reste.
-const IMPORT_BALISES = /<\s*\/?\s*(script|iframe|object|embed|link|meta|base|form|svg|math|applet|frame|frameset)\b[^>]*>/gi;
-const IMPORT_EVENEMENTS = /\son[a-z]+\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/gi;
-const IMPORT_URL_ACTIVE = /(?:javascript|vbscript)\s*:/gi;
-// Profondeur maximale d'un objet importé. Une sauvegarde saine ne dépasse pas cinq niveaux ;
-// au-delà, c'est une structure fabriquée, et on ne lui doit pas une descente infinie.
-const IMPORT_PROFONDEUR_MAX = 12;
-
-function nettoyerChaineImportee(s) {
-  let avant, tours = 0;
-  // Jusqu'à stabilité : retirer une balise peut en reformer une. `<scr<script>ipt>` devient
-  // `<script>` après un seul passage — un seul remplacement ne suffit donc jamais.
-  do {
-    avant = s;
-    s = s.replace(IMPORT_BALISES, '').replace(IMPORT_EVENEMENTS, '').replace(IMPORT_URL_ACTIVE, '');
-  } while (s !== avant && ++tours < 8);
-  return s;
-}
-
-function nettoyerImport(v, profondeur) {
-  const p = profondeur || 0;
-  if (typeof v === 'string') return nettoyerChaineImportee(v);
-  if (!v || typeof v !== 'object') return v;          // nombres, booléens, null : intacts
-  if (p >= IMPORT_PROFONDEUR_MAX) return Array.isArray(v) ? [] : {};
-  if (Array.isArray(v)) return v.map(x => nettoyerImport(x, p + 1));
-  const out = {};
-  Object.keys(v).forEach(k => {
-    // `__proto__` et consorts ne peuvent rien polluer via JSON.parse, mais les recopier
-    // dans un objet neuf n'a aucun intérêt non plus.
-    if (k === '__proto__' || k === 'constructor' || k === 'prototype') return;
-    out[k] = nettoyerImport(v[k], p + 1);
-  });
-  return out;
-}
-
-function hydrateSave(data) {
+// L'ASSAINISSEMENT ET LA VALIDATION D'UN FICHIER IMPORTÉ vivent dans `validation-import.js`
+// (A4, première extraction). Deux cent quinze lignes qui ne touchent ni à `G`, ni au DOM du
+// jeu, ni au stockage : elles décident seulement si une sauvegarde a le droit d'entrer. La
+// pièce est CRITIQUE — sans elle, `validerCandidat` n'existe pas, `analyserSauvegarde` lève, et
+// quatre emplacements pleins se déclarent illisibles.
+function hydrateSave(data, emplacement, origines, generation) {
   // Point de passage unique de toutes les sauvegardes — fichier importé, stockage local,
   // Preferences natives. Le nettoyage est ici plutôt qu'à chaque appelant : un point d'entrée
   // qu'on peut oublier est un point d'entrée qui sera oublié.
-  data = nettoyerImport(data);
-  G = data.G; nextPlayerId = data.nextPlayerId || 10000;
+  //
+  // TRANSACTION (audit du 9 septembre 2026, C2) : rien n'est installé avant d'avoir tout
+  // vérifié. Le candidat est nettoyé et validé à part ; puis les compléments de migration
+  // tournent sur lui pendant que les globaux sont MIS DE CÔTÉ — ils lisent `G`, on ne va pas
+  // les réécrire tous pour ça — et le moindre échec remet ces globaux exactement comme avant,
+  // jusqu'aux poules de la division que `applyTeamChoice()` recompose. Tout est synchrone :
+  // aucune autosauvegarde ne peut s'intercaler. La partie active ne voit rien passer.
+  const candidat = nettoyerImport(data);
+  validerCandidat(candidat);
+  // La DESTINATION fait partie de l'état transactionnel : sans elle, un retour arrière rendait
+  // l'ancienne partie à un autre emplacement que le sien (revue de la v154, S8).
+  // La génération de la session sur l'emplacement visé en fait partie aussi (revue de la v172, S26) : un
+  // retour arrière qui la laisserait à la génération neuve ferait écrire l'ancienne partie vivante.
+  const cible = emplacement === undefined ? SLOT : emplacement;
+  const avant = { G, nextPlayerId, lastTeamChoice, CLUB_ASSO, SLOT_PARTIE, poules: DIVISIONS.map(d => d.teams),
+                  generation: generationSession[cible], signale: emplacementEffaceSignale[cible] };
+  try {
+    G = candidat.G; nextPlayerId = candidat.nextPlayerId || 10000;
+    migrerPartie();
+    // L'installation est DANS la transaction (revue de la v145, R2) : un rendu qui lève
+    // laissait la partie active remplacée par un candidat que la validation avait laissé passer.
+    // Sans génération fournie, celle de l'emplacement : une donnée venue d'ailleurs ne choisit pas sa génération.
+    installerPartie(emplacement, origines, generation === undefined ? generationCourante(cible) : generation);
+  } catch (e) {
+    G = avant.G; nextPlayerId = avant.nextPlayerId; lastTeamChoice = avant.lastTeamChoice; CLUB_ASSO = avant.CLUB_ASSO;
+    SLOT_PARTIE = avant.SLOT_PARTIE;
+    generationSession[cible] = avant.generation; emplacementEffaceSignale[cible] = avant.signale;
+    DIVISIONS.forEach((d, i) => { d.teams = avant.poules[i]; });
+    // Un rendu partiel a pu armer l'autosauvegarde sur le candidat : on la désarme, puis on
+    // remet l'interface — la partie active réaffichée si elle existait, sinon le menu.
+    clearTimeout(autosaveTimer); autosaveTimer = null;
+    if (G) {
+      // RÉAFFICHER, pas réinstaller : la destination vient d'être restaurée, rien ne doit la
+      // toucher.
+      try { afficherPartie(); } catch (x) { console.error('réaffichage de la partie active', x); }
+    } else {
+      document.body.classList.remove('game-started');
+      try { refreshMenu(); } catch (x) { console.error(x); }
+    }
+    throw e;
+  }
+}
+
+// Les compléments : une sauvegarde d'avant telle ou telle version reçoit les champs qu'elle
+// n'a jamais eus. Tout est idempotent — une partie à jour n'est pas modifiée. Travaille sur
+// `G`, qui est le CANDIDAT pendant la transaction de hydrateSave().
+function migrerPartie() {
   relierPoules();   // avant tout le reste : myTeam() lit G.teams
+  normaliserMaillots();   // v176 : une balise sur chaque équipe de chaque poule
+  normaliserNumeros();    // v179 : un numéro sur chaque joueur, unique dans son équipe
   if (!G.coaches) G.coaches = { tir: 0, def: 0, vit: 0, gar: 0 };
   if (!G.lastTraining) G.lastTraining = [];
   if (!G.staff) G.staff = { attaque: null, defense: null, physique: null, gardiens: null, discipline: null, specialistes: null, recruteur: null, medecin: null };
@@ -6406,6 +8761,9 @@ function hydrateSave(data) {
   if (!G.market) G.market = fillMarket();
   if (!G.scoutPool) G.scoutPool = buildScoutPool();
   if (!G.inbox) G.inbox = [];
+  // Un type inconnu — vieille version, ou fichier fabriqué — devient `info` : la lettre reste
+  // lisible, et le rendu n'a jamais à composer une classe depuis une valeur brute.
+  G.inbox.forEach(m => { if (m && !TYPES_COURRIER.has(m.type)) m.type = 'info'; });
   if (!G.history) G.history = [];
   if (G.boardConfidence === undefined) G.boardConfidence = 60;
   if (!G.boardObjective) assignBoardObjective();
@@ -6491,6 +8849,14 @@ function hydrateSave(data) {
     applyTeamChoice(G.teamChoice.assoId !== undefined ? G.teamChoice.assoId : null,
                     G.teamChoice.code);
   }
+}
+
+// Le candidat est devenu la partie : on le montre. C'est ici, et seulement ici, que le rendu
+// — donc l'autosauvegarde — est déclenché.
+// AFFICHER une partie et l'INSTALLER sont deux choses : la première ne décide de rien. Le
+// réaffichage d'une partie après un retour arrière passe par ici, et ne doit surtout pas
+// changer où elle s'enregistre (revue de la v154, S8).
+function afficherPartie() {
   document.body.classList.add('game-started');
   document.body.classList.remove('ts-open');
   updateBranding();
@@ -6500,12 +8866,89 @@ function hydrateSave(data) {
   if (mr) mr.style.display = 'none';
 }
 
-function handleSaveFile(file, onDone) {
+// Seul chemin d'INSTALLATION d'une partie : c'est ici que sa destination est fixée, et nulle
+// part ailleurs. Elle est TRANSPORTÉE quand l'appelant en a une — l'import, qui a contrôlé un
+// emplacement précis et ne doit pas en installer un autre (revue de la v154, S7). Sans
+// argument, c'est l'emplacement affiché, comme pour une reprise depuis le menu.
+function installerPartie(emplacement, origines, generation) {
+  adopterEmplacement(emplacement === undefined ? SLOT : emplacement, origines, generation);
+  afficherPartie();
+}
+
+// Trois refus, trois diagnostics. Ils ne demandent pas la même chose au joueur : trancher un
+// conflit, relancer le jeu, ou remettre deux copies d'accord. Un seul endroit les compose —
+// `handleSaveFile()` contrôle deux fois, et deux formulations qui dériveraient l'une de l'autre
+// seraient deux vérités.
+const REFUS_IMPORT = {
+  operation: ['conflit.operationTitre', 'conflit.importOperation'],
+  compromis: ['conflit.compromisTitre', 'conflit.importCompromis'],
+  occupe: ['conflit.occupeTitre', 'conflit.importOccupe'],
+  conflit: ['conflit.titre', 'conflit.importRefuse'],
+  incertain: ['conflit.incertainTitre', 'conflit.importIncertain'],
+  divergent: ['conflit.divergentTitre', 'conflit.importDivergent'],
+};
+// Le motif qui interdit tout import dans l'emplacement, sans rien lire : `null` s'il n'y en a pas.
+function importBloque(s) {
+  if (operationEnCours[s]) return 'operation';
+  if (IS_NATIVE && natifCompromis) return 'compromis';
+  return null;
+}
+function refuserImport(s, motif, sources) {
+  const [titre, texte] = REFUS_IMPORT[motif] || REFUS_IMPORT.incertain;
+  // La mémoire parmi les sources change ce qu'on a le droit de conseiller (revue de la v160,
+  // S12) : une partie qui n'existe que dans la page ne survit ni à une fermeture ni à un
+  // rechargement. L'avertissement S'AJOUTE au diagnostic — celui-ci reste juste, et la consigne
+  // de sécurité vient en plus, au lieu de le remplacer par un message plus vague.
+  const memoire = (sources || []).indexOf('memoire') >= 0;
+  notifyError(T(titre, { n: s }),
+              T(texte, { n: s }) + (memoire ? '\n\n' + T('conflit.avertMemoire') : ''));
+  refreshMenu();
+}
+
+async function handleSaveFile(file, onDone) {
   if (!file) return;
+  // On n'écrit dans un emplacement que si l'on SAIT ce qu'il contient : quatre clés natives
+  // relues sans erreur, et aucune divergence. Un conflit connu réutiliserait une clé déjà
+  // occupée par une branche ; une lecture ratée cacherait peut-être la même chose (revue de la
+  // v152, S4). Le contrôle vient AVANT `FileReader` et avant `hydrateSave()` : la partie active
+  // n'est pas remplacée, et rien n'est écrit.
+  const emplacement = SLOT;
+  // Pendant un effacement ou une résolution de cet emplacement, ou un état natif compromis, aucun import
+  // (revue de la v172, S26) : il adopterait une génération sur le point de mourir, ou écrirait une mémoire
+  // douteuse.
+  const bloque = importBloque(emplacement);
+  if (bloque) { refuserImport(emplacement, bloque, []); return; }
+  const verdict = await emplacementSurPourImport(emplacement);
+  if (!verdict.sur) { refuserImport(emplacement, verdict.motif, verdict.sources); return; }
+  // Bornée AVANT lecture : un fichier de plusieurs dizaines de Mo n'est pas une sauvegarde,
+  // et le lire en entier ne servirait qu'à geler l'appareil.
+  if (file.size > TAILLE_MAX_SAUVEGARDE) {
+    notifyError(T('dlg.fichierInvalide.titre'), T('dlg.fichierInvalide.texte', {
+      detail: T('import.tropGros', { mo: (file.size / 1048576).toFixed(1), max: TAILLE_MAX_SAUVEGARDE / 1048576 }) }));
+    return;
+  }
   const reader = new FileReader();
-  reader.onload = () => {
+  reader.onerror = () => {
+    notifyError(T('dlg.fichierInvalide.titre'), T('dlg.fichierInvalide.texte', { detail: T('import.lectureImpossible') }));
+  };
+  reader.onload = async () => {
     try {
-      hydrateSave(JSON.parse(reader.result));
+      const data = JSON.parse(reader.result);
+      // La destination est RECONTRÔLÉE juste avant l'installation. Entre le premier contrôle et
+      // la fin de la lecture, l'emplacement a pu changer d'état — et le joueur a pu en afficher
+      // un autre. On installe dans l'emplacement contrôlé, ou nulle part.
+      if (importBloque(emplacement)) { refuserImport(emplacement, importBloque(emplacement), []); return; }
+      // L'emplacement est tenu pendant le second contrôle : aucun effacement n'y démarre entre le contrôle et
+      // l'installation.
+      operationEnCours[emplacement] = true;
+      let revalide;
+      try { revalide = await emplacementSurPourImport(emplacement); }
+      finally { operationEnCours[emplacement] = false; }
+      if (!revalide.sur) { refuserImport(emplacement, revalide.motif, revalide.sources); return; }
+      if (importBloque(emplacement)) { refuserImport(emplacement, importBloque(emplacement), []); return; }
+      // La génération d'un import vient du MARQUEUR, jamais du fichier : une branche exportée porte la sienne,
+      // peut-être morte (revue de la v172, S26).
+      hydrateSave(data, emplacement, undefined, generationCourante(emplacement));
       if (onDone) onDone();
     } catch (err) {
       console.error(err);

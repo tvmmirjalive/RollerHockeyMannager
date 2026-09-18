@@ -36,7 +36,8 @@
 //
 // Ce que ce fichier emprunte au reste du jeu, et qui doit donc rester disponible :
 //   `clampV`, `irnd`, `pick`, `escHtml`, `T`, `portraitFor`, `showReport`,
-//   `PENALTY_LABEL`, `fauteLabel`, `overall`, `effOv`, `lineupOf`.
+//   `PENALTY_LABEL`, `fauteLabel`, `overall`, `effOv`, `lineupOf`, `maillotDe`,
+//   `numeroValide`, `numeroTexte`.
 // Toutes sont appelées à l'exécution, jamais à l'analyse : l'ordre de chargement est donc
 // sans importance pour elles.
 
@@ -56,16 +57,48 @@ function mvInitCanvas() {
   if (mvCtx) return mvCtx;
   mvCanvas = document.getElementById('mvCanvas');
   mvCtx = mvCanvas ? mvCanvas.getContext('2d') : null;
+  if (mvCtx) {
+    // La taille AFFICHÉE ne change pas : `#mvCanvas` est en `width: 100%; height: auto`, et
+    // le rapport 740/420 est conservé. Seule la trame de dessin est plus fine.
+    mvCanvas.width = MW * MV_FINESSE; mvCanvas.height = MH * MV_FINESSE;
+    mvCtx.setTransform(MV_FINESSE, 0, 0, MV_FINESSE, 0, 0);
+  }
   return mvCtx;
 }
 const MW = 740, MH = 420;
 const mxMin = 20, mxMax = MW - 20, myMin = 20, myMax = MH - 20;
 const mCORNER = 70, mGL_L = mxMin + 55, mGL_R = mxMax - 55;
-const mCY = MH / 2, mGoalHalf = 45, mGoalDepth = 18;
+// Cage : 56 px de bouche. Voir la visée de `forceScriptedShot`, qui en dépend.
+const mCY = MH / 2, mGoalHalf = 28, mGoalDepth = 14;
 // SLOT : zone de haut risque devant chaque cage (doc tactique Colomiers). Sert de repère à la défense de zone.
 const mSLOT_L = mGL_L + 95, mSLOT_R = mGL_R - 95; // limite avant du slot de chaque camp
 const mSLOT_HALF = 70; // demi-hauteur du slot
 const MV_BODY_R = 10.5;
+// L'échelle du dessin. La piste fait 700 px de long ; le règlement admet 40 à 60 m
+// (Équipements 2.2.3.2 C). On retient 40 m : c'est la piste la plus courte, donc l'échelle
+// la plus EXIGEANTE pour la distance de 1,5 m imposée à l'engagement.
+const MV_PX_PAR_M = 17.5;
+// Cercle d'engagement : 3 m de rayon, au centre comme en zone (Équipements 2.2.5.2 A et B).
+const MV_RAYON_CERCLE = 3 * MV_PX_PAR_M;
+// Les quatre points de zone : 6,10 m de la ligne de but, 6,70 m de l'axe longitudinal.
+const MV_ZONE_DX = 6.10 * MV_PX_PAR_M, MV_ZONE_DY = 6.70 * MV_PX_PAR_M;
+// Le canevas est dessiné à l'échelle 2 : sur un téléphone à 3 px par point, 740 px logiques
+// étirés sur ~330 points donnaient des cercles baveux. Deux suffit — 1480 px pour 990 réels.
+const MV_FINESSE = 2;
+// Le casque du patineur vu de dessus. À 4,2 px Mirja l'a trouvé trop petit ; au-delà de 6 il
+// recouvre le corps du maillot et le club bleu redevient blanc sur téléphone.
+const MV_RAYON_CASQUE = 5.6;
+// Les numéros ne se dessinent sur la piste que si le canevas AFFICHÉ fait au moins cette largeur.
+// Sur un téléphone il en fait 330 et un patineur 10 : un numéro de 4 px n'est pas un numéro.
+const MV_LARGEUR_NUMEROS = 560;
+function mvNumerosVisibles() {
+  return !!mvCanvas && mvCanvas.clientWidth >= MV_LARGEUR_NUMEROS;
+}
+// La palette de la crosse : son angle avec le manche, et sa longueur à l'écran.
+const MV_COUDE_PALETTE = 55 * Math.PI / 180, MV_LONGUEUR_PALETTE = 8;
+// Le temps que la formation reste IMMOBILE avant que le palet reparte. Une demi-minute de jeu,
+// soit une demi-seconde à x1 : assez pour lire le placement, trop peu pour lasser à x4.
+const MV_POSE_ENGAGEMENT = 0.5;
 // Au-delà de ce temps de jeu, un palet libre et immobile est remis en mouvement. Deux
 // minutes : assez long pour ne jamais interrompre une phase de jeu réelle — la relance
 // naturelle par passe intervient toutes les 0,7 à 1,4 minute — assez court pour qu'un
@@ -108,7 +141,7 @@ function mvKickPuck(tx, ty, power) {
 function mvTriggerGoal(e) {
   if (!e) return;
   if (e.side === 'home') mv.gH++; else mv.gA++;
-  feedLine(`${Math.floor(mv.t)}' — <b>BUT !</b> ${escHtml(e.nom)} (${escHtml(e.team)})`
+  feedLine(`${Math.floor(mv.t)}' — <b>BUT !</b> ${numeroTexte(e)} ${escHtml(e.nom)} (${escHtml(e.team)})`
     + (e.pp ? ' <span class="tag">(supériorité numérique)</span>' : '')
     + (e.prolongation ? ' <span class="tag">(but en or)</span>' : ''), true);
   mv.goalFlash = 1.2;
@@ -137,8 +170,10 @@ function forceScriptedShot() {
 
   // 1) désigne le buteur et lui confie le palet s'il ne l'a pas encore
   if (!ss || ss.evtIdx !== mv.nextEvt) {
-    const shooter = [...mv.skaters].filter(s => s.team === nxt.side)
-      .sort((a, b) => Math.abs(a.x - goalX) - Math.abs(b.x - goalX))[0];
+    const candidats = [...mv.skaters].filter(s => s.team === nxt.side);
+    // Le buteur du rapport s'il est sur la piste ; sinon le plus proche de la cage, comme avant.
+    const shooter = candidats.find(s => s.p && s.p.id === nxt.id)
+      || candidats.sort((a, b) => Math.abs(a.x - goalX) - Math.abs(b.x - goalX))[0];
     if (!shooter) return;
     mv.puck.owner = shooter;
     mv.scriptedShot = { side: nxt.side, evtIdx: mv.nextEvt, shooter, fired: false };
@@ -153,14 +188,16 @@ function forceScriptedShot() {
 
   // 3) TIR : le palet part du buteur vers un coin de la cage, à grande vitesse (bien visible)
   const gk = mv.goalies.find(g => (nxt.side === 'home') ? g.x > MW / 2 : g.x < MW / 2);
-  const aimY = mCY + (gk && gk.y > mCY ? -1 : 1) * rnd(14, 30); // vise à l'opposé du gardien
+  // vise à l'opposé du gardien, et DANS la bouche : 9 px de marge pour le rayon du palet (5,5)
+  // et la dérive du tir. L'ancienne borne de 30 px était écrite pour une cage de 45.
+  const aimY = mCY + (gk && gk.y > mCY ? -1 : 1) * rnd(8, mGoalHalf - 9);
   mv.puck.x = sh.x; mv.puck.y = sh.y;
   mv.puck.owner = null;
   mvKickPuck(goalX + (nxt.side === 'home' ? 12 : -12), aimY, rnd(230, 290));
   mv.puck.ownerCooldown = 2.0; // tir cadré : personne ne l'intercepte en vol
   ss.fired = true;
   if (mv.report.home.human || mv.report.away.human) {
-    feedLine(`${Math.floor(mv.t)}' — 🏒 Lancer de ${escHtml(sh.p.nom)} (${escHtml(nxt.side === 'home' ? mv.report.home.short : mv.report.away.short)}) depuis le slot !`);
+    feedLine(`${Math.floor(mv.t)}' — 🏒 Lancer de ${escHtml(nxt.nom)} (${escHtml(nxt.side === 'home' ? mv.report.home.short : mv.report.away.short)}) depuis le slot !`);
   }
 }
 
@@ -299,6 +336,24 @@ function updateMvPuck(simDt) {
   }
 }
 
+// Deux maillots se confondent quand leurs CORPS sont proches : c'est lui qu'on voit de loin.
+// 110 sur 441 (la diagonale du cube RVB) sépare le bleu du club du bleu nuit, pas le rouge du
+// bordeaux. Le visiteur retourne alors son maillot — épaules en corps — et, si cela ne suffit
+// toujours pas, prend le blanc ou le noir, celui des deux qui est le plus loin du receveur.
+const MV_ECART_MAILLOTS = 110;
+function mvEcartCouleur(a, b) {
+  const c = h => [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16));
+  const [r1, g1, b1] = c(a), [r2, g2, b2] = c(b);
+  return Math.hypot(r1 - r2, g1 - g2, b1 - b2);
+}
+function mvMaillotDistinct(receveur, visiteur) {
+  if (mvEcartCouleur(receveur.corps, visiteur.corps) >= MV_ECART_MAILLOTS) return visiteur;
+  if (mvEcartCouleur(receveur.corps, visiteur.epaules) >= MV_ECART_MAILLOTS)
+    return { corps: visiteur.epaules, epaules: visiteur.corps };
+  const blanc = mvEcartCouleur(receveur.corps, '#ffffff'), noir = mvEcartCouleur(receveur.corps, '#141414');
+  return blanc >= noir ? { corps: '#ffffff', epaules: '#141414' } : { corps: '#141414', epaules: '#ffffff' };
+}
+
 // Ligne de champ affichée : les 2 meilleurs Tir jouent attaquants, les 2 meilleurs Déf jouent défenseurs
 function mvPickLine(team) {
   const { gk, field } = lineupOf(team);
@@ -310,24 +365,42 @@ function mvPickLine(team) {
 }
 
 function initMvSkaters(report) {
-  const hCol = report.home.human ? '#00ade9' : '#e9eef4';
-  const aCol = report.away.human ? '#00ade9' : '#f0803a';
+  // Depuis la v176 chaque équipe a son maillot dans la sauvegarde : la visionneuse le LIT,
+  // elle n'en invente pas un. Le receveur garde le sien ; c'est le visiteur qui change de jeu
+  // de maillots quand les deux se confondent, comme sur une vraie feuille de match.
+  const hM = maillotDe(report.home);
+  const aM = mvMaillotDistinct(hM, maillotDe(report.away));
+  const hCol = hM.corps, aCol = aM.corps;
+  mv.maillots = { home: hM, away: aM };
   const hLine = mvPickLine(report.home);
   const aLine = mvPickLine(report.away);
   function mk(p, team, role, idx, col, x, y) {
-    return { x, y, homeX: x, homeY: y, heading: team === 'home' ? 0 : Math.PI, speed: 0, team, role, idx, col, p, isLead: false };
+    return { x, y, homeX: x, homeY: y, heading: team === 'home' ? 0 : Math.PI, speed: 0, team, role, idx, col,
+      col2: mv.maillots[team].epaules, p, isLead: false };
   }
   // On construit autant de patineurs qu'il y a de JOUEURS, jamais huit par principe. Un
   // club réduit à trois joueurs de champ valides — une cascade de blessures suffit —
   // produisait sinon un patineur bâti sur `undefined`, et `mvMaxSpeed` plantait sur `p.vit`
   // dès la première image. On ne complète pas avec des doublons : voir deux fois le même
   // joueur serait plus déroutant que d'en voir un de moins.
-  const places = [
-    ['home', 'fwd', 0, MW/2 - 34, mCY - 30], ['home', 'fwd', 1, mGL_L + 175, mCY + 95],
-    ['home', 'def', 2, mGL_L + 95, mCY - 70], ['home', 'def', 3, mGL_L + 80, mCY + 55],
-    ['away', 'fwd', 0, MW/2 + 34, mCY + 30], ['away', 'fwd', 1, mGL_R - 175, mCY - 95],
-    ['away', 'def', 2, mGL_R - 95, mCY + 70], ['away', 'def', 3, mGL_R - 80, mCY - 55]
-  ];
+  // L'engagement au point central, tel que le décrit le Règlement Sportif 9.3.1 E et F :
+  //   · l'engageur SUR l'axe du point, dans son camp, face à l'autre. 15 px de chaque côté
+  //     font 30 px entre les deux, soit 1,7 m : au-dessus du 1,5 m exigé, et assez près
+  //     pour que les deux crosses se touchent presque au-dessus du palet ;
+  //   · l'ailier sur le MÊME axe transversal, hors du cercle — 72 px de l'axe, soit 73,5 px
+  //     du point pour un cercle de 52,5 et un corps de 10,5 ;
+  //   · les deux défenseurs « en retrait vers leur camp » : l'un en demi-aile de l'autre
+  //     côté, l'autre en couverture derrière l'engageur. C'est le losange qu'on voit en
+  //     quatre contre quatre, pas une règle — la règle dit seulement « ou en retrait ».
+  // Les deux équipes sont en MIROIR par rapport à la ligne médiane : chacun fait face à son
+  // vis-à-vis. L'ancienne disposition était en symétrie CENTRALE, d'où des engageurs décalés
+  // de ±30 px qui se croisaient en diagonale au lieu de se faire face.
+  const ENGAGEMENT = [['fwd', 0, 15, 0], ['fwd', 1, 15, -72], ['def', 2, 58, 72], ['def', 3, 118, 0]];
+  const places = [];
+  ENGAGEMENT.forEach(([role, idx, recul, dy]) => {
+    places.push(['home', role, idx, MW/2 - recul, mCY + dy]);
+    places.push(['away', role, idx, MW/2 + recul, mCY + dy]);
+  });
   mv.skaters = [];
   places.forEach(([team, role, idx, x, y]) => {
     const ligne = team === 'home' ? hLine : aLine;
@@ -336,8 +409,8 @@ function initMvSkaters(report) {
     mv.skaters.push(mk(joueur, team, role, idx, team === 'home' ? hCol : aCol, x, y));
   });
   mv.goalies = [
-    { x: mGL_L + 12, y: mCY, col: hCol, p: hLine.gk },
-    { x: mGL_R - 12, y: mCY, col: aCol, p: aLine.gk }
+    { x: mGL_L + 12, y: mCY, col: hCol, col2: hM.epaules, gardien: true, p: hLine.gk },
+    { x: mGL_R - 12, y: mCY, col: aCol, col2: aM.epaules, gardien: true, p: aLine.gk }
   ].filter(g => g.p);
 }
 
@@ -512,9 +585,13 @@ function updateMvSkaters(simDt) {
         const minD = MV_BODY_R * 2;
         if (d < minD) {
           if (d < 0.01) d = 0.01;
-          const nx = dx / d, ny = dy / d, push = (minD - d) / 2;
-          a.x -= nx * push; a.y -= ny * push;
-          b.x += nx * push; b.y += ny * push;
+          // Un gardien TIENT SA PLACE : c'est l'autre qui cède, de tout le chevauchement. Le
+          // partage moitié-moitié le reculait à chaque contact, jusque derrière sa cage.
+          const nx = dx / d, ny = dy / d, chevauchement = minD - d;
+          const partA = a.gardien ? 0 : (b.gardien ? 1 : 0.5), partB = 1 - partA;
+          if (a.gardien && b.gardien) continue;   // deux gardiens ne se rencontrent jamais
+          a.x -= nx * chevauchement * partA; a.y -= ny * chevauchement * partA;
+          b.x += nx * chevauchement * partB; b.y += ny * chevauchement * partB;
         }
       }
     }
@@ -558,20 +635,44 @@ document.getElementById('mvSkip').addEventListener('click', closeViewer);
 
 function feedLine(html, isGoal) {
   const feed = document.getElementById('mvFeed');
-  feed.innerHTML += `<div class="${isGoal ? 'goal' : ''}">${html}</div>`;
+  // `innerHTML +=` reparsait TOUT le fil à chaque ligne — cent lignes en fin de match.
+  feed.insertAdjacentHTML('beforeend', `<div class="${isGoal ? 'goal' : ''}">${html}</div>`);
   feed.scrollTop = feed.scrollHeight;
+}
+
+// La ligne de supériorité est créée ici plutôt que dans `index.html` : l'essai ne touche qu'à
+// cette pièce et à la feuille de style. `aria-live` : c'est une annonce, un lecteur d'écran
+// doit la dire sans qu'on aille la chercher.
+function mvLigneSuperiorite() {
+  let ligne = document.getElementById('mvSup');
+  if (!ligne) {
+    ligne = document.createElement('div');
+    ligne.id = 'mvSup';
+    ligne.setAttribute('aria-live', 'polite');
+    document.getElementById('mvHead').appendChild(ligne);
+  }
+  return ligne;
 }
 
 function updateMvHead() {
   const r = mv.report;
-  let ppTag = '';
+  // La supériorité a sa propre ligne, TOUJOURS présente même vide : écrite à la suite du
+  // score, elle le faisait passer à la ligne en 390 px et tout le cadre descendait de 5 px.
+  let ppTag = '4 contre 4';
   if (mv.activePP && mv.t < mv.activePP.until) {
     const teamShort = mv.activePP.against === 'home' ? r.away.short : r.home.short;
-    ppTag = ` <span style="color:var(--tan);font-size:13px">— ${teamShort} en supériorité (${Math.ceil(mv.activePP.until - mv.t)}')</span>`;
+    ppTag = `${teamShort} en supériorité (${Math.ceil(mv.activePP.until - mv.t)}')`;
   }
+  const pastille = c => `<i class="mv-pastille" style="background:${c.corps};border-color:${c.epaules}"></i>`;
+  const m = mv.maillots || { home: maillotDe(r.home), away: maillotDe(r.away) };
   document.getElementById('mvScore').innerHTML =
-    `<span class="h">${r.home.short}</span> ${mv.gH} — ${mv.gA} <span class="a">${r.away.short}</span>${ppTag}`;
-  document.getElementById('mvClock').textContent = Math.floor(mv.t) + "'";
+    `${pastille(m.home)}<span class="h">${r.home.short}</span> <b class="mv-marque">${mv.gH} — ${mv.gA}</b> <span class="a">${r.away.short}</span>${pastille(m.away)}`;
+  const sup = mvLigneSuperiorite();
+  sup.textContent = ppTag;
+  sup.classList.toggle('actif', ppTag !== '4 contre 4');
+  // Deux périodes de 25 minutes (Sportif 9.1.2), puis la mort subite.
+  const periode = mv.t < 25 ? '1re' : mv.t < 50 ? '2e' : 'Prol.';
+  document.getElementById('mvClock').textContent = `${periode} · ${Math.floor(mv.t)}'`;
 }
 
 function mvReposition(simDt) {
@@ -617,15 +718,19 @@ function mvLoop(now) {
     mv.faceoffElapsed = (mv.faceoffElapsed || 0) + simDt;
     mv.faceoff -= simDt;
     // reprise quand tout le monde est en place ET temporisation écoulée — ou après 5 s max (sécurité anti-blocage)
-    if ((inPlace && mv.faceoff <= 0) || mv.faceoffElapsed > 5) {
+    // Tout le monde en place NE SUFFIT PAS : il faut le rester un instant, c'est l'arbitre
+    // qui lâche le palet, pas le dernier arrivé. La pose repart de zéro si quelqu'un bouge.
+    mv.faceoffPose = inPlace ? (mv.faceoffPose || 0) + simDt : 0;
+    if ((mv.faceoffPose >= MV_POSE_ENGAGEMENT && mv.faceoff <= 0) || mv.faceoffElapsed > 5) {
       mv.faceoff = 0;
       mv.faceoffElapsed = 0;
+      mv.faceoffPose = 0;
       mv.puck.ownerCooldown = 0.4;
       mv.retarget = 0.4;
-    } else if (mv.faceoff <= 0 && !inPlace) {
-      mv.faceoff = 0.001; // en place imminente : on prolonge très légèrement
+    } else if (mv.faceoff <= 0) {
+      mv.faceoff = 0.001; // placement ou pose en cours : on prolonge très légèrement
     }
-    drawMvRink();
+    drawMvPiste();
     updateMvHead();
     requestAnimationFrame(mvLoop);
     return;
@@ -645,7 +750,7 @@ function mvLoop(now) {
     const p = mv.pens[mv.nextPen];
     const icon = PENALTY_LABEL[p.type];
     const typeLabel = T('penalite.' + p.type);
-    feedLine(`${p.minute}' — ${icon} <b>${typeLabel}</b> — ${escHtml(p.nom)} (${escHtml(p.team)}) : ${fauteLabel(p.faute)}.${p.shorthand ? ` ${T('penalite.inferiorite', { n: p.dur })}` : ''}`);
+    feedLine(`${p.minute}' — ${icon} <b>${typeLabel}</b> — ${numeroTexte(p)} ${escHtml(p.nom)} (${escHtml(p.team)}) : ${fauteLabel(p.faute)}.${p.shorthand ? ` ${T('penalite.inferiorite', { n: p.dur })}` : ''}`);
     if (p.shorthand) mv.activePP = { against: p.side, until: mv.t + p.dur, endsOnGoal: p.endsOnGoal };
     mv.nextPen++;
   }
@@ -660,7 +765,7 @@ function mvLoop(now) {
   updateMvPuck(simDt);
   if (mv.goalFlash > 0) mv.goalFlash -= simDt;
 
-  drawMvRink();
+  drawMvPiste();
   updateMvHead();
 
   // Fin du temps réglementaire. S'il y a eu prolongation, le match ne s'arrête PAS ici : le
@@ -686,7 +791,7 @@ function mvLoop(now) {
     // Le compteur AFFICHÉ, pas le score calculé : la ligne annonçait auparavant
     // `mv.report.res`, ce qui masquait toute divergence entre l'animation et la simulation.
     feedLine(`${Math.min(Math.round(mv.t), prolongation ? 55 : 50)}' — <b>${T('direct.finMatch')}</b> ${T('direct.scoreFinal', { a: mv.gH, b: mv.gA })}`, true);
-    drawMvRink();
+    drawMvPiste();
     mv.open = false;
     setTimeout(closeViewer, 1400);
     return;
@@ -703,56 +808,71 @@ function mvRoundRect(x, y, w, h, r) {
   mvCtx.closePath();
 }
 
-function drawMvRink() {
-  mvCtx.fillStyle = '#10141a';
+function drawMvPiste() {
+  mvCtx.fillStyle = '#0b0f15';
   mvCtx.fillRect(0, 0, MW, MH);
+  const ROUGE = 'rgba(226,58,58,.92)';
 
   mvCtx.save();
   mvRoundRect(mxMin, myMin, mxMax-mxMin, myMax-myMin, mCORNER);
   mvCtx.clip();
-  // dalles Stilmat bleues
-  mvCtx.fillStyle = '#2563a8';
+  // Dalles de sport bleues : un ton uni, les joints fins des dalles, et la lumière de la
+  // salle qui tombe au centre. L'ancien damier à deux tons se lisait comme un échiquier.
+  const sol = mvCtx.createRadialGradient(MW/2, mCY, 40, MW/2, mCY, MW * 0.58);
+  sol.addColorStop(0, '#2a5c9c'); sol.addColorStop(1, '#173a68');
+  mvCtx.fillStyle = sol;
   mvCtx.fillRect(mxMin, myMin, mxMax-mxMin, myMax-myMin);
-  const tile = 34;
-  for (let ty = myMin; ty < myMax; ty += tile)
-    for (let tx = mxMin; tx < mxMax; tx += tile) {
-      const odd = (Math.round((tx-mxMin)/tile) + Math.round((ty-myMin)/tile)) % 2;
-      mvCtx.fillStyle = odd ? 'rgba(0,0,0,.07)' : 'rgba(255,255,255,.05)';
-      mvCtx.fillRect(tx, ty, tile, tile);
-    }
-  // ligne centrale + cercle central
-  mvCtx.strokeStyle = 'rgba(255,255,255,.9)'; mvCtx.lineWidth = 3;
+  mvCtx.strokeStyle = 'rgba(255,255,255,.045)'; mvCtx.lineWidth = 1;
+  mvCtx.beginPath();
+  for (let tx = mxMin; tx < mxMax; tx += MV_PX_PAR_M * 2) { mvCtx.moveTo(tx, myMin); mvCtx.lineTo(tx, myMax); }
+  for (let ty = myMin; ty < myMax; ty += MV_PX_PAR_M * 2) { mvCtx.moveTo(mxMin, ty); mvCtx.lineTo(mxMax, ty); }
+  mvCtx.stroke();
+
+  // « Tous les marquages doivent être de couleur rouge » (Équipements 2.2.5 A).
+  mvCtx.strokeStyle = ROUGE; mvCtx.fillStyle = ROUGE; mvCtx.lineWidth = 2.5;
   mvCtx.beginPath(); mvCtx.moveTo(MW/2, myMin); mvCtx.lineTo(MW/2, myMax); mvCtx.stroke();
-  mvCtx.beginPath(); mvCtx.arc(MW/2, mCY, 42, 0, Math.PI*2); mvCtx.stroke();
-  // 4 cercles d'engagement de zone (2 par moitié, haut et bas)
-  const foXL = mGL_L + 95, foXR = mGL_R - 95;
-  [[foXL, mCY-85],[foXL, mCY+85],[foXR, mCY-85],[foXR, mCY+85]].forEach(([fx,fy])=>{
-    mvCtx.strokeStyle = 'rgba(255,255,255,.9)';
-    mvCtx.beginPath(); mvCtx.arc(fx, fy, 30, 0, Math.PI*2); mvCtx.stroke();
-    mvCtx.fillStyle = '#d92b2b';
+  // Le point central et les quatre points de zone, chacun dans son cercle de 3 m (2.2.5.2).
+  const points = [[MW/2, mCY],
+    [mGL_L + MV_ZONE_DX, mCY - MV_ZONE_DY], [mGL_L + MV_ZONE_DX, mCY + MV_ZONE_DY],
+    [mGL_R - MV_ZONE_DX, mCY - MV_ZONE_DY], [mGL_R - MV_ZONE_DX, mCY + MV_ZONE_DY]];
+  points.forEach(([fx, fy]) => {
+    mvCtx.beginPath(); mvCtx.arc(fx, fy, MV_RAYON_CERCLE, 0, Math.PI*2); mvCtx.stroke();
     mvCtx.beginPath(); mvCtx.arc(fx, fy, 4, 0, Math.PI*2); mvCtx.fill();
   });
-  mvCtx.fillStyle = '#d92b2b';
-  mvCtx.beginPath(); mvCtx.arc(MW/2, mCY, 4, 0, Math.PI*2); mvCtx.fill();
-  // lignes de but + zones
-  mvCtx.strokeStyle = 'rgba(255,255,255,.85)'; mvCtx.lineWidth = 2;
+  // La zone des arbitres (demi-cercle de 3 m contre la balustrade, 2.2.5.2) n'est PAS tracée :
+  // sans table de marque à côté, Mirja y a vu « un arc de cercle qui sort de nulle part ».
+  // Lignes de but.
+  mvCtx.lineWidth = 2;
   mvCtx.beginPath(); mvCtx.moveTo(mGL_L, myMin); mvCtx.lineTo(mGL_L, myMax); mvCtx.stroke();
   mvCtx.beginPath(); mvCtx.moveTo(mGL_R, myMin); mvCtx.lineTo(mGL_R, myMax); mvCtx.stroke();
-  mvCtx.fillStyle = 'rgba(217,43,43,.30)'; mvCtx.strokeStyle = '#d92b2b';
-  mvCtx.beginPath(); mvCtx.arc(mGL_L, mCY, 36, -Math.PI/2, Math.PI/2); mvCtx.fill(); mvCtx.stroke();
-  mvCtx.beginPath(); mvCtx.arc(mGL_R, mCY, 36, Math.PI/2, -Math.PI/2); mvCtx.fill(); mvCtx.stroke();
+  // Zone de but : RECTANGULAIRE (2.2.5.1), et non le demi-disque qu'on dessinait. 2,45 m de
+  // large pour des poteaux ancrés 30 cm à l'intérieur (2.2.5.1 B), donc une cage de 1,85 m :
+  // la zone fait 1,32 fois la cage, et s'avance de 1,20 m, soit 0,49 fois sa propre largeur.
+  // Ces RAPPORTS sont tenus ; la taille, elle, suit la cage dessinée — voir `mGoalHalf`.
+  const zoneDemi = Math.round(mGoalHalf * 2.45 / 1.85), zoneProf = Math.round(zoneDemi * 2 * 1.20 / 2.45);
+  mvCtx.fillStyle = 'rgba(226,58,58,.22)';
+  [[mGL_L, 1], [mGL_R, -1]].forEach(([gx, sens]) => {
+    const x0 = sens > 0 ? gx : gx - zoneProf;
+    mvCtx.fillRect(x0, mCY - zoneDemi, zoneProf, zoneDemi * 2);
+    mvCtx.strokeRect(x0, mCY - zoneDemi, zoneProf, zoneDemi * 2);
+  });
   mvCtx.restore();
 
-  // balustrade
+  // balustrade : un liseré clair sur une lisse sombre
   mvRoundRect(mxMin, myMin, mxMax-mxMin, myMax-myMin, mCORNER);
-  mvCtx.lineWidth = 6; mvCtx.strokeStyle = '#1b2a4a'; mvCtx.stroke();
-  mvCtx.lineWidth = 2; mvCtx.strokeStyle = '#f5f5f5'; mvCtx.stroke();
+  mvCtx.lineWidth = 7; mvCtx.strokeStyle = '#0d1a30'; mvCtx.stroke();
+  mvCtx.lineWidth = 2.5; mvCtx.strokeStyle = '#e8edf3'; mvCtx.stroke();
 
-  // cages sur le terrain
+  // cages sur le terrain : le cadre rouge, et un filet suggéré par quelques mailles
   function mvGoal(x0, x1) {
-    mvCtx.fillStyle = 'rgba(255,255,255,.15)';
+    mvCtx.fillStyle = 'rgba(255,255,255,.10)';
     mvCtx.fillRect(x0, mCY-mGoalHalf, x1-x0, mGoalHalf*2);
-    mvCtx.strokeStyle = '#d92b2b'; mvCtx.lineWidth = 3;
+    mvCtx.strokeStyle = 'rgba(255,255,255,.22)'; mvCtx.lineWidth = 1;
+    mvCtx.beginPath();
+    for (let y = mCY - mGoalHalf + 7; y < mCY + mGoalHalf; y += 7) { mvCtx.moveTo(x0, y); mvCtx.lineTo(x1, y); }
+    mvCtx.moveTo((x0+x1)/2, mCY-mGoalHalf); mvCtx.lineTo((x0+x1)/2, mCY+mGoalHalf);
+    mvCtx.stroke();
+    mvCtx.strokeStyle = '#e23a3a'; mvCtx.lineWidth = 3;
     mvCtx.strokeRect(x0, mCY-mGoalHalf, x1-x0, mGoalHalf*2);
   }
   mvGoal(mGL_L - mGoalDepth, mGL_L);
@@ -762,23 +882,76 @@ function drawMvRink() {
   const px = mv.puck.x, py = mv.puck.y;
   const bodies = [...mv.skaters, ...mv.goalies];
 
+  // ombres portées : c'est ce qui pose les corps SUR la piste au lieu de les y coller
+  mvCtx.fillStyle = 'rgba(0,0,0,.28)';
+  bodies.forEach(s => {
+    mvCtx.beginPath(); mvCtx.ellipse(s.x + 2, s.y + 4, MV_BODY_R + 1, MV_BODY_R - 2, 0, 0, Math.PI*2); mvCtx.fill();
+  });
+
   // crosses : peuvent librement se croiser entre elles et passer sur le buste adverse
+  mvCtx.lineCap = 'round';
   bodies.forEach(s => {
     const dx = px - s.x, dy = py - s.y;
     const len = Math.hypot(dx, dy) || 1;
     const sx = s.x + (dx/len) * MV_BODY_R, sy = s.y + (dy/len) * MV_BODY_R;
-    const ex = s.x + (dx/len) * (MV_BODY_R + 15), ey = s.y + (dy/len) * (MV_BODY_R + 15);
+    const ex = s.x + (dx/len) * (MV_BODY_R + 13), ey = s.y + (dy/len) * (MV_BODY_R + 13);
     mvCtx.beginPath(); mvCtx.moveTo(sx, sy); mvCtx.lineTo(ex, ey);
-    mvCtx.strokeStyle = '#8a5a2b'; mvCtx.lineWidth = 2.5; mvCtx.stroke();
+    mvCtx.strokeStyle = '#f0d29a'; mvCtx.lineWidth = 2.2; mvCtx.stroke();
+    // La palette d'une crosse de hockey : COUDÉE au bout du manche, d'un seul côté, et presque
+    // couchée vers l'avant. Un trait en travers, centré sur le manche, dessinait un maillet —
+    // Mirja y a vu une batte de cricket. Le coude part à 55° du manche, toujours du même côté.
+    const ca = Math.cos(MV_COUDE_PALETTE), sa = Math.sin(MV_COUDE_PALETTE);
+    const bx = (dx/len) * ca - (dy/len) * sa, by = (dx/len) * sa + (dy/len) * ca;
+    mvCtx.beginPath(); mvCtx.moveTo(ex, ey); mvCtx.lineTo(ex + bx * MV_LONGUEUR_PALETTE, ey + by * MV_LONGUEUR_PALETTE);
+    mvCtx.strokeStyle = '#15171b'; mvCtx.lineWidth = 3.2; mvCtx.stroke();
   });
-  // bustes : dessinés après les crosses, jamais superposés entre eux (séparation gérée dans updateMvSkaters)
+  mvCtx.lineCap = 'butt';
+  // bustes : dessinés après les crosses, jamais superposés entre eux (séparation gérée dans updateMvSkaters).
+  // Un patineur VU DE DESSUS — choisi par Mirja sur planche, parmi quatre, le 18 septembre 2026 :
+  // les épaules, larges EN TRAVERS du sens de patinage, font le corps du maillot ; leurs deux
+  // bouts portent la couleur des épaules ; le casque clair, grille vers l'avant, dit où il
+  // regarde. Sur un téléphone le patineur fait 10 px : c'est le casque clair et le contour
+  // sombre qui portent la lecture, le reste est pour la tablette et le bureau.
+  // La physique ne change pas : le corps reste un disque de MV_BODY_R pour les contacts.
   bodies.forEach(s => {
-    mvCtx.beginPath(); mvCtx.arc(s.x, s.y, MV_BODY_R, 0, Math.PI*2);
+    const cap = s.gardien ? (s.x < MW/2 ? 0 : Math.PI) : s.heading;
+    const large = s.gardien ? 15 : 12.5, profond = s.gardien ? 10 : 8.5;
+    mvCtx.save();
+    mvCtx.translate(s.x, s.y); mvCtx.rotate(cap);
+    mvCtx.beginPath(); mvCtx.ellipse(0, 0, profond, large, 0, 0, Math.PI*2);
+    mvCtx.lineWidth = 4.5; mvCtx.strokeStyle = 'rgba(0,0,0,.62)'; mvCtx.stroke();
     mvCtx.fillStyle = s.col; mvCtx.fill();
-    mvCtx.lineWidth = 2; mvCtx.strokeStyle = 'rgba(0,0,0,.55)'; mvCtx.stroke();
-    mvCtx.beginPath(); mvCtx.arc(s.x, s.y, 3.5, 0, Math.PI*2);
-    mvCtx.fillStyle = 'rgba(0,0,0,.45)'; mvCtx.fill();
+    mvCtx.fillStyle = s.col2 || '#ffffff';
+    [-1, 1].forEach(cote => {
+      // des bouts d'épaules FINS : plus larges, ils mangeaient le corps du maillot et le club bleu paraissait blanc
+      mvCtx.beginPath(); mvCtx.ellipse(0, cote * (large - 2.4), profond * 0.55, 2.3, 0, 0, Math.PI*2); mvCtx.fill();
+    });
+    if (s.gardien) {
+      // les jambières, devant lui : c'est à elles qu'on reconnaît le gardien d'un coup d'œil
+      mvCtx.lineWidth = 1; mvCtx.strokeStyle = 'rgba(0,0,0,.6)';
+      [-13, 2].forEach(y => { mvRoundRect(4, y, 6, 11, 2); mvCtx.fill(); mvCtx.stroke(); });
+    }
+    mvCtx.beginPath(); mvCtx.arc(2, 0, MV_RAYON_CASQUE, 0, Math.PI*2);
+    mvCtx.fillStyle = '#f4f6f8'; mvCtx.fill();
+    mvCtx.lineWidth = 1.2; mvCtx.strokeStyle = 'rgba(0,0,0,.65)'; mvCtx.stroke();
+    mvCtx.beginPath(); mvCtx.moveTo(2, 0); mvCtx.arc(2, 0, MV_RAYON_CASQUE, -0.7, 0.7); mvCtx.closePath();
+    mvCtx.fillStyle = 'rgba(0,0,0,.55)'; mvCtx.fill();
+    mvCtx.restore();
   });
+
+  // Les numéros, SOUS le patineur : sur le casque ils feraient 6 px même au bureau. Clair sur
+  // liseré sombre — « de couleur contrastée » (6.2.8 B), ici avec les dalles.
+  if (mvNumerosVisibles()) {
+    mvCtx.font = 'bold 10px Tomorrow, sans-serif';
+    mvCtx.textAlign = 'center'; mvCtx.textBaseline = 'middle';
+    mvCtx.lineJoin = 'round';
+    bodies.forEach(s => {
+      if (!s.p || !numeroValide(s.p.num)) return;
+      const ty = s.y + MV_BODY_R + 11;
+      mvCtx.lineWidth = 3; mvCtx.strokeStyle = 'rgba(0,0,0,.75)'; mvCtx.strokeText(String(s.p.num), s.x, ty);
+      mvCtx.fillStyle = '#f4f6f8'; mvCtx.fillText(String(s.p.num), s.x, ty);
+    });
+  }
 
   // palet — avec traînée quand il file vite (tir visible)
   const pspeed = Math.hypot(mv.puck.vx, mv.puck.vy);
@@ -795,9 +968,12 @@ function drawMvRink() {
     mvCtx.stroke();
     mvCtx.lineCap = 'butt';
   }
+  // Un palet noir se perdait sur les dalles sombres ; l'orange est celui qu'on voit en salle.
+  mvCtx.beginPath(); mvCtx.arc(px + 1, py + 2, 5.5, 0, Math.PI*2);
+  mvCtx.fillStyle = 'rgba(0,0,0,.35)'; mvCtx.fill();
   mvCtx.beginPath(); mvCtx.arc(px, py, 5.5, 0, Math.PI*2);
-  mvCtx.fillStyle = '#111'; mvCtx.fill();
-  mvCtx.strokeStyle = '#666'; mvCtx.stroke();
+  mvCtx.fillStyle = '#ff7a1a'; mvCtx.fill();
+  mvCtx.lineWidth = 1.5; mvCtx.strokeStyle = '#7a2f00'; mvCtx.stroke();
 
   // flash de but
   if (mv.goalFlash > 0) {

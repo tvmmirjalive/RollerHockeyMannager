@@ -962,6 +962,7 @@ function endSeason() {
     const nProspects = (Math.random() < clampV(0.25 + poleLvl * 0.06, 0, 0.9) ? 1 : 0)
       + (poleLvl >= 6 && Math.random() < (poleLvl - 5) * 0.08 ? 1 : 0);
     for (let i = 0; i < nProspects; i++) {
+      if (effectifPlein()) break;   // pas de jeune de plus quand l'effectif est plein — voir EFFECTIF_MAX
       const pos = ['G', 'D', 'D', 'A', 'A'][irnd(0, 4)];
       // Avant : 34 + niveau × 3,4, soit 37 au niveau 1 et 45 au niveau 3 — en dessous de
       // l'effectif que ces jeunes rejoignaient. Le pôle creusait le retard qu'il devait
@@ -976,6 +977,7 @@ function endSeason() {
       prospect.contractYears = irnd(3, 5); // premier contrat pro, plus long
       prospect.salaire = playerSalary(prospect);
       me.players.push(prospect);
+      attribuerNumero(me, prospect);
       pushInbox('courrier.espoir.titre', 'courrier.espoir.corps',
         { nom: prospect.nom, age: prospect.age, poste: prospect.pos,
           portraitHtml: `<img src="${portraitFor(prospect.id)}" class="portrait-thumb sm" alt="">` },
@@ -1000,8 +1002,9 @@ function endSeason() {
   });
   if (me.players.filter(p => p.pos === 'G').length < 1 || me.players.filter(p => p.pos !== 'G').length < 8) {
     // sécurité : jamais sous l'effectif minimum viable après des départs
-    while (me.players.filter(p => p.pos === 'G').length < 2) me.players.push(makePlayer('G', DIVISIONS[G.divIdx].qual[0]));
-    while (me.players.filter(p => p.pos !== 'G').length < 12) me.players.push(makePlayer(Math.random() < 0.5 ? 'D' : 'A', DIVISIONS[G.divIdx].qual[0]));
+    const renfort = (pos) => { const j = makePlayer(pos, DIVISIONS[G.divIdx].qual[0]); me.players.push(j); attribuerNumero(me, j); };
+    while (me.players.filter(p => p.pos === 'G').length < 2) renfort('G');
+    while (me.players.filter(p => p.pos !== 'G').length < 12) renfort(Math.random() < 0.5 ? 'D' : 'A');
   }
 
   // nouvelle division : on reconstruit les 7 autres clubs (leur historique n'est pas conservé),
@@ -1030,11 +1033,16 @@ function endSeason() {
       p[stat] = Math.round(clampV(p[stat] + irnd(0, 2), 30, cap));
       p.forme = irnd(80, 100);
       me.players.push(p);
+      attribuerNumero(me, p);   // son numéro a pu être repris pendant le prêt
       pushInbox('courrier.retourPret.titre', 'courrier.retourPret.corps',
         { nom: p.nom }, 'transfert');
     });
     G.loanedOut = [];
   }
+  // Le filet : les poules viennent d'être reconstruites, des joueurs sont arrivés et partis.
+  // Chaque site ci-dessus numérote ce qu'il ajoute ; celui-ci garantit l'invariant même si un
+  // site futur l'oublie. Idempotent — sur un effectif sain il ne touche à rien.
+  normaliserNumeros();
   assignBoardObjective();
   // le marché des coachs se renouvelle chaque saison, avec un niveau adapté à la division actuelle
   G.market = fillMarket();
