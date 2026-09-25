@@ -197,7 +197,7 @@ function forceScriptedShot() {
   mv.puck.ownerCooldown = 2.0; // tir cadré : personne ne l'intercepte en vol
   ss.fired = true;
   if (mv.report.home.human || mv.report.away.human) {
-    feedLine(`${Math.floor(mv.t)}' — 🏒 Lancer de ${escHtml(nxt.nom)} (${escHtml(nxt.side === 'home' ? mv.report.home.short : mv.report.away.short)}) depuis le slot !`);
+    feedLine(`${Math.floor(mv.t)}' — ${pictoHtml('jouer')} Lancer de ${escHtml(nxt.nom)} (${escHtml(nxt.side === 'home' ? mv.report.home.short : mv.report.away.short)}) depuis le slot !`);
   }
 }
 

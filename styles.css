@@ -84,6 +84,17 @@
   /* Focus clavier : :focus-visible, pas :focus — un clic à la souris ne doit pas faire
      apparaître le contour. Sans cette règle, rien dans la feuille ne montrait où l'on est. */
   :focus-visible { outline: 2px solid var(--bleu); outline-offset: 2px; }
+  /* UN CHAMP DE FICHIER MASQUÉ, PAS RETIRÉ. `display: none` sort de la tabulation et de l'arbre
+     d'accessibilité : sans souris, la commande n'existe plus. Ici le champ reste dans la page,
+     réduit à un pixel découpé — il garde son focus, son nom et sa place dans l'ordre du clavier. */
+  .champ-fichier {
+    position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; border: 0;
+    overflow: hidden; clip-path: inset(50%); white-space: nowrap;
+  }
+  /* Et le focus SE VOIT : c'est le label qu'on regarde, donc c'est lui qui le montre. Un champ
+     focalisable dont rien ne bouge à l'écran est pire qu'un champ absent. */
+  label.menu-btn:focus-within,
+  #saveRow label:focus-within { outline: 2px solid var(--bleu); outline-offset: 2px; }
   html, body { margin: 0; min-height: 100%; background: var(--noir); color: var(--txt);
     font-family: 'Tomorrow', 'Segoe UI', sans-serif; }
 
@@ -116,13 +127,18 @@
   header {
     background: linear-gradient(90deg, #000, #10151c);
     border-bottom: 3px solid var(--bleu);
-    padding: 12px 18px; display: flex; flex-wrap: wrap; gap: 14px; align-items: center; justify-content: space-between;
+    /* Les insets sont ICI, dans la déclaration finale. Le bloc « Zones de sécurité » plus haut porte
+       le même sélecteur simple, donc la même spécificité : à spécificité égale, c'est l'ordre du
+       texte qui tranche, et ce raccourci l'écrasait entièrement. */
+    padding: calc(12px + env(safe-area-inset-top, 0px)) calc(18px + env(safe-area-inset-right, 0px)) 12px calc(18px + env(safe-area-inset-left, 0px));
+    display: flex; flex-wrap: wrap; gap: 14px; align-items: center; justify-content: space-between;
   }
   header h1 { margin: 0; font-size: var(--fs-2xl); letter-spacing: 1px; }
   header h1 span { color: var(--bleu); }
   #topinfo { display: flex; gap: 18px; font-size: var(--fs-base); flex-wrap: wrap; }
   #topinfo b { color: var(--tan); }
-  nav { display: flex; flex-wrap: wrap; gap: 6px; padding: 10px 18px; background: var(--panel); }
+  nav { display: flex; flex-wrap: wrap; gap: 6px; background: var(--panel);
+    padding: 10px calc(18px + env(safe-area-inset-right, 0px)) 10px calc(18px + env(safe-area-inset-left, 0px)); }
   nav button {
     background: var(--panel2); color: var(--txt); border: 1px solid var(--bordure);
     padding: 8px 16px; border-radius: var(--r-sm); cursor: pointer; font-family: inherit; font-size: var(--fs-base);
@@ -287,7 +303,10 @@
   #saveRow { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
   select { background: var(--panel2); color: var(--txt); border: 1px solid var(--bordure); border-radius: var(--r-sm); padding: 4px 8px; font-family: inherit; }
   /* --- Schéma de tournoi (bracket) --- */
-  .bracket { display: flex; align-items: center; justify-content: center; gap: 0; margin: 16px 0; overflow-x: auto; padding: 10px 0; }
+  /* `safe center` : centré tant que les cinq colonnes rentrent, aligné au DÉBUT sinon. Avec
+     `center` tout court, la première colonne partait à gauche du point zéro de la piste de
+     défilement — mesurée à -280 px en 390 —, et rien ne permettait d'y revenir. */
+  .bracket { display: flex; align-items: center; justify-content: safe center; gap: 0; margin: 16px 0; overflow-x: auto; padding: 10px 0; }
   .bcol { display: flex; flex-direction: column; justify-content: space-around; gap: 14px; min-width: 190px; }
   .bcol.qf { gap: 26px; }
   .bslot { position: relative; display: flex; align-items: center; }
@@ -299,15 +318,27 @@
   .bteam.win { color: var(--vert); font-weight: 700; }
   .bteam.lose { opacity: .55; }
   .bteam.me { color: var(--bleu); font-weight: 700; }
+  /* Clubs exemptés d'un tour de Coupe : plus de cent noms. Des colonnes CSS plutôt qu'une grille —
+     leur nombre suit la largeur sans point de rupture : une au téléphone, trois en tablette. */
+  .exemptes-liste { list-style: none; margin: 4px 0 0; padding: 0; columns: 15em; column-gap: 20px;
+    font-size: var(--fs-sm); color: var(--muted); }
+  .exemptes-liste li { padding: 3px 0; break-inside: avoid; }
+  .exemptes-liste li.me, .exempte-moi { color: var(--bleu); font-weight: 700; }
+  .exempte-moi { margin: 0 0 2px; }
   .bround-label { text-align: center; font-size: var(--fs-xs); color: var(--muted); text-transform: uppercase; letter-spacing: .5px; margin-bottom: 8px; }
   .bchampion { text-align: center; font-size: var(--fs-md); color: var(--tan); font-weight: 700; margin-top: 10px; }
   /* --- Vue match en direct --- */
   #matchViewer {
     position: fixed; inset: 0; background: rgba(4,6,10,.92); z-index: var(--z-visionneuse);
-    display: none; align-items: center; justify-content: center; padding: 12px;
+    /* Téléphone couché : la boîte est plus haute que les 390 px de la fenêtre. `center` en poussait
+       le haut hors de l'écran — mesuré à -41 px —, et un élément `fixed` ne se défile pas avec la
+       page. `safe center` plus une piste de défilement, et les DEUX axes déclarés : un seul axe non
+       `visible` ferait passer l'autre à `auto`, ce qui a déjà coûté un défilement latéral au menu. */
+    display: none; align-items: safe center; justify-content: center; padding: 12px;
+    overflow-y: auto; overflow-x: hidden;
   }
   #mvBox { background: var(--panel); border: 1px solid var(--bordure); border-radius: var(--r-md);
-    padding: 14px 16px; width: 100%; max-width: 780px; }
+    padding: 14px 16px calc(14px + env(safe-area-inset-bottom, 0px)); width: 100%; max-width: 780px; }
   /* L'en-tête est un tableau de marque : score et chrono sur UNE ligne qui ne se replie
      jamais, et dessous une ligne RÉSERVÉE à la supériorité numérique, présente même vide.
      Tout ce qui apparaissait « de temps en temps » déplaçait le terrain sous le doigt. */
@@ -391,11 +422,15 @@
   /* ==================== Page de garde ==================== */
   #menuScreen {
     position: fixed; inset: 0; z-index: var(--z-menu);
-    align-items: center; justify-content: center; text-align: center;
+    /* `safe center` : le défilement vertical existait déjà, mais le centrage plaçait le haut de la
+       liste hors d'atteinte dès que l'écran était court — mesuré à -132 px en 844×390. */
+    align-items: safe center; justify-content: center; text-align: center;
     /* Les DEUX axes sont déclarés. Un seul axe non `visible` fait passer l'autre de `visible` à
        `auto` : l'image de fond, posée à `inset: -4%`, rendait l'écran défilable de côté, et un
        balayage oblique décalait toute la page de 17 px (relevé sur un Pixel 10, 17 sept. 2026). */
-    padding: 30px 16px; overflow-y: auto; overflow-x: hidden; background: var(--noir);
+    padding: calc(30px + env(safe-area-inset-top, 0px)) calc(16px + env(safe-area-inset-right, 0px))
+             calc(30px + env(safe-area-inset-bottom, 0px)) calc(16px + env(safe-area-inset-left, 0px));
+    overflow-y: auto; overflow-x: hidden; background: var(--noir);
   }
   .menu-bg {
     /* COLLÉE À L'ÉCRAN, pas au contenu : posée en absolu, elle montait avec la liste quand le menu
@@ -711,7 +746,8 @@
     position: fixed; inset: 0; z-index: var(--z-ecran); background: var(--noir);
     /* Même montage que la page de garde, donc même précaution : son bandeau est déjà découpé par
        `.ts-hero`, mais l'axe horizontal se déclare, il ne se déduit pas. */
-    overflow-y: auto; overflow-x: hidden; padding: 0 0 70px;
+    overflow-y: auto; overflow-x: hidden;
+    padding: 0 env(safe-area-inset-right, 0px) calc(70px + env(safe-area-inset-bottom, 0px)) env(safe-area-inset-left, 0px);
   }
 
   /* --- Bandeau héros : image de stade + léger zoom lent, dégradé de lisibilité --- */
@@ -862,7 +898,9 @@
   /* ==================== Double confirmation ==================== */
   .ts-confirm-overlay {
     display: none; position: fixed; inset: 0; z-index: var(--z-confirmation); background: rgba(4,6,10,.86);
-    align-items: center; justify-content: center; padding: 16px; backdrop-filter: blur(4px);
+    /* Même montage, même correction : la double confirmation perdait son titre en 667×320. */
+    align-items: safe center; justify-content: center; padding: 16px; backdrop-filter: blur(4px);
+    overflow-y: auto; overflow-x: hidden;
   }
   .ts-confirm-overlay.show { display: flex; animation: tsFade .2s both; }
   @keyframes tsFade { from { opacity: 0; } to { opacity: 1; } }
@@ -950,6 +988,19 @@
   }
   .modal-head { padding: 20px 22px 0; display: flex; gap: 10px; align-items: center; }
   .modal-ico { font-size: var(--fs-2xl); flex: 0 0 auto; }
+  /* Pictogramme d'ICONES_IMG posé dans du texte : il suit le corps de la police qui l'entoure. */
+  .picto { width: 1.15em; height: 1.15em; display: inline-block; vertical-align: -0.2em; }
+  .modal-ico .picto { display: block; }
+  /* Carrés de pénalité. Les teintes sont celles des cartons, pas des jetons du thème : elles
+     codent une gravité, et ne doivent pas bouger avec l'habillage. La méconduite est GRISE, pas
+     noire comme l'était son émoji : sur le fond sombre du jeu un carré noir, liseré ou non, se
+     lisait comme une case à cocher vide — regardé deux fois. Le gris dit aussi ce qu'elle est :
+     la seule pénalité sans infériorité. Aucun texte du jeu ne nommait ces couleurs. */
+  .carre-pen { display: inline-block; width: .8em; height: .8em; border-radius: 2px; vertical-align: -0.05em; }
+  .carre-pen.mineure { background: #f5c518; }
+  .carre-pen.majeure { background: #f08a24; }
+  .carre-pen.pm { background: #e0322b; }
+  .carre-pen.mec { background: #aab2c0; }
   /* le h2 global porte un trait de soulignement : on le neutralise ici */
   .modal-title { margin: 0; font-size: var(--fs-xl); letter-spacing: .3px; color: var(--tan);
                  border-bottom: 0; padding-bottom: 0; }
@@ -1045,7 +1096,10 @@
     border-radius: var(--r-md); background: var(--rouge); color: #fff; font-size: var(--fs-2xs);
     line-height: 18px; font-weight: 700; }
   .hd-btn b:empty { display: none; }
-  .hd-stats { display: flex; border-top: 1px solid rgba(255,255,255,.07); }
+  /* La seconde rangée du bandeau : `.hd-main` rattrape les insets au-dessus, celle-ci ne les avait
+     pas. Un retrait par CÔTÉ, jamais un raccourci — un raccourci les remettrait à zéro. */
+  .hd-stats { display: flex; border-top: 1px solid rgba(255,255,255,.07);
+    padding-left: env(safe-area-inset-left, 0px); padding-right: env(safe-area-inset-right, 0px); }
   .hd-stat { flex: 1 1 0; min-width: 0; padding: 6px 3px 7px; text-align: center; }
   .hd-stat span { display: block; font-size: var(--fs-xs); color: var(--muted);
                   text-transform: uppercase; letter-spacing: .7px; }
@@ -1058,7 +1112,9 @@
     position: fixed; left: 0; right: 0; bottom: 0; z-index: var(--z-nav);
     display: flex; align-items: stretch; gap: 0; flex-wrap: nowrap;
     background: var(--panel); border-top: 1px solid var(--bordure);
-    padding: 0 0 env(safe-area-inset-bottom, 0px);
+    /* Les côtés aussi : la barre est en `position: fixed` d'un bord à l'autre, et en paysage
+       l'encoche est précisément sur un CÔTÉ. Les deux paddings latéraux valaient zéro. */
+    padding: 0 env(safe-area-inset-right, 0px) env(safe-area-inset-bottom, 0px) env(safe-area-inset-left, 0px);
   }
   nav button[data-nav] {
     flex: 1 1 0; min-width: 0; min-height: 58px; border: 0; border-radius: 0;
@@ -1406,10 +1462,15 @@
      l'image intérieure sa hauteur pleine et lui retire sa bordure. */
   .portrait { position: relative; display: inline-block; isolation: isolate; overflow: hidden;
     vertical-align: middle; }
-  .portrait > img { display: block; width: 100%; height: 100%; object-fit: cover; border: 0;
-    border-radius: 0; margin: 0; }
+  /* LE CADRAGE, une fois pour l'image et une fois pour ses calques, et il doit rester LE MÊME (v194) :
+     `cover` centré des deux côtés. Les masques ont la taille de leur portrait ; étirés à la boîte
+     (`100% 100%`, calés en haut à gauche) pendant que l'image était rognée au centre, ils dessinaient
+     ailleurs dès que la boîte n'était plus carrée — la couleur des épaules tombait à côté des épaules
+     dans la tuile de la fenêtre de ligne. `test-maillots.mjs` §2 bis compare les deux rectangles. */
+  .portrait > img { display: block; width: 100%; height: 100%; object-fit: cover; object-position: 50% 50%;
+    border: 0; border-radius: 0; margin: 0; }
   .portrait > i { position: absolute; inset: 0; mix-blend-mode: multiply; pointer-events: none;
-    background-size: 100% 100%; background-repeat: no-repeat; }
+    background-size: cover; background-position: 50% 50%; background-repeat: no-repeat; }
   /* Sans variable — un portrait dont le `style` a été retiré — le fond est blanc et sans image :
      `multiply` par du blanc ne change rien. Un fond coloré sur tout le portrait serait pire. */
   .portrait > i.m1 { background-color: var(--m1, #ffffff); background-image: var(--mc, none); }
@@ -1443,5 +1504,11 @@
      Dernier bloc de la feuille : à spécificité égale, c'est l'ordre qui tranche. */
   @media (prefers-reduced-motion: reduce) {
     .menu-bg, #teamSelectScreen .ts-hero-bg { animation: none; }
+    /* Les halos de la pastille de notification battent SANS FIN. Ils sont nommés un par un parce
+       qu'une règle universelle ne peut pas les atteindre : `*` ne sélectionne pas un pseudo-élément,
+       et le second halo vit sur un `::after`. `test-ergonomie-mobile.mjs` §9 relit toutes les
+       animations calculées, pseudo-éléments compris, et refuse la moindre `infinite`. */
+    nav button.notify,
+    nav button[data-nav].notify::after { animation: none !important; }
     * { transition-duration: .01ms !important; }
   }

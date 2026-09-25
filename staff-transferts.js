@@ -123,7 +123,7 @@ async function hireStaff(role, coachId) {
   const msg = current
     ? `Remplacer ${current.nom} (note ${current.note}) par ${cand.nom} (note ${cand.note}) ?\n\nEmbauche : ${euros(hireCost)}\nIndemnité de départ de ${current.nom} : ${euros(sev)}\nTotal : ${euros(total)}`
     : `Embaucher ${cand.nom} (note ${cand.note}) comme ${ROLES[role].label} pour ${euros(hireCost)} ?`;
-  if (!(await ask({ title: current ? "Remplacer le coach" : "Embaucher", ico: '🧢', text: msg,
+  if (!(await ask({ title: current ? "Remplacer le coach" : "Embaucher", ico: '', text: msg,
     okLabel: current ? "Remplacer" : "Embaucher" }))) return;
   G.budget -= total;
   // l'ancien coach retourne sur le marché, le nouveau quitte le marché
@@ -138,7 +138,7 @@ async function fireStaff(role) {
   const c = G.staff[role];
   if (!c) return;
   const indemnite = coachSeverance(c);
-  if (!(await ask({ title: T('dlg.licencier.titre'), ico: '🧢', danger: true, okLabel: T('dlg.licencier.titre'),
+  if (!(await ask({ title: T('dlg.licencier.titre'), ico: '', danger: true, okLabel: T('dlg.licencier.titre'),
       text: T('dlg.licencier.texte', { nom: c.nom, montant: euros(indemnite) }) }))) return;
   if (G.budget < indemnite) { toast(T('toast.budgetIndemnite'), 'bad'); return; }
   G.budget -= indemnite;
@@ -154,7 +154,7 @@ async function trainCoach(role) {
   if (c.note >= 95) { toast(T('toast.coachPlafond'), 'info'); return; }
   const cost = coachTrainCost(c.note);
   if (G.budget < cost) { toast("Budget insuffisant pour cette formation.", 'bad'); return; }
-  if (!(await ask({ title: "Formation", ico: '📈', okLabel: "Financer",
+  if (!(await ask({ title: "Formation", picto: 'progression', okLabel: "Financer",
     text: `Financer une formation pour ${c.nom} ?\n\nNote ${c.note} → ${c.note + 1} pour ${euros(cost)}.` }))) return;
   G.budget -= cost;
   c.note++;
@@ -232,7 +232,7 @@ function runTrainingSession() {
     toast(T('toast.seanceSansGain'), 'info');
   } else {
     notify({
-      title: "Séance d'entraînement", ico: '🏋️',
+      title: "Séance d'entraînement", picto: 'entrainement',
       html: `<p class="modal-note">${gains.length} progression${gains.length > 1 ? 's' : ''} enregistrée${gains.length > 1 ? 's' : ''}.</p>
         <ul class="modal-list">${gains.map(g => `<li><span class="nm">${escHtml(ligneGain(g))}</span></li>`).join('')}</ul>`
     });
@@ -285,7 +285,7 @@ function renderEntrainement() {
       <span class="note">${roleDesc(role)}. ${T('staff.frequence')}</span><br><br>
       ${current}
       <div style="margin-top:8px;border-top:1px solid var(--bordure);padding-top:6px">
-        <span class="tag">💼 ${c ? T('staff.mercato.avec') : T('staff.mercato')}</span>
+        <span class="tag">${c ? T('staff.mercato.avec') : T('staff.mercato')}</span>
         ${candidates}
       </div>
     </div>`;
@@ -302,7 +302,7 @@ function renderEntrainement() {
                 : T('entrainement.deja'))}
     <div class="card">
       <button class="btn buy" ${!(G.seancesRestantes > 0) ? 'disabled' : ''} onclick="runTrainingSession()">
-        ${G.seancesRestantes > 0 ? '🏋️ ' + T('entrainement.lancer') : '✔️ ' + T('entrainement.deja')}
+        ${G.seancesRestantes > 0 ? pictoHtml('entrainement') + ' ' + T('entrainement.lancer') : '✔️ ' + T('entrainement.deja')}
       </button>
       ${regleRepliable(T('entrainement.info'))}
     </div>
@@ -361,7 +361,7 @@ async function buyPlayer(teamId, playerId) {
   const msg = neg.countered
     ? `${seller.name} refuse le prix affiché et demande ${euros(neg.price)} pour ${p.nom}. Accepter ?`
     : `Acheter ${p.nom} pour ${euros(neg.price)} ?`;
-  if (!(await ask({ title: "Transfert", ico: '💰', text: msg,
+  if (!(await ask({ title: "Transfert", picto: 'argent', text: msg,
     okLabel: neg.countered ? "Accepter" : "Acheter" }))) return;
   G.budget -= neg.price;
   seller.players = seller.players.filter(x => x.id !== playerId);
@@ -401,7 +401,7 @@ async function buyScoutPlayer(scoutId) {
   const msg = neg.countered
     ? `${clubName} (${DIVISIONS[divIdx].label}) refuse le prix affiché et demande ${euros(neg.price)} pour ${p.nom}. Accepter ?`
     : `Recruter ${p.nom} (${DIVISIONS[divIdx].label}, ${clubName}) pour ${euros(neg.price)} ?`;
-  if (!(await ask({ title: "Recrutement", ico: '🔍', text: msg,
+  if (!(await ask({ title: "Recrutement", picto: 'loupe', text: msg,
     okLabel: neg.countered ? "Accepter" : "Recruter" }))) return;
   G.budget -= neg.price;
   G.scoutPool = G.scoutPool.filter(e => e.p.id !== scoutId);
@@ -416,7 +416,7 @@ async function sellPlayer(playerId) {
   if (!p) return;
   if (!canSell(me, p)) { toast("Impossible : il te faut au moins 1 gardien et 5 joueurs de champ.", 'warn'); return; }
   const price = Math.round(playerValue(p) * 0.9 / 10) * 10;
-  if (!(await ask({ title: "Vendre un joueur", ico: '💸', danger: true, okLabel: "Vendre",
+  if (!(await ask({ title: "Vendre un joueur", picto: 'argent', danger: true, okLabel: "Vendre",
     text: `Vendre ${p.nom} pour ${euros(price)} ?` }))) return;
   G.budget += price;
   me.players = me.players.filter(x => x.id !== playerId);
@@ -438,7 +438,7 @@ async function loanPlayer(playerId) {
   if (!p) return;
   if (p.injured) { toast(T('toast.blesseNonPrete'), 'warn'); return; }
   if (!canSell(me, p)) { toast(T('toast.effectifTropCourt'), 'warn'); return; }
-  if (!(await ask({ title: T('dlg.pret.titre'), ico: '🔄', okLabel: T('effectif.preter'),
+  if (!(await ask({ title: T('dlg.pret.titre'), picto: 'transferts', okLabel: T('effectif.preter'),
     text: T('dlg.pret.texte', { nom: p.nom }) }))) return;
   me.players = me.players.filter(x => x.id !== playerId);
   p.starter = false;

@@ -257,7 +257,7 @@ let stage, quarts = null, demis = null, finale = null;
     renderAll();
     jouerMusique('playoffs');
     notify({
-      title: "Place aux phases finales", ico: '🏒',
+      title: "Place aux phases finales", picto: 'jouer',
       html: `<p class="modal-note">Saison régulière terminée. Les <b>quatre premiers de chaque poule</b>
         sont qualifiés (art. 4.4 G) — <b>${seeds.length} clubs</b>, répartis en huit plateaux de quatre.</p>
         <p class="modal-note">Dans un plateau, chaque équipe rencontre les trois autres. Les
@@ -306,7 +306,7 @@ let stage, quarts = null, demis = null, finale = null;
   const myId = myTeam().id;
   jouerMusique('playoffs');
   notify({
-    title: "Place aux playoffs", ico: '🏒',
+    title: "Place aux playoffs", picto: 'jouer',
     html: `<p class="modal-note">Saison régulière terminée. Le Top ${seeds.length} est qualifié — séries au meilleur des 3 :
       aller, retour, et match d'appui si nécessaire.</p>
       <div class="modal-sub">Qualifiés</div>
@@ -741,7 +741,7 @@ function endSeason() {
   if (iAmChampion) {
     const trophy = 5000 * (1 + div.prestige);
     G.budget += trophy;
-    trophyMsg = `<div class="modal-flash good"><b>🏆 ${T('fin.champion', { division: escHtml(div.label) })}</b>${T('fin.primeTitre', { montant: euros(trophy) })}</div>`;
+    trophyMsg = `<div class="modal-flash good"><b>${pictoHtml('coupe')} ${T('fin.champion', { division: escHtml(div.label) })}</b>${T('fin.primeTitre', { montant: euros(trophy) })}</div>`;
   } else if (iAmFinalist) {
     trophyMsg = `<div class="modal-flash warn"><b>🥈 ${T('fin.finaliste', { division: escHtml(div.label) })}</b>${T('fin.finaliste.note')}</div>`;
   }
@@ -888,7 +888,7 @@ function endSeason() {
       'board');
   }
   presenterResumeSaison({ rank: rank, n: n, basePrize: basePrize }, {
-    title: T('fin.titre', { annees: seasonLabel(G.season) }), ico: '📅',
+    title: T('fin.titre', { annees: seasonLabel(G.season) }), picto: 'calendrier',
     html: `${trophyMsg}${barrageMsg || ''}${playdownMsg || ''}${montreeRefusee || ''}${moveMsg}
       <div class="modal-sub">${T('fin.bilanRegulier')}</div>
       <div class="modal-stat"><span>${T('intro.division')}</span><span>${escHtml(div.label)}</span></div>
@@ -910,7 +910,24 @@ function endSeason() {
   });
 
   // vieillissement + évolution de mon équipe (plafonnée par le potentiel caché de chaque joueur)
+  // retour des joueurs prêtés, avec un peu de développement grâce au temps de jeu ailleurs
+  // Il vient AVANT le vieillissement (v184) : placé après, l'année de prêt ne comptait ni en âge
+  // ni en contrat, et un joueur prêté chaque saison ne vieillissait jamais. Rentré ici, il suit
+  // le chemin de tout le monde, fin de carrière comprise.
   const me = myTeam();
+  if (G.loanedOut && G.loanedOut.length) {
+    G.loanedOut.forEach(p => {
+      const cap = p.potentiel || 97;
+      const stat = p.pos === 'G' ? 'gar' : Math.random() < 0.5 ? 'tir' : 'def';
+      p[stat] = Math.round(clampV(p[stat] + irnd(0, 2), 30, cap));
+      p.forme = irnd(80, 100);
+      me.players.push(p);
+      attribuerNumero(me, p);   // son numéro a pu être repris pendant le prêt
+      pushInbox('courrier.retourPret.titre', 'courrier.retourPret.corps',
+        { nom: p.nom }, 'transfert');
+    });
+    G.loanedOut = [];
+  }
   const departs = [];
   const retirees = [];
   me.players.forEach(p => {
@@ -1025,20 +1042,6 @@ function endSeason() {
   noterDebutSaison();        // point de départ du résumé de la saison qui s'ouvre
   evaluatePlayerObjectives();
   me.players.forEach(p => { p.seasonGoals = 0; p.seasonGames = 0; p.seasonPenalties = 0; });
-  // retour des joueurs prêtés, avec un peu de développement grâce au temps de jeu ailleurs
-  if (G.loanedOut && G.loanedOut.length) {
-    G.loanedOut.forEach(p => {
-      const cap = p.potentiel || 97;
-      const stat = p.pos === 'G' ? 'gar' : Math.random() < 0.5 ? 'tir' : 'def';
-      p[stat] = Math.round(clampV(p[stat] + irnd(0, 2), 30, cap));
-      p.forme = irnd(80, 100);
-      me.players.push(p);
-      attribuerNumero(me, p);   // son numéro a pu être repris pendant le prêt
-      pushInbox('courrier.retourPret.titre', 'courrier.retourPret.corps',
-        { nom: p.nom }, 'transfert');
-    });
-    G.loanedOut = [];
-  }
   // Le filet : les poules viennent d'être reconstruites, des joueurs sont arrivés et partis.
   // Chaque site ci-dessus numérote ce qu'il ajoute ; celui-ci garantit l'invariant même si un
   // site futur l'oublie. Idempotent — sur un effectif sain il ne touche à rien.

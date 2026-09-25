@@ -40,7 +40,7 @@
       <label class="menu-btn" for="menuFileLoad">
         <span class="menu-btn-label" id="menuLoadLabel">📂</span>
         <span class="menu-btn-detail" id="menuLoadDetail"></span>
-        <input type="file" id="menuFileLoad" accept=".json" style="display:none">
+        <input type="file" id="menuFileLoad" accept=".json" class="champ-fichier">
       </label>
     </div>
     <p class="menu-foot" id="menuFoot"></p>
@@ -148,7 +148,7 @@
       <div id="saveRow">
         <button class="btn" id="btnSave">💾 Exporter un fichier</button>
         <label class="btn" style="display:inline-block">📂 Charger une sauvegarde
-          <input type="file" id="fileLoad" accept=".json" style="display:none">
+          <input type="file" id="fileLoad" accept=".json" class="champ-fichier">
         </label>
         <button class="btn" id="btnNew">🏠 Menu principal</button>
       </div>
@@ -168,7 +168,7 @@
       <button class="btn" data-spd="1">x1</button>
       <button class="btn on" data-spd="2">x2</button>
       <button class="btn" data-spd="4">x4</button>
-      <button class="btn" id="mvSkip" style="margin-left:auto">Passer ⏭</button>
+      <button class="btn" id="mvSkip" style="margin-left:auto">Passer</button>
     </div>
     <div id="mvTactics" style="margin-top:8px;font-size:12px">
       <span class="tag">📋 Consignes en direct :</span>
@@ -372,7 +372,7 @@ async function presenterIntroPartie() {
   const region = asso ? asso[3] : '';
 
   await showModal({
-    title: T('intro.bienvenue'), ico: '🏒',
+    title: T('intro.bienvenue'), picto: 'jouer',
     html: `<div class="intro-accueil">
       <p class="ij-club">${escHtml(me.name)}</p>
       <p class="modal-note">${escHtml(ville)}${region ? ' · ' + escHtml(region) : ''}</p>
@@ -402,7 +402,7 @@ async function presenterIntroPartie() {
       actions.push({ label: reste ? T('modale.suivantReste', { n: reste }) : T('tuto.terminer'),
                      value: 'suivant', cls: 'buy' });
       const choix = await showModal({
-        title: T('intro.tonEffectif'), ico: '👤', tapPourSuivant: true,
+        title: T('intro.tonEffectif'), picto: 'effectif', tapPourSuivant: true,
         html: carteIntroJoueur(joueurs[i], i + 1, joueurs.length),
         actions: actions
       });
@@ -456,12 +456,12 @@ function ecransResumeSaison(infos) {
   const matchs = me.v + me.d + (me.vp || 0) + (me.dp || 0);
   const ecrans = [];
 
-  ecrans.push({ titre: T('resume.saisonTitre', { annees: seasonLabel(G.season) }), ico: '🏁', html:
+  ecrans.push({ titre: T('resume.saisonTitre', { annees: seasonLabel(G.season) }), picto: 'finSaison', html:
     `<p class="rs-gros">${escHtml(DIVISIONS[G.divIdx].label)}</p>
      <p class="modal-note">${escHtml(me.name)} · ${T('resume.matchsJoues', { n: matchs })}</p>
      <div class="rs-classement">${T('classement.rang', { n: infos.rank + 1 })}<span> ${T('resume.sur', { n: infos.n })}</span></div>` });
 
-  ecrans.push({ titre: T('resume.parcours'), ico: '📊', html:
+  ecrans.push({ titre: T('resume.parcours'), picto: 'classement', html:
     `<div class="modal-stat"><span>${T('colonne.pts')}</span><span><b>${me.pts}</b></span></div>
      <div class="modal-stat"><span>${T('resume.victoires')}</span><span>${me.v}${me.vp ? ` <span class="tag">${T('resume.enProl', { n: me.vp })}</span>` : ''}</span></div>
      <div class="modal-stat"><span>${T('resume.defaites')}</span><span>${me.d}${me.dp ? ` <span class="tag">${T('resume.enProl', { n: me.dp })}</span>` : ''}</span></div>
@@ -469,7 +469,7 @@ function ecransResumeSaison(infos) {
      <div class="modal-stat"><span>${T('resume.butsEncaisses')}</span><span>${me.bc}</span></div>
      <div class="modal-stat"><span>${T('colonne.diff')}</span><span><b>${me.bp - me.bc > 0 ? '+' : ''}${me.bp - me.bc}</b></span></div>` });
 
-  ecrans.push({ titre: T('resume.hommes'), ico: '⭐', html:
+  ecrans.push({ titre: T('resume.hommes'), picto: 'etoile', html:
     (buteur && buteur.seasonGoals
       ? `<div class="rs-vedette">${portraitHtml(buteur, 'ij-portrait', me)}
            <div><div class="ij-nom">${escHtml(buteur.nom)}</div>
@@ -478,13 +478,13 @@ function ecransResumeSaison(infos) {
       : `<p class="modal-note">${T('resume.aucunButeur')}</p>`)
     + `<div class="modal-stat"><span>${T('resume.butsEquipe')}</span><span>${totalButs}</span></div>` });
 
-  ecrans.push({ titre: T('resume.comptes'), ico: '💶', html:
+  ecrans.push({ titre: T('resume.comptes'), picto: 'argent', html:
     ligneResume(T('bandeau.budget'), euros(Math.round(G.budget)), d ? d.budget : null, Math.round(G.budget), ' €')
     + `<div class="modal-stat"><span>${T('resume.prime')}</span><span>${euros(infos.basePrize)}</span></div>`
     + `<div class="modal-stat"><span>${T('infra.stade.label')}</span><span>${T('club.niveauCourt', { n: G.club.stade })}</span></div>`
     + `<div class="modal-stat"><span>${T('club.sponsoring')}</span><span>${(G.club.sponsors || []).length}</span></div>` });
 
-  ecrans.push({ titre: T('ecran.effectif.label'), ico: '👥', html:
+  ecrans.push({ titre: T('ecran.effectif.label'), picto: 'effectif', html:
     ligneResume(T('resume.forceMoyenne'), forceFin, d ? d.force : null, forceFin)
     + ligneResume(T('colonne.joueur'), me.players.length, d ? d.effectif : null, me.players.length)
     + `<div class="modal-stat"><span>${T('resume.niveauDivision')}</span><span>${Math.round((DIVISIONS[G.divIdx].qual[0] + DIVISIONS[G.divIdx].qual[1]) / 2)}</span></div>`
@@ -506,7 +506,7 @@ async function presenterResumeSaison(infos, bilan) {
       if (reste >= 1) actions.push({ label: T('modale.toutPasser'), value: 'passer' });
       actions.push({ label: reste ? T('modale.suivantReste', { n: reste }) : T('resume.voirBilan'),
                      value: 'ok', cls: 'buy' });
-      const v = await showModal({ title: e.titre, ico: e.ico, tapPourSuivant: true,
+      const v = await showModal({ title: e.titre, ico: e.ico, picto: e.picto, tapPourSuivant: true,
                                  html: `<div class="rs-ecran">${e.html}</div>`, actions: actions });
       if (v === 'passer') break;
     }
@@ -637,7 +637,7 @@ function construireBulle(titre, texte, boutonLabel) {
 }
 
 // La visionneuse de match est à z-index 50, le voile à 250 : le voile la recouvrait et
-// rendait « Passer ⏭ » inatteignable — le joueur restait coincé devant son match. Le
+// rendait « Passer » inatteignable — le joueur restait coincé devant son match. Le
 // projecteur s'efface donc tant qu'elle est ouverte, et revient quand elle se ferme.
 function visionneuseOuverte() {
   const mv = document.getElementById('matchViewer');
@@ -705,7 +705,7 @@ function etapeTuto(cibleFn, titre, texte, condition, boutonLabel, libreSel) {
       window.removeEventListener('scroll', replacer, true);
       // Le voile se referme à la fin de CHAQUE étape. Sans ça il restait affiché entre deux
       // étapes, boucle de suivi arrêtée : après le clic sur « Jouer la journée », il
-      // recouvrait la visionneuse de match et rendait « Passer ⏭ » inatteignable. L'étape
+      // recouvrait la visionneuse de match et rendait « Passer » inatteignable. L'étape
       // suivante le rouvre dans la foulée — le trou n'a pas le temps d'être repeint.
       fermerProjecteur();
       tutoResolve = null; resolve(v); };
@@ -927,7 +927,7 @@ async function presenterNouveauxMessages() {
                      value: 'suivant', cls: 'buy' });
     }
     const choix = await showModal({
-      title: messageTitre(m), ico: '✉️', tapPourSuivant: true,
+      title: messageTitre(m), picto: 'inbox', tapPourSuivant: true,
       html: `<div class="modal-lettre">${assainirHtml(messageCorps(m))}</div>
              <p class="modal-note">${T('courrier.date', { saison: m.season, journee: m.day })}</p>`,
       actions: actions
@@ -1344,6 +1344,48 @@ function reglerBrouille(message, index) {
 // guillemets fabriquerait un attribut (revue de la v145, R1 : `info" onmouseover="…`).
 const TYPES_COURRIER = new Set(['board', 'contrat', 'objectif', 'cup', 'transfert', 'info', 'club', 'presse', 'vestiaire']);
 function typeCourrier(m) { return TYPES_COURRIER.has(m && m.type) ? m.type : 'info'; }
+// LE PICTOGRAMME D'UNE LETTRE, par la clé de son titre. Chaque lettre avait son émoji ; les
+// remplacer tous par celui de leur TYPE aurait perdu cette information, alors que `cleTitre` est
+// déjà dans la sauvegarde et suffit à les distinguer. Table GÉNÉRÉE par
+// `4-outils/patch-courrier-pictos.py` depuis les émojis qu'elle a retirés des titres — elle n'est
+// pas écrite à la main, et une lettre absente d'ici retombe sur son type, puis sur `info`.
+const PICTO_COURRIER = {
+  'courrier.accession.decrochee.titre': 'billet',
+  'courrier.accession.phase.titre': 'billet',
+  'courrier.effectif.grave.titre': 'alerte',
+  'courrier.effectif.leger.titre': 'progression',
+  'courrier.engagement.rompu.titre': 'humeur',
+  'courrier.engagement.tenu.titre': 'entente',
+  'courrier.espoir.titre': 'etoile',
+  'courrier.objectif.atteint.titre': 'valide',
+  'courrier.objectif.fixe.titre': 'consigne',
+  'courrier.objectif.manque.titre': 'alerte',
+  'courrier.objectifJoueur.atteint.titre': 'objectif',
+  'courrier.objectifJoueur.manque.titre': 'progression',
+  'courrier.stade.encore.titre': 'interdit',
+  'courrier.stade.homologue.titre': 'valide',
+  'courrier.stade.insiste.titre': 'alerte',
+  'courrier.stade.point.titre': 'travaux',
+  'courrier.stade.refus1.titre': 'travaux',
+  'courrier.stade.refusN.titre': 'interdit',
+  'courrier.vestiaire.tete.titre': 'humeur',
+  'presse.accroche.elogieux.0': 'presse',
+  'presse.accroche.elogieux.1': 'presse',
+  'presse.accroche.elogieux.2': 'presse',
+  'presse.accroche.elogieux.3': 'presse',
+  'presse.accroche.neutre.0': 'presse',
+  'presse.accroche.neutre.1': 'presse',
+  'presse.accroche.neutre.2': 'presse',
+  'presse.accroche.severe.0': 'presse',
+  'presse.accroche.severe.1': 'presse',
+  'presse.accroche.severe.2': 'presse',
+  'presse.accroche.severe.3': 'presse',
+};
+const PICTO_TYPE_COURRIER = { board: 'consigne', contrat: 'contrat', objectif: 'objectif',
+                              cup: 'coupe', transfert: 'argent', info: 'info' };
+function pictoCourrier(m) {
+  return PICTO_COURRIER[m && m.cleTitre] || PICTO_TYPE_COURRIER[typeCourrier(m)] || 'info';
+}
 
 function pushInbox(cleTitre, cleCorps, params, type) {
   if (!G.inbox) G.inbox = [];
@@ -1488,9 +1530,12 @@ function effectifPlein() {
 // LE 0 EST UN NUMÉRO : on ne teste jamais la vérité d'un numéro, toujours `numeroValide()`.
 function numeroValide(n) { return Number.isInteger(n) && n >= 0 && n <= 99; }
 // Les numéros portés dans une équipe, un joueur excepté — lui-même, quand on lui en cherche un.
-function numerosPris(equipe, saufId) {
+// `sauf` est le JOUEUR qu'on exclut, pas son identifiant. Exclure par identifiant revenait à dire
+// « tout ce qui porte cet id, c'est moi » : le jumeau ne comptait pas comme porteur de son numéro, et
+// la remise d'aplomb rendait les deux au même.
+function numerosPris(equipe, sauf) {
   const pris = new Set();
-  ((equipe && equipe.players) || []).forEach(j => { if (j.id !== saufId && numeroValide(j.num)) pris.add(j.num); });
+  ((equipe && equipe.players) || []).forEach(j => { if (j !== sauf && numeroValide(j.num)) pris.add(j.num); });
   return pris;
 }
 // Un effectif numéroté 1, 2, 3… sent la machine. Par poste, ce qu'on voit dans les salles : le 1
@@ -1505,7 +1550,7 @@ const NUMEROS_PREFERES = {
 // ses numéros à chaque chargement tant qu'elle n'a pas été réenregistrée, et un joueur ne doit
 // pas changer de maillot d'un démarrage à l'autre. Le gardien part toujours du 1.
 function numeroLibre(equipe, joueur) {
-  const pris = numerosPris(equipe, joueur.id);
+  const pris = numerosPris(equipe, joueur);
   const graine = Number.isInteger(joueur.id) ? Math.abs(joueur.id) : 0;
   const preferes = NUMEROS_PREFERES[joueur.pos] || NUMEROS_PREFERES.A;
   const depart = joueur.pos === 'G' ? 0 : graine % preferes.length;
@@ -1524,15 +1569,67 @@ function numeroLibre(equipe, joueur) {
 // L'ARRIVÉE dans une équipe : le joueur garde son numéro s'il est valide et libre, sinon il en
 // reçoit un. Rend le numéro porté. Fonctionne que le joueur soit déjà dans `players` ou non.
 function attribuerNumero(equipe, joueur) {
-  if (!numeroValide(joueur.num) || numerosPris(equipe, joueur.id).has(joueur.num)) joueur.num = numeroLibre(equipe, joueur);
+  if (!numeroValide(joueur.num) || numerosPris(equipe, joueur).has(joueur.num)) joueur.num = numeroLibre(equipe, joueur);
   return joueur.num;
+}
+// TOUS les joueurs d'un état de partie, avec le chemin où ils dorment. Trois gisements, et il n'y en
+// a pas d'autre : l'effectif de chaque équipe de chaque poule, le vivier de recrutement, les prêtés.
+function joueursDeLetat(etat) {
+  const tous = [];
+  // `poules` si elles existent, SINON `teams` : c'est le format d'avant les poules multiples, que
+  // `validerCandidat` accepte toujours — et qu'un contrôle ne regardant que `poules` laissait donc
+  // entrer sans le voir. Jamais les deux à la fois : après `relierPoules()`, `teams` RÉFÉRENCE la
+  // poule active, et la compter deux fois inventerait des doublons là où il n'y en a aucun.
+  const parPoules = !!(etat && etat.poules && etat.poules.length);
+  const groupes = parPoules ? etat.poules : ((etat && etat.teams) ? [etat.teams] : []);
+  groupes.forEach((poule, ip) => ((poule || [])).forEach((eq, ie) =>
+    (((eq && eq.players) || [])).forEach((j, ij) => {
+      if (j) tous.push({ j, chemin: (parPoules ? 'poules[' + ip + '][' + ie + ']' : 'teams[' + ie + ']') + '.players[' + ij + ']' });
+    })));
+  (((etat && etat.scoutPool) || [])).forEach((e, i) => { if (e && e.p) tous.push({ j: e.p, chemin: 'scoutPool[' + i + '].p' }); });
+  (((etat && etat.loanedOut) || [])).forEach((j, i) => { if (j) tous.push({ j, chemin: 'loanedOut[' + i + ']' }); });
+  return tous;
+}
+// Les identifiants qu'un état porte DEUX FOIS, ou qui n'en sont pas — un entier positif, rien d'autre.
+// Rend le chemin du SECOND porteur : c'est lui qu'un refus nomme, et lui qu'une réparation renumérote.
+function identitesDupliquees(etat) {
+  const vus = new Set(), fautifs = [];
+  joueursDeLetat(etat).forEach(({ j, chemin }) => {
+    if (!Number.isInteger(j.id) || j.id < 0) { fautifs.push({ chemin: chemin + '.id', id: j.id }); return; }
+    if (vus.has(j.id)) fautifs.push({ chemin: chemin + '.id', id: j.id });
+    else vus.add(j.id);
+  });
+  return fautifs;
+}
+// LA REMISE D'APLOMB DES IDENTITÉS, avant que quoi que ce soit ne s'en serve. Deux gestes :
+//
+//   · `nextPlayerId` est relevé au-dessus de TOUS les identifiants vivants. Son repli valait `10000`,
+//     un nombre magique qui ne regardait rien : une partie dont les identifiants dépassent 10000 se
+//     faisait renuméroter par-dessus elle-même dès la première création ;
+//   · chaque identifiant dupliqué ou mal formé est refait, et c'est le SECOND porteur qui change — le
+//     premier garde le sien, donc tout ce qui le nomme ailleurs reste juste.
+//
+// CE QUE CETTE RÉPARATION NE RATTRAPE PAS, et il faut le savoir : les affinités (`G.affinites`,
+// `G.ententesVues`) sont des clés bâties sur deux identifiants, et celles du joueur renuméroté
+// deviennent orphelines. Une affinité orpheline se lit 0 et ne fait rien ; un joueur effacé par la
+// vente de son homonyme, lui, ne revient pas. On échange une entente contre un joueur.
+function normaliserIdentites() {
+  const tous = joueursDeLetat(G);
+  const plancher = tous.reduce((m, x) => (Number.isInteger(x.j.id) && x.j.id >= m ? x.j.id + 1 : m), 1);
+  if (!Number.isInteger(nextPlayerId) || nextPlayerId < plancher) nextPlayerId = plancher;
+  const vus = new Set();
+  tous.forEach(({ j }) => {
+    if (Number.isInteger(j.id) && j.id >= 0 && !vus.has(j.id)) { vus.add(j.id); return; }
+    j.id = nextPlayerId++;
+    vus.add(j.id);
+  });
 }
 // Le geste : rend `{ ok: true }`, ou le refus et sa raison — `invalide`, ou `pris` avec le
 // porteur. Aucun affichage ici : l'appelant choisit comment le dire.
 function changerNumero(joueur, n, equipe) {
   const eq = equipe || myTeam();
   if (!numeroValide(n)) return { ok: false, raison: 'invalide' };
-  const porteur = eq.players.find(j => j.id !== joueur.id && j.num === n);
+  const porteur = eq.players.find(j => j !== joueur && j.num === n);
   if (porteur) return { ok: false, raison: 'pris', porteur };
   joueur.num = n;
   return { ok: true };
@@ -1580,16 +1677,16 @@ async function demanderNumero(playerId) {
   const p = me.players.find(x => x.id === playerId);
   if (!p) return;
   numeroSaisi = numeroValide(p.num) ? String(p.num) : '';
-  const pris = numerosPris(me, p.id);
+  const pris = numerosPris(me, p);
   const libres = [];
   for (let n = 0; n < 100 && libres.length < 12; n++) if (!pris.has(n)) libres.push(n);
   const valide = await ask({
-    title: T('numero.titre', { nom: p.nom }), ico: '🔢', okLabel: T('numero.valider'),
+    title: T('numero.titre', { nom: p.nom }), picto: 'effectif', okLabel: T('numero.valider'),
     html: `<p class="modal-text">${T('numero.invite')}</p>
       <input id="numeroChamp" class="numero-champ" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="3"
         autocomplete="off" data-focus-initial value="${numeroSaisi}" aria-label="${escHtml(T('numero.titre', { nom: p.nom }))}"
         oninput="numeroSaisi = this.value"
-        onkeydown="if (event.key === 'Enter') { event.preventDefault(); numeroSaisi = this.value; closeModal(true); }">
+        onkeydown="if (event.key === 'Enter' && !event.repeat) { event.preventDefault(); numeroSaisi = this.value; closeModal(true); }">
       <p class="note">${T('numero.libres', { liste: libres.join(', ') })}</p>`
   });
   if (!valide) return;
@@ -2050,9 +2147,13 @@ function renderTeamSelectScreen() {
     .sort((a, b) => a.localeCompare(b, 'fr'));
   const chips = document.getElementById('tsChips');
   if (chips) {
+    // `aria-pressed` dit l'état du filtre : une puce active n'est pas seulement colorée, elle est
+    // ENFONCÉE, et c'est ce qu'un lecteur d'écran doit annoncer.
     chips.innerHTML = `<div class="ts-chip ${tsActiveFilter === 'all' ? 'active' : ''}" style="--chip-color:var(--tan)"
+        role="button" tabindex="0" aria-pressed="${tsActiveFilter === 'all'}" data-region="all"
         onclick="tsSetFilter('all')">Toutes</div>` +
       regions.map(r => `<div class="ts-chip ${tsActiveFilter === r ? 'active' : ''}" style="--chip-color:#8fb8d8"
+          role="button" tabindex="0" aria-pressed="${tsActiveFilter === r}" data-region="${escHtml(r)}"
           onclick="tsSetFilter(${JSON.stringify(r).replace(/"/g, '&quot;')})">${escHtml(r)}</div>`).join('');
   }
 
@@ -2082,6 +2183,7 @@ function renderTeamSelectScreen() {
           <div class="ts-team-card ${ai === CLUB_DEFAUT ? 'ts-defaut' : ''}"
                data-name="${(a[0] + ' ' + ville + ' ' + a[1]).toLowerCase()}"
                style="animation-delay:${delay}ms"
+               role="button" tabindex="0"
                onclick="openTeamConfirm(${ai})">
             <div class="ts-crest">${tsCrestLabel(t)}</div>
             <div class="ts-team-name">${t.name}</div>
@@ -2098,10 +2200,18 @@ function renderTeamSelectScreen() {
 
 function tsSetFilter(key) {
   tsActiveFilter = key;
-  document.querySelectorAll('#tsChips .ts-chip').forEach(c => c.classList.remove('active'));
-  const chips = [...document.querySelectorAll('#tsChips .ts-chip')];
-  const target = key === 'all' ? chips[0] : chips.find(c => c.textContent.trim() === key);
-  if (target) target.classList.add('active');
+  // La classe `active` et `aria-pressed` disent la MÊME chose : l'une à l'œil, l'autre au lecteur
+  // d'écran. Elles étaient posées à deux endroits — la classe ici, l'attribut au rendu —, et celui
+  // qui ne bougeait pas mentait : après un filtre, « Toutes » se disait encore enfoncée pendant
+  // qu'une région était active. Une seule passe, les deux ensemble, et le défaut est impossible.
+  //
+  // La puce se reconnaît à son `data-region`, pas à son texte : un libellé est de l'affichage, il
+  // se traduit et se décore, et il n'a rien à faire dans une comparaison de clés.
+  document.querySelectorAll('#tsChips .ts-chip').forEach(c => {
+    const sienne = c.getAttribute('data-region') === key;
+    c.classList.toggle('active', sienne);
+    c.setAttribute('aria-pressed', String(sienne));
+  });
   tsApplyFilters();
 }
 
@@ -2263,7 +2373,7 @@ function telechargerBranche(s, b) {
 async function proposerExportBranches(s, branches) {
   for (;;) {
     const choix = await showModal({
-      title: T('conflit.exportTitre', { n: s }), ico: '💾',
+      title: T('conflit.exportTitre', { n: s }), picto: 'sauvegarder',
       html: `<div class="modal-text">${escHtml(T('conflit.exportTexte'))}</div>` + branches.map(decrireBranche).join(''),
       actions: branches.map((b, i) => ({ label: T('conflit.exporterBranche', { quoi: T('conflit.' + b.role) }), value: i }))
         .concat([{ label: T('conflit.plusTard'), value: -1 }])
@@ -2282,7 +2392,7 @@ async function resoudreConflitInteractif(s, branchesFournies) {
   let choix;
   for (;;) {
     choix = await showModal({
-      title: T('conflit.titre', { n: s }), ico: '⚖️',
+      title: T('conflit.titre', { n: s }), ico: '',
       html: `<div class="modal-text">${escHtml(T(memoire ? 'conflit.texteMemoire' : 'conflit.texte'))}</div>`
         + branches.map(decrireBranche).join(''),
       actions: branches.map((b, i) => ({ label: T('conflit.prendre.' + b.role), value: i, cls: i === 0 ? 'buy' : '' }))
@@ -2413,9 +2523,13 @@ async function resoudreConflitInteractif(s, branchesFournies) {
   derniereEcritureNatif = null;
   if (!(await saveLocalSerialise())) return;                   // pas même tenté : les écartées restent
   try { await derniereEcritureNatif; } catch (e) { return; }   // enregistrement raté : les écartées restent
-  // 6. Chargée ET enregistrée : les branches écartées ont fait leur temps.
+  // 6. Chargée ET enregistrée : les branches écartées ont fait leur temps — SAUF si l'emplacement est devenu
+  // incertain depuis la transaction : un autre onglet a pu y poser deux repères contradictoires (v193, S37).
+  // Une copie ne se retire alors que par un effacement confirmé ; laisser les écartées ne perd rien.
   if (magasin.natif) {
-    for (const sfx of CLES_RANGEMENT) await magasin.remove(cle + sfx).catch(() => {});
+    if (!marqueurIncertain(marqueurCourant(s))) {
+      for (const sfx of CLES_RANGEMENT) await magasin.remove(cle + sfx).catch(() => {});
+    }
   } else {
     // Ce qu'on a le droit de retirer : les clés qui portent EXACTEMENT une des branches qu'on
     // vient d'arbitrer. Une clé dont le contenu a changé depuis porte autre chose, et cette
@@ -2423,6 +2537,8 @@ async function resoudreConflitInteractif(s, branchesFournies) {
     // en cours.
     const arbitrees = restantes.map(b => b.copie.raw).concat([gardee.copie.raw]);
     await muterEmplacement(s, () => {
+      // Relu SOUS le verrou du retrait, pas avant : c'est là que l'état peut avoir changé.
+      if (marqueurIncertain(marqueurCourant(s))) return;
       const notre = foyerSession(s);
       for (const sfx of CLES_RANGEMENT) {
         if (arbitrees.indexOf(localStorage.getItem(cle + sfx)) >= 0) localStorage.removeItem(cle + sfx);
@@ -2480,7 +2596,7 @@ async function effacerSlot(s, ev) {
     : r.illisible
     ? T('dlg.effacer.illisible', { n: s, octets: r.octets })
     : T('dlg.effacer.partie', { club: r.nom, division: r.divLabel, saison: r.saison });
-  if (!(await ask({ title: T('dlg.effacer.titre'), ico: '🗑️', danger: true, okLabel: T('dlg.effacer.ok'),
+  if (!(await ask({ title: T('dlg.effacer.titre'), picto: 'effacer', danger: true, okLabel: T('dlg.effacer.ok'),
       cancelLabel: T('dlg.effacer.annuler'), text: T('dlg.effacer.texte', { quoi }) }))) return;
   const verdict = await clearLocal(s, attendu);
   refreshMenu();
@@ -2516,7 +2632,7 @@ async function effacerSlot(s, ev) {
 // `versionName` du build Android par 4-outils/patch-version.py, qui refuse de s'appliquer
 // si les deux divergent. Le mode d'échec évité est réel : l'APK a annoncé « 1.0 » pendant
 // soixante-dix-sept versions parce que rien ne reliait le jeu à son numéro.
-const VERSION_JEU = '183';
+const VERSION_JEU = '194';
 
 function refreshMenu() {
   // Les textes de l'écran titre sont écrits ICI et non en HTML statique : sinon ils
@@ -2609,7 +2725,7 @@ function refreshMenu() {
 // UN EMPLACEMENT INCERTAIN a quatre causes, et elles ne se disent pas de la même façon : une lecture qui a
 // échoué, un repère abîmé, une copie d'une version antérieure qui l'occupe, un effacement inachevé. Un seul
 // endroit les nomme — le menu, les toasts et les fenêtres disent tous la même chose.
-const CLES_INCERTAIN = { repere: 'repere', occupe: 'occupe', inacheve: 'inacheve' };
+const CLES_INCERTAIN = { repere: 'repere', occupe: 'occupe', inacheve: 'inacheve', ambigu: 'ambigu' };
 function cleIncertain(motif) { return CLES_INCERTAIN[motif] || 'incertain'; }
 function toastIncertain(s, motif) { toast(T('toast.emplacement.' + cleIncertain(motif), { n: s }), 'warn'); }
 // Une application sans plugin Preferences est incomplète : réessayer n'y changera rien, et le dire évite au
@@ -2671,7 +2787,7 @@ function initMenu() {
   document.getElementById('menuNew').addEventListener('click', async () => {
     const saved = loadLocalRaw();
     if (saved && !(await ask({
-      title: T('dlg.nouvelle.titre'), ico: '⚠️', danger: true, okLabel: T('dlg.nouvelle.ok'),
+      title: T('dlg.nouvelle.titre'), picto: 'alerte', danger: true, okLabel: T('dlg.nouvelle.ok'),
       text: T('dlg.nouvelle.texte')
     }))) return;
     openTeamSelect();
@@ -2825,6 +2941,52 @@ function rendreLeFocusAuDeclencheur() {
   try { cible.focus(); } catch (e) {}
 }
 
+// UN RENDU QUI DÉTRUIT LA COMMANDE FOCALISÉE LA REND AU CLAVIER. Le rendu du jeu est une chaîne
+// HTML posée d'un bloc : après `renderEffectif()`, la carte qu'on vient d'activer n'existe plus, et
+// le focus retombe sur le document — c'est-à-dire nulle part. À la souris cela ne se voit pas ; au
+// clavier, chaque geste renvoie en haut de la page.
+//
+// On retrouve la commande par son `data-cmd`, qui désigne le JOUEUR ou la LIGNE : l'élément est
+// neuf, la commande logique est la même. Jamais une position dans une liste — l'ordre change au
+// premier tri — ni un libellé, qui est de l'affichage et se traduit. On COMPARE les valeurs plutôt
+// que d'écrire un sélecteur : un identifiant peut porter une apostrophe, et `CSS.escape` n'est pas
+// partout.
+//
+// Le geste ENTIER passe par ici, pas seulement le rendu : `toggleStarter` re-rend lui-même quand le
+// joueur est gardien, et relever le focus après lui, c'est le relever sur `body`.
+//
+// UNE PORTÉE, pour un rendu qui se fait À L'INTÉRIEUR d'une fenêtre ouverte (v193, A8). La commande
+// n'y est cherchée que là — un identifiant de la page, derrière, est inerte et ne recevrait rien —,
+// et le focus ne quitte JAMAIS la portée. Quand la commande a disparu, trois replis, dans cet ordre :
+//
+//   1. celle que la commande disparue désignait pour lui succéder, `data-repli` ;
+//   2. la cible que l'étape déclare, `data-focus-initial` — la convention que `modalPump` suit déjà
+//      à l'ouverture d'une fenêtre ;
+//   3. la première commande de la portée : un filet, jamais le chemin prévu. Sans portée, pas de
+//      filet — pour une carte de l'effectif, le début de la page ne serait pas une réponse.
+function rendreEnGardantLeFocus(rendu, portee) {
+  const avant = document.activeElement;
+  const lire = (nom) => (avant && typeof avant.getAttribute === 'function') ? avant.getAttribute(nom) : null;
+  const cmd = lire('data-cmd'), repli = lire('data-repli');
+  // AU CLAVIER, OU AU POINTEUR ? Lu AVANT le rendu, qui emporte la commande (v193, relecture d'A8). Sous
+  // Chromium, un bouton touché est focalisé, mais sans `:focus-visible` : lui faire suivre la commande par un
+  // défilement renvoyait la fenêtre en haut à chaque toucher. Au clavier, la commande doit rester VISIBLE.
+  let auClavier = true;
+  try { auClavier = !!avant && avant.matches(':focus-visible'); } catch (e) {}
+  rendu();
+  // La commande a survécu au rendu : le focus est resté sur elle, il n'y a rien à faire.
+  if (!cmd || document.contains(avant)) return;
+  const racine = portee || document;
+  const trouver = (id) => {
+    if (!id) return null;
+    for (const el of racine.querySelectorAll('[data-cmd]')) if (el.getAttribute('data-cmd') === id) return el;
+    return null;
+  };
+  const cible = trouver(cmd) || trouver(repli)
+    || (portee ? (portee.querySelector('[data-focus-initial]') || portee.querySelector(SELECTEUR_FOCALISABLE)) : null);
+  if (cible) { try { cible.focus({ preventScroll: !auClavier }); } catch (e) {} }
+}
+
 // LE CONFINEMENT. Posé sur le document et en CAPTURE : un écouteur sur la seule fenêtre ne
 // verrait pas la tabulation qui vient de l'extérieur, et un écouteur en phase de remontée
 // arriverait après que le navigateur a déjà choisi sa cible.
@@ -2876,7 +3038,7 @@ function modalPump() {
 
   const box = document.getElementById('modalBox');
   box.className = 'modal-box' + (o.kind ? ' ' + o.kind : '');
-  document.getElementById('modalIco').textContent = o.ico || TOAST_ICONS.info;
+  poserIconeModale(document.getElementById('modalIco'), o);
   document.getElementById('modalTitle').textContent = o.title || 'Information';
 
   const body = document.getElementById('modalBody');
@@ -2948,13 +3110,80 @@ function closeModal(value) {
   }
 }
 
+// Un pictogramme d'ICONES_IMG, en image. Ne rend RIEN s'il manque — `icones.js` n'est pas une pièce
+// critique — et surtout pas un émoji de repli : c'est ce repli qu'on retire du jeu depuis la v188.
+const AIDE_PICTOS = { direct: 'jouer', coupe: 'coupe', effectif: 'effectif', numeros: 'effectif', club: 'club' };   // carte -> pictogramme
+// Ce qui précède le titre d'une carte d'aide : un pictogramme, un carré de pénalité, ou rien.
+function enteteAide(c) {
+  if (AIDE_PICTOS[c]) return pictoHtml(AIDE_PICTOS[c]) + ' ';
+  return c === 'penalites' ? carrePenalite('mineure') + ' ' : '';
+}
+// TOUT CE QUI SE DÉCLARE BOUTON S'ACTIVE AU CLAVIER. Une seule écoute, déléguée, plutôt qu'un
+// gestionnaire par famille : une commande ajoutée demain en hérite sans que personne y pense, et
+// c'est exactement l'oubli qui a laissé trois familles muettes.
+//
+// Elle appelle `click()` au lieu de rejouer le geste : le `onclick` reste la seule définition de ce
+// que fait la commande. Et elle ÉCARTE les boutons et liens natifs — le navigateur y synthétise
+// déjà un clic sur Entrée, et les traiter ici les activerait DEUX fois.
+//
+// `preventDefault` sur Espace empêche le défilement de page ; sur Entrée, il empêche la soumission
+// d'un formulaire qui engloberait la commande.
+//
+// UNE RÉPÉTITION N'EST PAS UNE ACTIVATION (v193, relecture d'A8). Une touche gardée enfoncée se répète, et
+// chaque `keydown` répété cliquait : sur un bouton natif par l'action par défaut du navigateur, sur une
+// commande déclarée par cette écoute-ci. A8 portant le focus sur la commande SUIVANTE, la répétition
+// l'activait — Entrée maintenue sur « Remplacer » faisait sortir un joueur que personne n'avait choisi.
+// L'écoute en CAPTURE annule le clic synthétisé ; celle qui suit ignore la répétition.
+//
+// SUR UNE COMMANDE SEULEMENT (seconde relecture). La première version annulait toute répétition hors champ de
+// saisie — la page elle-même comprise, où Espace maintenue FAIT DÉFILER : sur l'effectif, la page s'arrêtait
+// après un écran. N'est annulé que ce qu'Entrée ou Espace ACTIVENT ; la page défile, un champ écrit, une liste
+// déroule.
+const COMMANDE_ACTIVABLE = 'button, a[href], summary, input[type="button"], input[type="submit"], input[type="reset"], [role="button"][tabindex]';
+function commandeActivable(el) {
+  return !!el && typeof el.matches === 'function' && el.matches(COMMANDE_ACTIVABLE);
+}
+document.addEventListener('keydown', (e) => {
+  if (!e.repeat || (e.key !== 'Enter' && e.key !== ' ' && e.key !== 'Spacebar')) return;
+  if (!commandeActivable(e.target)) return;
+  e.preventDefault();
+}, true);
+document.addEventListener('keydown', (e) => {
+  if (e.key !== 'Enter' && e.key !== ' ' && e.key !== 'Spacebar') return;
+  if (e.repeat) return;
+  if (e.ctrlKey || e.metaKey || e.altKey) return;
+  const cible = e.target;
+  if (!cible || typeof cible.matches !== 'function') return;
+  if (cible.tagName === 'BUTTON' || cible.tagName === 'A' || cible.tagName === 'INPUT'
+      || cible.tagName === 'TEXTAREA' || cible.tagName === 'SELECT') return;
+  if (!cible.matches('[role="button"][tabindex]')) return;
+  e.preventDefault();
+  cible.click();
+});
+
+function pictoHtml(nom) {
+  const img = (typeof ICONES_IMG === 'object' && ICONES_IMG) ? ICONES_IMG[nom] : null;
+  return img ? `<img class="picto" src="${img}" alt="">` : '';
+}
+
+// L'icône d'une fenêtre : `picto` (une image) l'emporte, puis `ico`. `ico: ''` veut dire AUCUNE
+// icône — c'est un choix, distinct de `undefined` qui garde le repli historique sur ℹ️. Avant la
+// v188, retirer l'émoji d'une fenêtre le remplaçait par un autre.
+function poserIconeModale(el, o) {
+  const image = o.picto ? pictoHtml(o.picto) : '';
+  if (image) { el.innerHTML = image; el.hidden = false; return; }
+  const texte = o.ico === '' ? '' : (o.ico || TOAST_ICONS.info);
+  el.textContent = texte;
+  el.hidden = !texte;
+}
+
 function notify(opts) {
   return showModal(typeof opts === 'string' ? { title: 'Information', text: opts } : opts);
 }
 
 // Modale d'erreur : titre rouge, message technique conservé pour le diagnostic.
 function notifyError(title, detail) {
-  return showModal({ title: title, ico: '⛔', kind: 'bad', text: detail });
+  return showModal({ title: title, picto: 'interdit', kind: 'bad', text: detail });
 }
 
 function ask(opts) {
@@ -2963,7 +3192,9 @@ function ask(opts) {
     title: o.title || 'Confirmation',
     text: o.text,
     html: o.html,
-    ico: o.ico || '❓',
+    ico: o.ico,
+    // Sans icône demandée, une question porte le pictogramme de l'aide — il a remplacé l'émoji « point d'interrogation » en v189.
+    picto: o.picto || (o.ico === undefined ? 'aide' : undefined),
     kind: o.kind || '',
     actions: [
       { label: o.cancelLabel || 'Annuler', value: false },
@@ -3037,6 +3268,7 @@ function adopterEmplacement(n, origines, generation) {
   // une résolution entamée avant un effacement ne doit pas adopter la génération qu'il a ouverte.
   generationSession[n] = generation === undefined ? generationCourante(n) : generation;
   emplacementEffaceSignale[n] = false;
+  emplacementAmbiguSignale[n] = false;
   noterFiliation(n);
   // RIEN N'EST DEMANDÉ ET RIEN N'EST ATTENDU (revue de la v165, S19). La v165 réservait ici un
   // foyer dans la section critique sans attendre la promesse : tant qu'une autre page tenait le
@@ -3163,6 +3395,11 @@ const MAX_EFFACEES = 64;
 let nEffacement = 0;
 const MARQUEUR_ILLISIBLE = 'illisible';
 const MARQUEUR_INCONNU = 'inconnu';
+// DEUX MARQUEURS DE MÊME RANG QUI NE RACONTENT PAS LE MÊME EFFACEMENT (v193, S37) : générations différentes,
+// ou listes d'identités dont aucune n'est le préfixe de l'autre. On ne sait pas lequel tient, donc on ne sait
+// pas quelles copies sont mortes : l'emplacement est INCERTAIN, et rien n'y est choisi, écrit ni retiré en
+// son nom. Cette valeur n'est JAMAIS écrite — elle n'existe que le temps d'une lecture.
+const MARQUEUR_AMBIGU = 'ambigu';
 // Le marqueur que porte la couche NATIVE, tel qu'une lecture RÉUSSIE l'a rendu ou tel que nos propres
 // écritures l'ont fait : `undefined` tant qu'aucune lecture n'a réussi. Une lecture ratée ne le change
 // JAMAIS — elle ne prouve rien, et la partie chargée n'a pas à se croire effacée pour autant. Une seule
@@ -3209,11 +3446,65 @@ function pierreTombale(raw) {
     return (o && o.marqueurEffacement && !o.G) ? marqueurDepuisObjet(o.marqueurEffacement) : null;
   } catch (e) { return null; }
 }
-// Le plus récent des deux, le premier à égalité.
+// DEUX MARQUEURS RACONTENT-ILS LE MÊME EFFACEMENT ? La même génération — elle est unique par effacement :
+// identité de session, compteur, aléa —, et deux listes EMBOÎTÉES : toute identité de la plus courte figure
+// dans la plus longue. C'est ainsi qu'un effacement s'écrit en entier ici et tronqué là, quand le stockage
+// plein n'a laissé place qu'à une pierre plus courte — et chaque version a tronqué à SA façon : liste VIDE
+// pour le marqueur compact des versions 173 à 189, FIN de la liste en v190, DÉBUT depuis la v191 (S33, S36).
+// La v193 exigeait d'abord un préfixe, et déclarait contradictoire l'état que la v190 a laissé : une clé
+// suffixe et un durable complet, de même génération — reproduit avec le vrai code de la v190.
+function estIncluse(petite, grande) {
+  return Array.isArray(petite) && Array.isArray(grande) && petite.length <= grande.length
+    && petite.every(x => grande.indexOf(x) >= 0);
+}
+function memeEffacement(a, b) {
+  return estMarqueur(a) && estMarqueur(b) && a.rang === b.rang && a.gen === b.gen
+    && (estIncluse(a.effacees, b.effacees) || estIncluse(b.effacees, a.effacees));
+}
+// `a` dit-il au moins tout ce que `b` dit ? Un rang plus haut — un effacement postérieur, dont la génération
+// rend mortes toutes celles d'avant —, ou le même effacement, écrit au moins aussi complètement. C'est la
+// seule relation qu'un ÉCRIVAIN a le droit d'utiliser pour garder l'un et retirer l'autre.
+function couvre(a, b) {
+  if (!estMarqueur(a) || !estMarqueur(b)) return false;
+  if (a.rang !== b.rang) return a.rang > b.rang;
+  return a.gen === b.gen && estIncluse(b.effacees, a.effacees);
+}
+// Le plus récent des deux. À rang égal, ils ne se départagent QUE s'ils racontent le même effacement, et
+// alors le plus COMPLET l'emporte — sans quoi une copie qu'un stockage plein avait empêché de relever
+// ressusciterait (S36). Sinon, AMBIGU.
+//
+// La v192 prenait la liste la plus longue sans regarder la génération, et son commentaire l'appuyait sur
+// une hypothèse que rien ne vérifiait : « deux marqueurs de même rang viennent du même effacement ». Mesuré
+// sur deux générations au même rang : la plus longue gagnait, les copies vivantes de l'autre étaient
+// déclarées mortes, et le ménage du démarrage les retirait.
 function plusRecent(a, b) {
   if (!estMarqueur(a)) return estMarqueur(b) ? b : a;
   if (!estMarqueur(b)) return a;
-  return b.rang > a.rang ? b : a;
+  if (b.rang !== a.rang) return b.rang > a.rang ? b : a;
+  if (!memeEffacement(a, b)) return MARQUEUR_AMBIGU;
+  return b.effacees.length > a.effacees.length ? b : a;
+}
+// LE départage d'un ENSEMBLE de marqueurs lus : le rang le plus haut, puis, à rang égal, `plusRecent`. Et
+// l'ambiguïté est COLLANTE : aucun marqueur du même rang, lu ensuite, ne la lève, dans quelque ordre que les
+// couches se présentent. La v192 faisait un `reduce` par paires : une sentinelle n'y est pas un marqueur, et
+// le marqueur suivant l'aurait remplacée. Un rang PLUS HAUT, lui, l'emporte — c'est un effacement postérieur.
+//
+// TOUTES LES PAIRES, pas chacun contre le plus complet vu jusque-là (v193, seconde relecture). Avec
+// l'emboîtement, deux marqueurs qui se contredisent peuvent être tous deux contenus dans un troisième : lus
+// dans un ordre, la contradiction apparaissait ; dans un autre, le troisième l'avalait, et le ménage retirait
+// la copie qu'un seul des deux tenait pour vivante. Un seul effacement n'écrit que des troncatures d'une même
+// liste : ses marqueurs s'emboîtent DEUX À DEUX. Le rang est ambigu dès qu'une seule paire ne s'emboîte pas.
+function departagerMarqueurs(liste) {
+  const lus = liste.filter(estMarqueur);
+  if (!lus.length) return null;
+  const haut = lus.reduce((r, m) => Math.max(r, m.rang), 0);
+  const sommet = lus.filter(m => m.rang === haut);
+  for (let i = 0; i < sommet.length; i++) {
+    for (let j = i + 1; j < sommet.length; j++) {
+      if (plusRecent(sommet[i], sommet[j]) === MARQUEUR_AMBIGU) return MARQUEUR_AMBIGU;
+    }
+  }
+  return sommet.reduce((a, b) => plusRecent(a, b));
 }
 // LE MARQUEUR DURABLE DU NAVIGATEUR (seconde relecture de la conception). `localStorage` n'est pas un point
 // durable : mesuré sous Chromium, un navigateur TUÉ jusqu'à une minute après l'écriture la perd — la
@@ -3282,14 +3573,14 @@ function marqueurWeb(s) {
   }
   const m = lireMarqueur(cle);
   if (m === MARQUEUR_ILLISIBLE || tombes.indexOf(MARQUEUR_ILLISIBLE) >= 0 || marqueursDurablesWeb[s] === MARQUEUR_ILLISIBLE) return MARQUEUR_ILLISIBLE;
-  return tombes.concat([marqueursDurablesWeb[s]]).reduce((a, b) => plusRecent(a, b), m);
+  return departagerMarqueurs([m].concat(tombes, [marqueursDurablesWeb[s]]));
 }
 function plateformeNative() {
   try { return (window.Capacitor && typeof window.Capacitor.getPlatform === 'function') ? window.Capacitor.getPlatform() : null; }
   catch (e) { return null; }
 }
 // LE marqueur d'un emplacement. En navigateur, le web, relu à chaque question : un autre onglet l'écrit.
-// En natif, le natif CONNU, et le web seulement s'il est en avance.
+// En natif, le natif CONNU, départagé avec tout ce que le web sait LIRE — et le web seul s'il est en avance.
 function marqueurCourant(s) {
   if (emplacementDouteux[s]) return MARQUEUR_INCONNU;
   const web = marqueurWeb(s);
@@ -3297,14 +3588,40 @@ function marqueurCourant(s) {
   const natif = marqueursNatifs[s];
   if (natif === undefined) return MARQUEUR_INCONNU;
   if (natif === MARQUEUR_ILLISIBLE) return MARQUEUR_ILLISIBLE;
-  // Le web n'est qu'un cache : illisible ou inconnu, il ne remet pas en cause un natif lu.
-  if (!estMarqueur(web)) return natif;
-  if (estMarqueur(natif) && natif.rang >= web.rang) return natif;
+  // Le web n'est qu'un cache : muet, il ne remet pas en cause un natif lu. Mais ce qu'il sait LIRE compte
+  // toujours (v193, quatrième relecture) : `web` rend ILLISIBLE dès qu'UN de ses éléments ne se lit pas, et
+  // rendre alors le natif seul faisait disparaître ses voisins lisibles — une génération choisie en silence,
+  // une partie vivante retirée, une partie effacée ressuscitée. Ajouter de l'incertitude rendait le jeu plus
+  // affirmatif.
+  const lisibles = marqueursLisiblesWeb(s);
+  if (!lisibles.length) return natif;
+  const haut = lisibles.reduce((r, m) => Math.max(r, m.rang), 0);
+  if (estMarqueur(natif) && natif.rang > haut) return natif;
+  // Un web AMBIGU n'est pas un web muet : ses marqueurs contradictoires ont un RANG (v193, S37). Un natif
+  // plus récent les tient tous pour révolus ; au même rang, il ajoute une voix à une contradiction qu'il ne
+  // lève pas ; plus bas, le web est en avance ET contradictoire. Rendre le natif dans ces deux derniers cas,
+  // c'était juger les copies des générations récentes contre un marqueur plus ancien — et les retirer.
+  const duWeb = departagerMarqueurs(lisibles);
+  if (duWeb === MARQUEUR_AMBIGU) return MARQUEUR_AMBIGU;
+  // Au MÊME rang, le même départage que partout (v193, S37). La v192 rendait le natif en silence, sans
+  // comparer la génération : les copies de la génération web étaient mortes, et le relevé réécrivait la
+  // principale native. Un seul processus n'écrit jamais une telle paire — l'état reste accepté par le parseur.
+  //
+  // Avec CHACUN des marqueurs du web, pas avec leur vainqueur (v193, troisième relecture). `web` est déjà
+  // réduit : le natif n'était comparé qu'au plus complet d'entre eux, et une contradiction que ce plus complet
+  // avalait — deux listes qu'il contient toutes deux sans qu'elles s'emboîtent — ne se voyait plus dès qu'un
+  // de ses deux termes vivait dans Preferences. La copie qu'il tenait pour vivante était retirée.
+  //
+  // Un élément web illisible n'y change rien : le natif fait le verdict, et c'est la règle du cache.
+  if (estMarqueur(natif) && natif.rang === haut) return departagerMarqueurs([natif].concat(lisibles));
   // Le web est EN AVANCE : le natif a perdu un effacement. Le plus récent l'emporte, mais tant que le natif
-  // n'a pas été rattrapé, l'emplacement est incertain.
-  return reconciliationManquee[s] ? MARQUEUR_INCONNU : web;
+  // n'a pas été rattrapé, l'emplacement est incertain. Et c'est le WEB qui fait alors le verdict : il se juge
+  // comme en navigateur, où un élément illisible à côté de son plus récent rend l'emplacement incertain — on
+  // ne sait pas ce qu'il disait.
+  if (!estMarqueur(web)) return web === MARQUEUR_INCONNU ? MARQUEUR_INCONNU : MARQUEUR_ILLISIBLE;
+  return reconciliationManquee[s] ? MARQUEUR_INCONNU : duWeb;
 }
-function marqueurIncertain(m) { return m === MARQUEUR_INCONNU || m === MARQUEUR_ILLISIBLE; }
+function marqueurIncertain(m) { return m === MARQUEUR_INCONNU || m === MARQUEUR_ILLISIBLE || m === MARQUEUR_AMBIGU; }
 function generationCourante(s) { const m = marqueurCourant(s); return estMarqueur(m) ? m.gen : null; }
 function generationDeDonnees(data) { const g = data && data.gen; return (typeof g === 'string' && g) ? g : null; }
 
@@ -3428,6 +3745,9 @@ function consoliderPrincipale(s) {
   // L'emplacement a été effacé depuis que cette session l'a adopté : sa branche est morte-née, et la
   // promouvoir la ressusciterait (revue de la v172, S26).
   if (!generationToujoursValide(s)) { retirerFoyerSession(s); return false; }
+  // AMBIGU (v193, S37) : la principale peut porter la copie vivante de l'autre génération, ou l'une des deux
+  // pierres contradictoires. La promouvoir, c'était trancher en silence. Notre branche reste dans son foyer.
+  if (marqueurCourant(s) === MARQUEUR_AMBIGU) return false;
   let actuelle;
   try { actuelle = localStorage.getItem(saveKey(s)); } catch (e) { return false; }
   // Notre copie y est déjà. On GARDE notre foyer quand même — voir plus bas.
@@ -3522,6 +3842,9 @@ function generationToujoursValide(s) {
 // le même emplacement : la session y est alors valide, mais cette copie-là est morte-née.
 function copieEncoreVivante(slot, json) {
   const m = marqueurCourant(slot);
+  // AMBIGU (v193, S37) : on ne sait pas si cette copie est vivante, et l'écrire remplacerait peut-être la
+  // copie vivante de l'autre génération. La porte refuse.
+  if (m === MARQUEUR_AMBIGU) return false;
   if (!estMarqueur(m)) return true;
   let gen = null;
   try { gen = generationDeDonnees(JSON.parse(json)); } catch (e) {}
@@ -3533,10 +3856,23 @@ function marqueurRecopieDepuisTombe(s, tombe) {
   if (!estMarqueur(tombe)) return false;
   try {
     const cle = lireMarqueur(localStorage.getItem(cleGeneration(s)));
-    if (estMarqueur(cle) && cle.rang >= tombe.rang) return true;
+    if (couvre(cle, tombe)) return true;
+    // Au MÊME rang, une clé qui raconte un AUTRE effacement ne se remplace pas ici : ce serait trancher en
+    // silence ce que le lecteur tient pour ambigu, et la promotion écraserait ensuite la pierre. La v192
+    // tenait tout rang égal pour « déjà recopié » — y compris une pierre plus complète de la même génération,
+    // perdue à la promotion suivante (v193, S37).
+    if (estMarqueur(cle) && cle.rang === tombe.rang && !couvre(tombe, cle)) return false;
     localStorage.setItem(cleGeneration(s), JSON.stringify(tombe));
     return true;
   } catch (e) { return false; }
+}
+
+// Dit UNE fois par emplacement : l'autosauvegarde repasse toutes les 700 ms.
+const emplacementAmbiguSignale = {};
+function signalerEmplacementAmbigu(s) {
+  if (emplacementAmbiguSignale[s]) return;
+  emplacementAmbiguSignale[s] = true;
+  toast(T('toast.emplacementAmbigu', { n: s }), 'warn');
 }
 
 const brancheExterneSignalee = {};
@@ -3568,6 +3904,20 @@ function saveLocal() {
   const emp = emplacementPartie();
   if (emp === null) return false;
   if (!generationToujoursValide(emp)) return false;
+  // UN EMPLACEMENT DEVENU AMBIGU pendant la partie (v193, S37). Rien ne prouve un effacement — la session n'est
+  // pas tuée —, mais elle ne remplace plus rien de partagé : en natif, ni la principale web ni Preferences ;
+  // en navigateur, seulement son foyer, qui n'est qu'à elle, et jamais s'il porte une pierre tombale — ce
+  // serait l'un des deux repères contradictoires. Le joueur l'apprend une fois.
+  if (marqueurCourant(emp) === MARQUEUR_AMBIGU) {
+    signalerEmplacementAmbigu(emp);
+    if (capPlugin('Preferences')) return false;
+    try { if (pierreTombale(localStorage.getItem(foyerSession(emp)))) return false; } catch (e) { return false; }
+  }
+  // La mémoire native est douteuse depuis un effacement inachevé : plus rien n'y est écrit jusqu'au
+  // redémarrage. Une sauvegarde qui se dirait réussie mentirait, et « stockage plein ou bloqué » est un
+  // diagnostic faux dont le conseil — exporter depuis les Réglages — ne résout pas ce cas-là. On le dit
+  // avant d'avoir touché au cache mémoire : un refus ne laisse rien derrière lui.
+  if (IS_NATIVE && natifCompromis) { signalerNatifCompromis(); return false; }
   let json;
   // L'identité de cette écriture et la lignée qu'elle remplace sont inscrites DANS la copie :
   // c'est la seule forme qui survive à la mort de la page (revue de la v165, S18).
@@ -3660,21 +4010,33 @@ async function ecrireNatif(Prefs, slot, json) {
     if (!generationToujoursValide(slot) || !copieEncoreVivante(slot, json)) return;
     const natif = analyserCopie(slot, res && res.value);
     if (natif.etat === 'ok' && natif.savedAt > (origineSession[slot] || 0)) {
-      await attendreEcritureNative();
-      await Prefs.set({ key: cle + '_conflit', value: json });
-      signalerConflitNatif(slot);
+      // Le rangement passe par la porte. La barrière a pu ATTENDRE la fin d'un effacement de cet
+      // emplacement : la copie qu'on range serait alors morte-née, posée dans un emplacement qui
+      // n'existe plus. Et sans rangement, il n'y a pas de conflit à signaler.
+      if (await muterNatif(slot, () => copieEncoreVivante(slot, json), () => Prefs.set({ key: cle + '_conflit', value: json }))) signalerConflitNatif(slot);
       return;                                             // la vigilance reste : la copie native n'est pas la nôtre
     }
-    if (natif.etat === 'illisible' && natif.raw) await Prefs.set({ key: cle + '_illisible', value: natif.raw }).catch(() => {});
+    // Ce site n'avait ni barrière ni revalidation : il postait une écriture dans une mémoire qui
+    // pouvait être devenue douteuse — compromise par l'effacement d'un AUTRE emplacement, la mémoire
+    // native étant commune aux quatre.
+    if (natif.etat === 'illisible' && natif.raw) {
+      await muterNatifAccessoire(slot, marqueurInchange(slot), () => Prefs.set({ key: cle + '_illisible', value: natif.raw }));
+    }
     // On vient de relire la copie de l'appareil et de la reconnaître : il n'y a plus
     // d'ambiguïté à lever, et le repère doit partir. Sans ça, une sauvegarde native en retard
     // d'un tour ressemblerait à une divergence au démarrage suivant.
+    //
+    // Mais ces deux-là sont des MUTATIONS D'ÉTAT, posées sur la foi d'une lecture qui a pu précéder un
+    // effacement — et, depuis le rangement ci-dessus, d'un `await` de plus. On rejoue le jugement.
+    if (!generationToujoursValide(slot) || !copieEncoreVivante(slot, json)) return;
     natifAVerifier[slot] = false;
     oublierOrigine(slot);
   }
-  await attendreEcritureNative();
-  if (!generationToujoursValide(slot) || !copieEncoreVivante(slot, json)) return;
-  await Prefs.set({ key: cle, value: json });
+  // Le patron d'origine, réécrit avec la porte : le jugement de la SESSION avant, celui de la COPIE
+  // derrière la barrière. `generationToujoursValide` juge la session et prévient le joueur ;
+  // `copieEncoreVivante`, que la porte rejoue, juge la copie qu'on écrit. L'une ne remplace pas l'autre.
+  if (!generationToujoursValide(slot)) return;
+  await muterNatif(slot, () => copieEncoreVivante(slot, json), () => Prefs.set({ key: cle, value: json }));
 }
 
 // Trois états, là où l'ancienne version en confondait deux : une sauvegarde ABSENTE et
@@ -3771,7 +4133,10 @@ function lireSauvegarde(slot) {
   // Un marqueur qu'on ne sait pas lire ne dit pas quelles copies sont mortes (revue de la v172, S26) :
   // l'emplacement n'est ni vide, ni une partie. Il est INCERTAIN, et le menu le dit.
   const m = marqueurCourant(s);
-  if (marqueurIncertain(m)) return { etat: 'incertain', motif: emplacementDouteux[s] ? 'inacheve' : m === MARQUEUR_ILLISIBLE ? 'repere' : 'lecture' };
+  // AMBIGU a son motif : ce n'est pas une lecture ratée qu'un nouvel essai lèverait, et « réessaie » serait
+  // faux. Seul un effacement en sort (v193, S37).
+  if (marqueurIncertain(m)) return { etat: 'incertain', motif: emplacementDouteux[s] ? 'inacheve'
+    : m === MARQUEUR_ILLISIBLE ? 'repere' : m === MARQUEUR_AMBIGU ? 'ambigu' : 'lecture' };
   // Un emplacement dont les copies ont divergé n'a PAS de meilleure copie : rendre l'une des
   // deux reviendrait à trancher en silence, ce que la v148 faisait au démarrage.
   if (conflits[s] && conflits[s].length >= 2) return { etat: 'conflit', branches: conflits[s] };
@@ -3898,6 +4263,11 @@ function identitesRelevees(s, natives) {
 
 // Le point durable est passé : l'emplacement n'a plus rien en mémoire.
 function oublierEmplacement(s) {
+  // Le DOUTE part avec le reste. Un emplacement devenu douteux — un effacement dont l'issue était
+  // inconnue — le restait pour toute la durée de la page, même après un effacement qui, lui, avait
+  // abouti : il se disait « incertain », refusait l'import, et gardait ses copies mortes. Le doute ne
+  // se lève qu'ICI, c'est-à-dire au point durable, et jamais sur la foi d'une lecture.
+  delete emplacementDouteux[s];
   cachedSaves[s] = null;
   natifAVerifier[s] = false;
   delete conflits[s];
@@ -3908,6 +4278,7 @@ function oublierEmplacement(s) {
   delete ancetres[s];
   masqueesNatives[s] = false;
   brancheExterneSignalee[s] = false;
+  emplacementAmbiguSignale[s] = false;
   origineSession[s] = 0;
   // La partie chargée venait de cet emplacement : elle n'en a plus. Mieux vaut ne plus l'enregistrer nulle
   // part que la faire réapparaître, et une autosauvegarde en attente n'a plus rien à écrire.
@@ -3936,32 +4307,88 @@ function menageWeb(s) {
   } catch (e) {}
   try {
     const cle = lireMarqueur(localStorage.getItem(cleGeneration(s)));
-    if (!estMarqueur(cle) || cle.rang < m.rang) localStorage.setItem(cleGeneration(s), JSON.stringify(m));
+    // La clé reçoit le marqueur retenu dès qu'elle ne le COUVRE pas — y compris au même rang, quand elle en
+    // porte une version plus pauvre : la v192 la gardait, puis retirait la pierre plus complète (v193, S37).
+    if (!estMarqueur(cle) || !couvre(cle, m)) localStorage.setItem(cleGeneration(s), JSON.stringify(m));
     const ecrit = lireMarqueur(localStorage.getItem(cleGeneration(s)));
     if (!estMarqueur(ecrit)) return;
     for (const k of clesCopiesWeb(s)) {
       const tombe = pierreTombale(localStorage.getItem(k));
-      if (tombe && estMarqueur(tombe) && ecrit.rang >= tombe.rang) localStorage.removeItem(k);
+      // Une pierre ne part que si la clé écrite la COUVRE : une pierre d'un autre effacement au même rang est
+      // la preuve d'une ambiguïté, pas un doublon (v193, S37).
+      if (tombe && estMarqueur(tombe) && couvre(ecrit, tombe)) localStorage.removeItem(k);
     }
   } catch (e) {}
 }
 
-// La pierre tombale, quand la clé du marqueur ne peut pas être écrite (stockage plein). D'abord un marqueur
-// COMPACT dans sa propre clé, s'il y tient sans l'allonger ; sinon la pierre dans la copie la plus lourde de
-// l'emplacement. Un remplacement qui raccourcit une valeur est accepté même stockage plein.
+// La pierre tombale, quand la clé du marqueur ne peut pas être écrite (stockage plein).
+//
+// TROIS VOIES, DANS CET ORDRE, et la troisième seulement quand les deux autres sont fermées. La v173
+// commençait par un marqueur COMPACT — c'est-à-dire un marqueur dont la liste d'identités avait été
+// VIDÉE. Un marqueur sans identités ne tient plus pour mortes les copies sans génération : celle qui
+// dormait sous une clé de rangement redevenait vivante, et le démarrage suivant la présentait. Perdre
+// des identités est le prix le plus cher de cette fonction, pas son premier réflexe.
+//
+//   1. le marqueur COMPLET dans sa propre clé — un remplacement qui ne l'allonge pas passe même
+//      stockage plein, et s'il y a de la place il passe aussi ;
+//   2. la pierre tombale COMPLÈTE dans la copie la plus lourde : elle prend la place d'une copie, donc
+//      elle en libère bien plus qu'elle n'en prend ;
+//   3. et seulement là, la troncature — en gardant les identités les plus RÉCENTES, celles dont une
+//      copie dort encore quelque part, et en réessayant les deux voies à chaque fois qu'on raccourcit.
 function poserMarqueurSansPlace(s, nouveau) {
-  const compact = JSON.stringify(Object.assign({}, nouveau, { effacees: [] }));
-  try {
-    const actuel = localStorage.getItem(cleGeneration(s));
-    if (actuel !== null && actuel.length >= compact.length) { localStorage.setItem(cleGeneration(s), compact); return true; }
-  } catch (e) {}
-  const pierre = JSON.stringify({ marqueurEffacement: nouveau });
-  const lourdes = [];
+  // TOUTES les copies, sans filtre de taille : la pierre RÉTRÉCIT quand on tronque, et une copie
+  // écartée par la pierre complète peut très bien accueillir une pierre plus courte. Filtrer une
+  // fois pour toutes avec la taille du marqueur complet écartait définitivement des foyers
+  // disponibles — mesuré : copie de 217 octets écartée par une pierre de 295, alors qu'une pierre
+  // tronquée de 141 y tenait.
+  const copies = [];
   for (const k of clesCopiesWeb(s)) {
-    try { const raw = localStorage.getItem(k); if (raw && raw.length > pierre.length && !pierreTombale(raw)) lourdes.push({ k, n: raw.length }); } catch (e) {}
+    try { const raw = localStorage.getItem(k); if (raw && !pierreTombale(raw)) copies.push({ k, n: raw.length }); } catch (e) {}
   }
-  lourdes.sort((a, b) => b.n - a.n);
-  for (const x of lourdes) { try { localStorage.setItem(x.k, pierre); return true; } catch (e) {} }
+  copies.sort((a, b) => b.n - a.n);
+  // Une tentative complète des deux premières voies, pour un marqueur donné.
+  const essayer = (marqueur) => {
+    const texte = JSON.stringify(marqueur);
+    // On tente, et c'est le quota qui tranche : un remplacement plus court passe même stockage plein,
+    // et s'il reste de la place un plus long passe aussi. Décider à sa place demanderait de connaître
+    // la taille libre, que le navigateur ne donne pas.
+    try { localStorage.setItem(cleGeneration(s), texte); return true; } catch (e) {}
+    // Le filtre par la taille se fait ICI, avec la pierre de CE marqueur : du plus lourd au plus
+    // léger, parce que remplacer une copie par une pierre plus courte libère de la place.
+    const tombe = JSON.stringify({ marqueurEffacement: marqueur });
+    for (const x of copies) {
+      try { const raw = localStorage.getItem(x.k); if (raw && raw.length > tombe.length && !pierreTombale(raw)) { localStorage.setItem(x.k, tombe); return true; } } catch (e) {}
+    }
+    return false;
+  };
+  if (essayer(nouveau)) return true;
+  // DERNIER RECOURS : tronquer, en gardant le DÉBUT de la liste. `marqueurNeuf` y place les
+  // identités relevées par CET effacement-ci, et ce sont elles qui comptent : elles protègent une
+  // copie qui dort peut-être encore dans un stockage que le navigateur n'a pas fini de valider. Une
+  // identité héritée dont la copie a disparu, elle, ne coûte plus rien. La v190 gardait la fin —
+  // exactement l'inverse de ce que son propre commentaire annonçait.
+  //
+  // On cherche le PLUS GRAND nombre qui tienne, et la recherche est confiée à une fonction qui
+  // porte cet invariant dans son nom.
+  return poserLePlusGrandPrefixe(essayer, Array.isArray(nouveau.effacees) ? nouveau.effacees : [], nouveau);
+}
+
+// DU PLUS GRAND PRÉFIXE AU PLUS PETIT, et on s'arrête au PREMIER succès. Un essai qui échoue
+// n'écrit rien ; un essai qui réussit écrit une fois. Descendre garantit donc les deux choses à la
+// fois : le succès obtenu est le plus grand qui tienne, et il est le SEUL.
+//
+// La v191 cherchait par DICHOTOMIE, en affirmant que « l'état final est celui du dernier succès ».
+// C'était faux : un succès convertit une copie en pierre tombale, `essayer` écarte les pierres, et
+// l'essai suivant — plus long — allait donc s'écrire sur une AUTRE copie. Deux pierres de même
+// génération et de même rang coexistaient, et c'est la plus pauvre que le démarrage suivant lisait.
+// Mesuré avec le vrai code : principale à 3 identités, `_conflit` à 5, marqueur retenu à 3.
+//
+// Le prix est en ESSAIS, pas en écritures : jusqu'à `MAX_EFFACEES` au lieu de sept. Un essai raté
+// coûte un `setItem` refusé et quelques lectures, et on n'arrive ici que le stockage déjà plein.
+function poserLePlusGrandPrefixe(essayer, toutes, nouveau) {
+  for (let n = toutes.length - 1; n >= 0; n--) {
+    if (essayer(Object.assign({}, nouveau, { effacees: toutes.slice(0, n) }))) return true;
+  }
   return false;
 }
 
@@ -4208,6 +4635,42 @@ async function attendreEcritureNative() {
   while (suspensionNatif) await suspensionNatif;
   if (natifCompromis) { signalerNatifCompromis(); throw new Error(T('effacement.motif.compromis')); }
 }
+// LA SEULE PORTE des mutations natives d'un emplacement. Trois pas, dans cet ordre, et RIEN entre les
+// deux derniers : la barrière — qui lève si la mémoire est douteuse, et ATTEND si un effacement est en
+// cours —, le jugement de ce qu'on s'apprête à écrire, puis l'appel.
+//
+// Elle fait l'écriture elle-même au lieu de rendre une permission, et c'est tout l'intérêt : un `await`
+// glissé entre le jugement et l'appel rendrait les deux premiers pas inutiles, et c'est exactement ce
+// qui était arrivé à six sites. Une porte qu'on ne peut pas entrouvrir vaut mieux qu'une règle.
+//
+// Le jugement se fait APRÈS la barrière, jamais avant : la barrière peut avoir attendu la fin d'un
+// effacement, et tout ce qui a été lu avant elle est alors périmé. `json` est la copie de partie qu'on
+// écrit — `null` quand la mutation n'en porte pas : un retrait, un repère.
+// `encoreValable` est un PRÉDICAT, évalué APRÈS la barrière : c'est ce qui le rend vrai à l'instant
+// où l'appel part. Chaque appelant dit ce qu'il a à prouver, parce que tous n'ont pas la même chose
+// à montrer — une copie de partie a une génération, une chaîne illisible n'en a pas.
+async function muterNatif(slot, encoreValable, geste) {
+  await attendreEcritureNative();
+  if (!encoreValable()) return false;
+  await geste();
+  return true;
+}
+// Un retrait n'a rien à prouver, et il le DIT. Un `null` muet ressemblerait à un oubli ; ceci se lit.
+const RIEN_A_PROUVER = () => true;
+// La preuve de fraîcheur d'une chaîne ILLISIBLE. Elle n'a pas de génération à montrer : ce qu'elle
+// prouve, c'est que le marqueur de l'emplacement n'a pas changé entre le moment où on l'a lue et
+// celui où on l'écrit. Un marqueur neuf derrière la barrière veut dire qu'un effacement est passé —
+// et alors cette copie n'a plus à être archivée nulle part.
+function marqueurInchange(slot) {
+  const empreinteMarqueur = (m) => (estMarqueur(m) ? m.gen + '.' + m.rang : String(m));
+  const repere = empreinteMarqueur(marqueurCourant(slot));
+  return () => empreinteMarqueur(marqueurCourant(slot)) === repere;
+}
+// Les mutations ACCESSOIRES : le ménage, les repères, une copie abîmée mise de côté. Leur échec ne
+// change rien pour le joueur et ne doit pas faire tomber un démarrage — une mémoire native douteuse
+// fait lever la barrière, et c'est précisément ce qu'on veut ici, en silence. Ce n'est pas une écriture
+// silencieuse : c'est un REFUS silencieux, et rien n'est écrit.
+const muterNatifAccessoire = (slot, encoreValable, geste) => muterNatif(slot, encoreValable, geste).catch(() => false);
 // Un appel au pont qui ne répond pas ne doit pas geler l'emplacement pour toujours. Le délai n'est pas une
 // attente d'état : c'est la borne au-delà de laquelle l'issue est tenue pour INCONNUE.
 const DELAI_PONT_MS = 20000;
@@ -4280,7 +4743,9 @@ async function effacerNatifSuspendu(Prefs, s, attendu) {
     // Le marqueur neuf est peut-être en mémoire, peut-être sur le disque. Rien de ce que cette page lit ne fait
     // plus foi : l'emplacement est DOUTEUX, ni vide ni partie, et plus rien n'est écrit jusqu'au redémarrage.
     natifCompromis = true;
-    natifCompromisSignale = true;
+    // Le drapeau « déjà signalé » n'est plus posé ici : il l'était sans que personne n'ait rien montré,
+    // et il faisait taire le message juste au profit du générique. Seul `signalerNatifCompromis()` le
+    // pose, et seulement quand il a réellement affiché.
     emplacementDouteux[s] = true;
     oublierSession(s);
     return { efface: false, motif: v.motif, detail: v.detail, relancer: true };
@@ -4480,7 +4945,7 @@ async function emplacementSurPourImport(s) {
   // v160, S12) : sans elle, impossible de savoir si la mémoire est en jeu — donc impossible de
   // savoir si conseiller un rechargement détruirait une partie.
   const sources = etat.branches.map(x => x.role);
-  if (etat.incertain) return { sur: false, motif: 'incertain', sources };
+  if (etat.incertain) return { sur: false, motif: etat.marqueur === MARQUEUR_AMBIGU ? 'ambigu' : 'incertain', sources };
   // Une copie MASQUÉE occupe l'emplacement (revue de la v172, S26) : on ne sait pas si c'est une partie, et
   // l'écraser serait peut-être une perte.
   if (etat.masquee && !etat.branches.length) return { sur: false, motif: 'occupe', sources };
@@ -4514,8 +4979,13 @@ async function accorderMarqueurs(Prefs, s, etat) {
   // Un natif ILLISIBLE n'est pas « absent » : on ne connaît pas son rang, et seul un effacement le remplace.
   if (estMarqueur(web) && (natif === null || (estMarqueur(natif) && web.rang > natif.rang))) {
     const v = await ecrireMarqueurNatif(Prefs, s, JSON.stringify(web), false);
-    if (v.ecrit) { marqueursNatifs[s] = web; reconciliationManquee[s] = false; }
-    else reconciliationManquee[s] = true;
+    // La réponse a pu croiser un effacement, qui pose un marqueur de RANG supérieur. Le cache ne
+    // redescend jamais : deux marqueurs se départagent par leur rang, jamais par l'ordre d'arrivée.
+    if (v.ecrit) {
+      const depuis = marqueursNatifs[s];
+      if (!estMarqueur(depuis) || couvre(web, depuis)) marqueursNatifs[s] = web;
+      reconciliationManquee[s] = false;
+    } else reconciliationManquee[s] = true;
   }
   const courant = marqueurCourant(s);
   if (!estMarqueur(courant)) return;
@@ -4523,12 +4993,15 @@ async function accorderMarqueurs(Prefs, s, etat) {
   // un faux conflit à la prochaine partie.
   if (!etat.branches.length) oublierOrigine(s);
   for (const sfx of CLES_BRANCHE) {
-    // Mortes pour de bon : les perdre en route ne change rien.
-    if (etat.copies[sfx] && etat.copies[sfx].morte) Prefs.remove({ key: saveKey(s) + sfx }).catch(() => {});
+    // Mortes pour de bon : les perdre en route ne change rien. Elles partent par la porte comme tout le
+    // reste — la suspension n'avait été testée qu'avant le premier `await` de cette fonction.
+    if (etat.copies[sfx] && etat.copies[sfx].morte) muterNatifAccessoire(s, RIEN_A_PROUVER, () => Prefs.remove({ key: saveKey(s) + sfx }));
   }
   try {
     const res = await Prefs.get({ key: saveKey(s) + '_illisible' });
-    if (res && res.value && courant.effacees.indexOf(empreinte(res.value)) >= 0) Prefs.remove({ key: saveKey(s) + '_illisible' }).catch(() => {});
+    if (res && res.value && courant.effacees.indexOf(empreinte(res.value)) >= 0) {
+      await muterNatifAccessoire(s, RIEN_A_PROUVER, () => Prefs.remove({ key: saveKey(s) + '_illisible' }));
+    }
   } catch (e) {}
   menageWeb(s);
 }
@@ -4581,7 +5054,10 @@ async function relireEmplacement(Prefs, s) {
     oublierOrigine(s);
     // Réparation croisée : la copie qui n'est pas la retenue est réécrite depuis la bonne.
     // Une copie ABÎMÉE n'est pas détruite avant d'avoir été mise de côté sous une clé voisine.
-    if (local.raw !== choisie.raw) {
+    // Une copie MASQUÉE n'est pas remplacée : on ne sait pas ce qu'elle porte, donc on ne la présente
+    // pas — et on ne l'écrase pas non plus. Le chemin natif, quelques lignes plus bas, le faisait déjà ;
+    // celui-ci ne regardait que « la copie retenue est-elle une autre chaîne ? ».
+    if (local.raw !== choisie.raw && !local.masquee) {
       try {
         if (local.etat === 'illisible' && localRaw) localStorage.setItem(saveKey(s) + '_illisible', localRaw);
         localStorage.setItem(saveKey(s), choisie.raw);
@@ -4591,8 +5067,16 @@ async function relireEmplacement(Prefs, s) {
     // Ni pendant un effacement natif, ni après une issue inconnue : la réparation écrirait la mémoire douteuse
     // sur le disque. Et une copie MASQUÉE n'est pas remplacée : on ne sait pas ce qu'elle porte.
     if (natif.etat !== 'indisponible' && natif.raw !== choisie.raw && !natifCompromis && !suspensionNatif && !natif.masquee) {
-      if (natif.etat === 'illisible' && natif.raw) Prefs.set({ key: saveKey(s) + '_illisible', value: natif.raw }).catch(() => {});
-      Prefs.set({ key: saveKey(s), value: choisie.raw }).catch(e => console.warn('initStorage natif ' + s, e));
+      // Par la porte, comme le reste : ces deux écritures ne sont pas attendues, et le test de
+      // suspension ci-dessus a eu lieu deux `await` plus tôt.
+      // L'ARCHIVE D'ABORD, ET ATTENDUE. Si elle échoue ou est refusée, la copie corrompue reste :
+      // on ne remplace pas ce qu'on n'a pas su mettre de côté. Sans cet ordre, la seule trace de ce
+      // qui s'est passé sur l'appareil disparaissait sous la copie saine.
+      if (natif.etat === 'illisible' && natif.raw) {
+        const abri = await muterNatifAccessoire(s, marqueurInchange(s), () => Prefs.set({ key: saveKey(s) + '_illisible', value: natif.raw }));
+        if (!abri) return;
+      }
+      await muterNatifAccessoire(s, () => copieEncoreVivante(s, choisie.raw), () => Prefs.set({ key: saveKey(s), value: choisie.raw }));
     }
   }
 }
@@ -5136,7 +5620,11 @@ function fauteLabel(cle) {
   const t = T('faute.' + cle);
   return t === 'faute.' + cle ? cle : t;
 }
-const PENALTY_LABEL = { mineure: "🟨 2'", majeure: "🟧 5'", mec: "⬛ 10'", pm: "🟥 PM", exc: "⛔ EXC" };
+// Les carrés sont des formes CSS depuis la v189 : un émoji de couleur n'a pas la même teinte d'un
+// système à l'autre. Ces libellés sont du HTML — leurs deux usages l'injectent déjà tel quel.
+function carrePenalite(type) { return `<span class="carre-pen ${type}"></span>`; }
+const PENALTY_LABEL = { mineure: carrePenalite('mineure') + " 2'", majeure: carrePenalite('majeure') + " 5'",
+  mec: carrePenalite('mec') + " 10'", pm: carrePenalite('pm') + " PM", exc: "⛔ EXC" };
 
 // Bareme officiel FFRS Roller Hockey (patins en ligne, art. 10.1 du Reglement Sportif - Dispositions Particulieres) :
 // - Penalite MINEURE : 2 min d'inferiorite numerique, annulee si l'equipe adverse marque.
@@ -5450,7 +5938,7 @@ async function upgradeInfra(kind) {
   }
   const cost = upgradeCost(kind);
   if (G.budget < cost) { toast("Budget insuffisant.", 'bad'); return; }
-  if (!(await ask({ title: "Travaux", ico: '🏗️', okLabel: "Lancer les travaux",
+  if (!(await ask({ title: "Travaux", picto: 'travaux', okLabel: "Lancer les travaux",
     text: `Passer ${kind} au niveau ${nextLevel} pour ${euros(cost)} ?` }))) return;
   G.budget -= cost;
   G.club[kind]++;
@@ -5475,7 +5963,7 @@ async function buyLoge() {
   }
   const cost = 4000 + G.club.loges * 800;
   if (G.budget < cost) { toast("Budget insuffisant.", 'bad'); return; }
-  if (!(await ask({ title: T('infra.loges.label'), ico: '🏗️', okLabel: T('dlg.loge.ok'),
+  if (!(await ask({ title: T('infra.loges.label'), picto: 'travaux', okLabel: T('dlg.loge.ok'),
       text: T('dlg.loge.texte', { prix: euros(cost) }) }))) return;
   G.budget -= cost;
   G.club.loges++;
@@ -5490,7 +5978,7 @@ async function toggleSponsor(idx) {
   if (!G.club.sponsors) G.club.sponsors = [];
   if (sponsorSigned(idx)) {
     // résilier ce sponsor
-    if (!(await ask({ title: T('dlg.sponsor.titre'), ico: '📝', danger: true, okLabel: T('club.sponsor.resilier'),
+    if (!(await ask({ title: T('dlg.sponsor.titre'), picto: 'contrat', danger: true, okLabel: T('club.sponsor.resilier'),
       text: T('dlg.sponsor.texte', { nom: nomSponsor(idx), montant: euros(tier.income) }) }))) return;
     G.club.sponsors = G.club.sponsors.filter(i => i !== idx);
   } else {
@@ -5747,7 +6235,7 @@ async function confirmerForfaitSiNecessaire() {
   const e = etatEffectif(me);
   if (e.ok) return 'normal';
   const accepte = await ask({
-    title: T('forfait.titre'), ico: '⛔', kind: 'bad', danger: true,
+    title: T('forfait.titre'), picto: 'interdit', kind: 'bad', danger: true,
     okLabel: T('forfait.declarer'), cancelLabel: T('forfait.renoncer'),
     html: `<p class="modal-text">${T('forfait.constat', { champ: e.champ, gardiens: e.gardiens, seuil: e.seuil })}</p>`
       + `<p class="modal-text"><b>${T('forfait.consequences')}</b></p>`
@@ -6245,25 +6733,26 @@ function checkUnlockNotifications() {
 // Une seule source de vérité pour le libellé et l'icône de chaque écran : la barre
 // du bas, le tiroir et l'écran Réglages y puisent tous.
 //
-// ICONES_IMG accueille des pictogrammes en base64, un par écran. Tant qu'une clé
-// est absente, l'emoji sert de repli — le jeu marche donc avec zéro, trois ou onze
-// icônes fournies. Voir prompts-icones-navigation.md pour les générer.
+// ICONES_IMG accueille des pictogrammes en base64 — douze pour les écrans, un pour le
+// tiroir, et 32 sprites qui servent ailleurs dans le jeu. Tant qu'une clé est absente,
+// `iconeHtml` rend le repli reçu ou une puce « • » : le jeu marche donc avec zéro, trois
+// ou onze icônes fournies. Voir prompts-icones-navigation.md pour les générer.
 
 // Les libellés ont quitté ce tableau : ils vivent dans `textes-fr.js` / `textes-en.js`
-// sous les clés `ecran.<nom>.label` et `ecran.<nom>.court`. L'emoji reste — il ne se traduit
-// pas, et il sert de repli quand une icône manque.
+// sous les clés `ecran.<nom>.label` et `ecran.<nom>.court`. Les émojis de repli sont partis en
+// v189 : ce tableau ne dit plus que QUELS écrans existent. Sans `icones.js`, une puce remplace.
 const ECRANS = {
-  effectif:     { emoji: '👥' },
-  club:         { emoji: '🏟' },
-  entrainement: { emoji: '🏋️' },
-  classement:   { emoji: '📊' },
-  calendrier:   { emoji: '📅' },
-  transferts:   { emoji: '🔁' },
-  inbox:        { emoji: '✉' },
-  historique:   { emoji: '📜' },
-  coupe:        { emoji: '🏆' },
-  aide:         { emoji: '❓' },
-  options:      { emoji: '⚙️' }
+  effectif: {},
+  club: {},
+  entrainement: {},
+  classement: {},
+  calendrier: {},
+  transferts: {},
+  inbox: {},
+  historique: {},
+  coupe: {},
+  aide: {},
+  options: {}
 };
 
 // Libellé long (tiroir, réglages) et court (barre du bas, où la place manque).
@@ -6421,11 +6910,12 @@ function reglages() {
 
 function iconeHtml(tab, repli) {
   // `typeof` et non un accès direct : depuis le découpage, le tableau vit dans un fichier
-  // annexe qui peut manquer. On retombe alors sur l'emoji, exactement comme pour une clé
-  // absente — c'est la promesse que faisait déjà le commentaire ci-dessus.
+  // annexe qui peut manquer. On retombe alors sur le repli reçu, exactement comme pour une
+  // clé absente — et faute de repli, sur une puce. Ce n'est plus un émoji : `ECRANS` n'en
+  // porte plus depuis la v189, et seuls le tiroir (« ⋯ ») et le direct (« ▶ ») en passent un.
   const img = (typeof ICONES_IMG === 'object' && ICONES_IMG) ? ICONES_IMG[tab] : null;
   if (img) return `<img src="${img}" alt="">`;
-  return (ECRANS[tab] && ECRANS[tab].emoji) || repli || '•';
+  return repli || '•';
 }
 
 // ==================== Bande-son ====================
@@ -6586,7 +7076,7 @@ function renderOptions() {
 
   box.innerHTML = `
     <div class="rg-bloc">
-      <h3>🌐 ${T('reglages.langue.titre')}</h3>
+      <h3>${T('reglages.langue.titre')}</h3>
       <p class="note">${T('reglages.langue.note')}</p>
       <div class="rg-son">
         ${Object.keys(LANGUES).map(l =>
@@ -6612,7 +7102,7 @@ function renderOptions() {
     </div>
 
     <div class="rg-bloc">
-      <h3>📱 ${T('reglages.barre.titre')}</h3>
+      <h3>${T('reglages.barre.titre')}</h3>
       <p class="note">${T('reglages.barre.note')}</p>
       <div class="rg-liste">${lignes}</div>
       <hr class="rg-sep">
@@ -6625,7 +7115,7 @@ function renderOptions() {
 
 // Quitter une partie en cours mérite qu'on le demande — même si rien n'est perdu.
 async function quitterVersTitre() {
-  if (!(await ask({ title: T('reglages.partie.retour'), ico: '🏠', okLabel: T('reglages.partie.confirmer'),
+  if (!(await ask({ title: T('reglages.partie.retour'), picto: 'accueil', okLabel: T('reglages.partie.confirmer'),
     text: T('reglages.partie.question') }))) return;
   flushSave();
   backToMenu();
@@ -6970,7 +7460,7 @@ document.getElementById('btnPlay').addEventListener('click', async () => {
     console.error(err);
     notifyError("Erreur inattendue",
       "Le jeu a rencontré un problème en avançant d'une journée.\n\n"
-      + "Exporte ta sauvegarde depuis l'onglet Sauvegarde, et signale ce message s'il revient.\n\n"
+      + "Exporte ta sauvegarde depuis l'onglet Réglages, et signale ce message s'il revient.\n\n"
       + "Détail technique : " + err.message);
   }
 });
@@ -7036,9 +7526,9 @@ function renderTop() {
   document.getElementById('uiBoardConf').style.color = bc >= 60 ? 'var(--vert)' : bc >= 35 ? 'var(--tan)' : 'var(--rouge)';
   let label;
   if (cupHasPendingAction()) {
-    if (!G.cup || G.cup.season !== G.season) label = '🏆 ' + T('action.coupe.tirage');
-    else if (G.cup.humanOut) label = '🏆 ' + T('action.coupe.resultats');
-    else label = '🏆 ' + T('action.coupe.jouer');
+    if (!G.cup || G.cup.season !== G.season) label = T('action.coupe.tirage');
+    else if (G.cup.humanOut) label = T('action.coupe.resultats');
+    else label = T('action.coupe.jouer');
   } else if (G.day < G.schedule.length) label = '▶ ' + T('action.journee', { n: G.day + 1 });
   else if (!G.playoff) label = '▶ ' + T('action.playoffs.lancer');
   else if (G.playoff.humanOut) label = '▶ ' + T('action.playoffs.final');
@@ -7050,8 +7540,15 @@ function renderTop() {
   const lbl = document.getElementById('btnPlayLabel');
   if (lbl) lbl.textContent = label.replace(/^▶\s*/, '');
   else document.getElementById('btnPlay').textContent = label;
+  // L'icône dit ce que le bouton lance : le trophée pour un geste de Coupe, le patin sinon. Elle a
+  // remplacé l'émoji du libellé en v189 — ce libellé est écrit en `textContent`, une image n'y
+  // entre pas. `data-picto` évite de réécrire l'image à chaque rafraîchissement.
   const ico = document.getElementById('btnPlayIcon');
-  if (ico && !ico.firstChild) ico.innerHTML = iconeHtml('jouer', '▶');
+  const pictoVoulu = cupHasPendingAction() ? 'coupe' : 'jouer';
+  if (ico && ico.dataset.picto !== pictoVoulu) {
+    ico.innerHTML = iconeHtml(pictoVoulu, '▶');
+    ico.dataset.picto = pictoVoulu;
+  }
 }
 
 // Ce qu'une recrue apporte : l'écart avec le joueur qu'elle remplacerait, c'est-à-dire le
@@ -7148,7 +7645,11 @@ function playerCard(p) {
       <div class="card-injured-tag">🤕 ${T('joueur.retourLe', { date: formatDateJournee(dateRetour(p), false) })}</div>
     </div>`;
   }
-  return `<div class="player-card ${p.starter ? 'selected' : ''}" onclick="toggleStarter(${p.id});renderEffectif();">
+  // `aria-pressed` porte l'état titulaire — c'est ce que la carte bascule, et sa couleur seule ne
+  // le dirait pas à qui ne la voit pas.
+  return `<div class="player-card ${p.starter ? 'selected' : ''}" role="button" tabindex="0"
+    data-cmd="joueur:${p.id}" aria-pressed="${!!p.starter}"
+    onclick="rendreEnGardantLeFocus(() => { toggleStarter(${p.id}); renderEffectif(); })">
     <span class="card-pos" style="background:${posColor}">${p.pos}</span>
     ${badgeLigne}
     ${portraitHtml(p, 'card-portrait', myTeam())}
@@ -7234,13 +7735,16 @@ function lignesDisponibles(me, n) {
 // `attribut` porte `data-retirer`, `data-aligner` ou `data-sortant` — les tests interrogent
 // ces attributs, et une refonte de mise en forme n'a pas à casser la vérification du
 // comportement.
-function tuileEdition(p, attribut, action, classe, gestionnaire) {
+// `data-cmd` désigne le JOUEUR, pas le rôle : retiré, aligné, proposé à la sortie, c'est la même
+// commande logique, et le focus la suit d'une étape à l'autre (v193, A8). `initiale` fait de la tuile
+// la cible d'entrée de son étape.
+function tuileEdition(p, attribut, action, classe, gestionnaire, initiale) {
   const l = ligneDe(p);
   const ou = p.pos === 'G'
     ? ''
     : (l > 0 ? T('lignes.ligne', { n: l }) : T('ligne.surLeBanc'));
   return `<button class="edit-tuile ${classe}" ${attribut}="${p.id}" onclick="${gestionnaire}(${p.id})"
-      title="${escHtml(p.nom)}">
+      data-cmd="tuile:${p.id}"${initiale ? ' data-focus-initial' : ''} title="${escHtml(p.nom)}">
       <span class="tuile-photo">
         ${portraitHtml(p, 'tuile-img', myTeam())}
         <span class="tuile-pos" style="background:${COULEUR_POSTE[p.pos]}">${T('poste.' + p.pos + '.court')}</span>
@@ -7262,9 +7766,12 @@ function corpsEditionLigne() {
     const e = me.players.find(x => x.id === editionLigne.entrant);
     return `<p class="modal-note">${T('ligne.remplacerQui', { nom: escHtml(e ? e.nom : '') })}</p>`
       + `<div class="edit-grille">`
-      + alignes.map(p => tuileEdition(p, 'data-sortant', T('ligne.faireSortir'), 'sortante', 'executerRemplacement')).join('')
+      // La PREMIÈRE option de sortie est la cible d'entrée de l'étape : le joueur choisi n'y figure
+      // pas, et « Annuler » remet le focus sur lui — c'est lui qu'il remet à sa place.
+      + alignes.map((p, i) => tuileEdition(p, 'data-sortant', T('ligne.faireSortir'), 'sortante', 'executerRemplacement', i === 0)).join('')
       + `</div>`
-      + `<button class="btn" onclick="annulerRemplacement()">${T('ligne.annuler')}</button>`;
+      + `<button class="btn" data-cmd="annuler-remplacement" data-repli="tuile:${editionLigne.entrant}"`
+      + ` onclick="annulerRemplacement()">${T('ligne.annuler')}</button>`;
   }
 
   const dispos = lignesDisponibles(me, n);
@@ -7283,9 +7790,14 @@ function corpsEditionLigne() {
     <div class="edit-grille">${listeDispos}</div>`;
 }
 
+// LE rendu de l'éditeur, et le seul : les quatre gestes — retirer, aligner, faire sortir, annuler —
+// passent tous par ici, et c'est ici que le focus est gardé. Le bouton activé disparaît avec l'ancien
+// corps ; la porte le retrouve sous sa nouvelle forme, ou prend la cible que l'étape déclare, sans
+// jamais laisser le focus sortir de la fenêtre (v193, A8).
 function majEditionLigne() {
   const b = document.getElementById('modalBody');
-  if (b && editionLigne) b.innerHTML = corpsEditionLigne();
+  if (!b || !editionLigne) return;
+  rendreEnGardantLeFocus(() => { b.innerHTML = corpsEditionLigne(); }, b);
 }
 
 function retirerPuisRafraichir(id) { if (retirerDeLigne(id)) majEditionLigne(); }
@@ -7314,10 +7826,12 @@ function ouvrirLigne(n) {
   editionLigne = { n: n, entrant: null };
   showModal({
     title: n === 0 ? T('poste.G') : T('lignes.ligne', { n: n }),
-    ico: '🧊',
+    ico: '',
     html: corpsEditionLigne(),
     actions: [{ label: T('ligne.termine'), value: true, cls: 'buy' }]
-  }).then(() => { editionLigne = null; renderEffectif(); });
+  // Le focus est déjà revenu sur le bloc quand ce `.then` s'exécute : `closeModal` le rend AVANT de
+  // résoudre la promesse, et ce rendu-ci le détruirait dans la microtâche suivante.
+  }).then(() => { editionLigne = null; rendreEnGardantLeFocus(renderEffectif); });
 }
 
 // ==================== Tableau des lignes ====================
@@ -7405,7 +7919,7 @@ function rangDeLigne(team, n) {
     ? l.map(q => slotJoueur(team, q)).join('')
     : `<span class="ligne-libre">${T('lignes.vide')}</span>`;
   return `<div class="ligne-bloc cliquable ${l.length ? '' : 'vide'}" onclick="ouvrirLigne(${n})"
-    role="button" tabindex="0" title="${escHtml(T('ligne.editer.info'))}">
+    role="button" tabindex="0" data-cmd="ligne:${n}" title="${escHtml(T('ligne.editer.info'))}">
     <div class="ligne-tete"><span class="ligne-nom">${T('lignes.ligne', { n })}</span>${compo}
       <span class="ligne-compte ${l.length > 0 && l.length < PAR_LIGNE ? 'court' : ''}">${l.length}/${PAR_LIGNE}</span><span class="ligne-crayon">✎</span></div>
     <div class="ligne-slots">${slots}</div>${verdict}</div>`;
@@ -7416,7 +7930,7 @@ function tableauDesLignes(team) {
   for (let n = 1; n <= LIGNES_MAX; n++) rangs.push(rangDeLigne(team, n));
   const gk = team.players.filter(p => p.pos === 'G' && p.starter && !p.injured);
   rangs.push(`<div class="ligne-bloc cliquable ${gk.length ? '' : 'vide'}" onclick="ouvrirLigne(0)"
-    role="button" tabindex="0" title="${escHtml(T('ligne.editer.info'))}">
+    role="button" tabindex="0" data-cmd="ligne:0" title="${escHtml(T('ligne.editer.info'))}">
     <div class="ligne-tete"><span class="ligne-nom">${T('poste.G.court')}</span>
       <span class="ligne-crayon">✎</span></div>
     <div class="ligne-slots">${gk.length ? gk.map(q => slotJoueur(team, q)).join('')
@@ -7532,7 +8046,7 @@ function renderEffectif() {
     actions: p.injured ? `<span class="tag">${T('joueur.indisponible')}</span> ${boutonNumero(p)} <button class="btn sell" onclick="sellPlayer(${p.id})">${T('effectif.vendre')}</button>`
       : `${boutonNumero(p)}
               <button class="btn ${p.consigne === 'prudent' ? 'buy' : ''}" onclick="basculerConsigne(${p.id})"
-                 title="${escHtml(T('effectif.calmer.info'))}">🧊 ${p.consigne === 'prudent' ? T('effectif.sousConsigne') : T('effectif.calmer')}</button>
+                 title="${escHtml(T('effectif.calmer.info'))}">${p.consigne === 'prudent' ? T('effectif.sousConsigne') : T('effectif.calmer')}</button>
               <button class="btn sell" onclick="sellPlayer(${p.id})">${T('effectif.vendre')}</button>
               <button class="btn" onclick="loanPlayer(${p.id})">${T('effectif.preter')}</button>`
   })).join('');
@@ -7563,14 +8077,14 @@ function renderEffectif() {
     <p class="note">${T('effectif.masseSalariale', { montantHtml: `<b style="color:var(--tan)">${euros(totalWage)}</b>` })}</p>
 
     <div class="card">
-      <b>🧊 ${T('lignes.titre')}</b>
+      <b>${T('lignes.titre')}</b>
       <p class="note">${T('lignes.info')}</p>
       ${tableauDesLignes(me)}
     </div>
 
     <div class="card">
       <details class="depliant" ${compoDepliee ? 'open' : ''} ontoggle="memoriserDepliage(this)">
-        <summary>🧊 ${T('effectif.selection')}</summary>
+        <summary>${T('effectif.selection')}</summary>
         <p class="note">${T('effectif.selection.info')}</p>
         <div class="lineup-grid">${cards}</div>
       </details>
@@ -7606,7 +8120,7 @@ function renderEffectif() {
     ${objRows ? `<div class="card"><b>🎯 ${T('effectif.objectifs')}</b><ul>${objRows}</ul></div>` : ''}
 
     <div class="card">
-      <b>📊 ${T('effectif.stats')}</b>
+      <b>${pictoHtml('classement')} ${T('effectif.stats')}</b>
       <table>
         <tr><th>${T('colonne.joueur')}</th><th>${T('colonne.matchs')}</th><th>${T('colonne.buts')}</th><th>${T('colonne.penalites')}</th></tr>
         ${[...me.players].sort((a,b)=>(b.seasonGoals||0)-(a.seasonGoals||0)).slice(0,8).map(p =>
@@ -7686,7 +8200,7 @@ function renderClassement() {
   }
 
   const bracket = po ? `
-    <h2>🏆 ${T('playoffs.titre', { division: DIVISIONS[G.divIdx].label, n: po.nQual || 8 })}</h2>
+    <h2>${pictoHtml('coupe')} ${T('playoffs.titre', { division: DIVISIONS[G.divIdx].label, n: po.nQual || 8 })}</h2>
     <div class="bracket">
       ${po.quarts ? `<div class="bcol qf">
         <div class="bround-label">${T('playoffs.quarts')}</div>
@@ -7699,7 +8213,7 @@ function renderClassement() {
       <div class="bcol final">
         <div class="bround-label">${T('playoffs.finale')}</div>
         ${bbox(po.finale && po.finale[0], 'final-box')}
-        ${po.champion !== null && po.champion !== undefined ? `<div class="bchampion">🏆 ${playoffTeam(po.champion).name}</div>` : ''}
+        ${po.champion !== null && po.champion !== undefined ? `<div class="bchampion">${pictoHtml('coupe')} ${playoffTeam(po.champion).name}</div>` : ''}
       </div>
       ${po.demis || po.stage === 'quarts' ? `<div class="bcol sf">
         <div class="bround-label">${T('playoffs.demies')}</div>
@@ -7718,7 +8232,7 @@ function renderClassement() {
   // directs. Replié par défaut — c'est un repère, pas l'écran principal.
   const national = (G.poules && G.poules.length > 1) ? `
     <details class="card">
-      <summary><b>🇫🇷 ${T('classement.national', { division: escHtml(DIVISIONS[G.divIdx].label) })}</b> — ${T('classement.national.detail', { equipes: classementNational().length, poules: G.poules.length })}</summary>
+      <summary><b>${T('classement.national', { division: escHtml(DIVISIONS[G.divIdx].label) })}</b> — ${T('classement.national.detail', { equipes: classementNational().length, poules: G.poules.length })}</summary>
       <table class="tbl-division"><thead>
         <tr><th>#</th><th>${T('colonne.equipe')}</th><th>${T('colonne.poule')}</th><th>${T('colonne.pts')}</th></tr>
       </thead><tbody>
@@ -7973,7 +8487,7 @@ function depliantMaillot() {
           onchange="choisirMaillot('${z}', this.value)" aria-label="${escHtml(T('club.maillot.autre'))}"><span aria-hidden="true">✎</span></label>
       </div></div>`;
   return `<details class="depliant maillot" ${maillotDeplie ? 'open' : ''} ontoggle="memoriserDepliageMaillot(this)">
-    <summary>🎽 ${T('club.maillot.titre')}</summary>
+    <summary>${pictoHtml('effectif')} ${T('club.maillot.titre')}</summary>
     <p class="note">${T('club.maillot.note')}</p>
     <div class="maillot-corps">
       <div class="maillot-apercu">${modele ? portraitHtml(modele, 'card-portrait', me) : ''}</div>
@@ -7998,7 +8512,7 @@ function choisirMaillot(zone, couleur) {
 
 function renderClub() {
   const c = G.club;
-  const infraCard = (kind, imgKey, label, desc) => {
+  const infraCard = (kind, imgKey, label, desc, picto) => {
     const lvl = c[kind];
     const cost = upgradeCost(kind);
     const nextLevel = lvl + 1;
@@ -8009,7 +8523,7 @@ function renderClub() {
     return `<div class="infra-fiche">
       ${img ? `<div class="infra-img-wrap"><img src="${img}" alt="${label}"><span class="infra-tier-badge">${T('club.niveau', { n: lvl, max: 10 })}</span></div>` : ''}
       <div class="infra-body">
-        <div class="infra-title">${label}</div>
+        <div class="infra-title">${picto ? pictoHtml(picto) + ' ' : ''}${label}</div>
         <span class="note">${desc}</span>
         <div class="infra-level-bar-wrap"><div class="infra-level-bar" style="width:${pct}%"></div></div>
         ${lvl >= 10 ? `<span class="tag">${T('club.niveauMax')}</span>`
@@ -8024,7 +8538,7 @@ function renderClub() {
   const divSuiv = G.divIdx + 1;
   const reqSuiv = divSuiv < DIVISIONS.length ? classeRequise(divSuiv) : null;
   const classeCard = `<div class="card">
-    <b>🏟️ ${T('club.classe.titre', { classe: clAct })}</b>
+    <b>${pictoHtml('club')} ${T('club.classe.titre', { classe: clAct })}</b>
     <p class="note">${reqSuiv ? (stadeSuffisantPour(divSuiv)
       ? T('club.classe.suffisant', { niveau: c.stade, classe: clAct, division: escHtml(DIVISIONS[divSuiv].label) })
       : T('club.classe.insuffisant', { division: escHtml(DIVISIONS[divSuiv].label), classe: reqSuiv.classe, requis: reqSuiv.stade, niveau: c.stade }))
@@ -8076,10 +8590,10 @@ function renderClub() {
     ${regleRepliable(`<p>${T('club.classe.regle')}</p><p>${T('club.chantiers.info')}</p>`)}
     ${depliantMaillot()}
     <div class="lineup-grid" style="grid-template-columns:repeat(auto-fill,minmax(280px,1fr))">
-      ${infraCard('stade', 'club', '🏟️ ' + T('infra.stade.label'), T('infra.stade.desc'))}
+      ${infraCard('stade', 'club', T('infra.stade.label'), T('infra.stade.desc'), 'club')}
       ${infraCard('confort', 'tribune', '🪑 ' + T('infra.confort.label'), T('infra.confort.desc'))}
       ${infraCard('buvette', 'buvette', '🥤 ' + T('infra.buvette.label'), T('infra.buvette.desc'))}
-      ${infraCard('centre', 'entrainement', '🏋️ ' + T('infra.centre.label'), T('infra.centre.desc'))}
+      ${infraCard('centre', 'entrainement', T('infra.centre.label'), T('infra.centre.desc'), 'entrainement')}
       ${infraCard('pole', 'poleespoir', '🌟 ' + T('infra.pole.label'), T('infra.pole.desc'))}
       <div class="infra-fiche">
         ${(() => { const img = infraTierImage('VIP', c.loges, 15); const pct = Math.round((c.loges/15)*100);
@@ -8145,7 +8659,7 @@ function showReport() {
       ).join(' • ') + `</p>`
     : `<p class="tag">${T('rapport.aucunePenalite')}</p>`;
   box.innerHTML = `
-    <h3>${isPlayoff ? '🏆 ' + escHtml(titreRapport(G.lastReport)) : T('rapport.titre', { n: G.day })}</h3>
+    <h3>${isPlayoff ? pictoHtml('coupe') + ' ' + escHtml(titreRapport(G.lastReport)) : T('rapport.titre', { n: G.day })}</h3>
     <div class="bigscore">${home.name} <span style="color:var(--bleu)">${res.gH} — ${res.gA}</span> ${away.name}</div>
     <ul>${goals || `<li>${T('rapport.aucunBut')}</li>`}</ul>
     ${cardsHtml}
@@ -8452,8 +8966,8 @@ function advanceCupStep() {
     if (round.every(m => m.winner !== null)) cupBuildNextRound();
     renderAll();
     notify({
-      title: `Coupe de France — ${label}`, ico: '🏆',
-      html: `${cupIsDone() ? `<div class="modal-flash good"><b>🏆 Vainqueur : ${escHtml(cupTeam(G.cup.champion).name)}</b>La Coupe de France de cette saison est jouée.</div>` : ''}
+      title: `Coupe de France — ${label}`, picto: 'coupe',
+      html: `${cupIsDone() ? `<div class="modal-flash good"><b>${pictoHtml('coupe')} Vainqueur : ${escHtml(cupTeam(G.cup.champion).name)}</b>La Coupe de France de cette saison est jouée.</div>` : ''}
         <div class="modal-sub">Résultats du tour</div>${summary}`
     });
     return;
@@ -8469,7 +8983,7 @@ function advanceCupStep() {
     renderAll();
     if (exempte && !G.cup.humanOut) {
       notify({
-        title: T('coupe.exempte.titre'), ico: '🎟️',
+        title: T('coupe.exempte.titre'), picto: 'billet',
         html: `<p class="modal-text">${T('coupe.exempte.corps', { tour: escHtml(cupRoundLabel(round[0] && round[0].label)) })}</p>`
               + `<p class="modal-note">${T('coupe.exempte.regle')}</p>`
       });
@@ -8495,20 +9009,28 @@ function advanceCupStep() {
 // alias conservé pour compatibilité avec le bouton de l'onglet Coupe
 function advanceCup() { advanceCupStep(); }
 
+// Le dépliage de la carte des exemptés survit au re-rendu. Ce gestionnaire ne re-rend PAS : pas
+// besoin du garde de réentrance posé sur les ententes en v131.
+let exemptesDepliees = false;
+function memoriserDepliageExemptes(el) { exemptesDepliees = !!el.open; }
+
 function renderCoupe() {
   const box = document.getElementById('tab-coupe');
   if (!box) return;
+  // Construit une fois pour les deux états de l'écran : le bandeau n'était posé qu'avant le
+  // tirage, donc presque jamais vu — la Coupe s'ouvre tôt dans la saison.
+  const entete = bandeau('coupe', `${T('bandeau.saison')} ${seasonLabel(G.season)}`, T('coupe.nom'),
+                         DIVISIONS[G.divIdx].label);
   if (!G.cup || G.cup.season !== G.season) {
     const unlockDay0 = cupRoundUnlockDay(0);
     const locked = G.day < unlockDay0;
     box.innerHTML = `
-      ${bandeau('coupe', `${T('bandeau.saison')} ${seasonLabel(G.season)}`, T('coupe.nom'),
-                DIVISIONS[G.divIdx].label)}
+      ${entete}
       <p class="note">${T('coupe.presentation')}</p>
       <p class="note">${T('coupe.rythme')}</p>
       ${locked
         ? `<p class="note">🔒 ${T('coupe.tirageVerrouille', { journee: unlockDay0 + 1, actuelle: G.day + 1 })}</p>`
-        : `<button class="btn buy" onclick="startCup()">🏆 ${T('coupe.lancerTirage')}</button>`}`;
+        : `<button class="btn buy" onclick="startCup()">${pictoHtml('coupe')} ${T('coupe.lancerTirage')}</button>`}`;
     return;
   }
   const c = G.cup;
@@ -8519,17 +9041,24 @@ function renderCoupe() {
     return `<div class="card">${line(h)}${line(a)}<div class="tag">${score}</div></div>`;
   };
   const byesHtml = c.roundIdx === 0 && c.byes.length
-    ? `<div class="card"><b>${T('coupe.exemptes')}</b><br>
-       ${c.byes.map(id => `<span class="tag">${cupTeam(id).name}</span>`).join(' ')}</div>` : '';
+    ? `<div class="card">
+       ${c.byes.some(id => cupTeam(id).human) ? `<p class="exempte-moi">🎟️ ${T('coupe.exempteMoi')}</p>` : ''}
+       <details class="depliant exemptes" ${exemptesDepliees ? 'open' : ''} ontoggle="memoriserDepliageExemptes(this)">
+         <summary>${T('coupe.exemptes', { n: c.byes.length })}</summary>
+         <ul class="exemptes-liste">${c.byes.map(id => cupTeam(id)).map(e =>
+           `<li${e.human ? ' class="me"' : ''}>${escHtml(e.name)}</li>`).join('')}</ul>
+       </details>
+     </div>` : '';
   const roundsHtml = c.rounds.map((round, i) => `
     <h3 style="color:var(--tan);font-size:14px">${round[0] ? cupRoundLabel(round[0].label) : ''} ${i === c.roundIdx && !cupIsDone() ? '— ' + T('coupe.enCours') : ''}</h3>
     <div class="grid2">${round.map(mbox).join('')}</div>`).join('');
   box.innerHTML = `
-    <h2>🏆 ${T('coupe.nom')} — ${T('bandeau.saison')} ${seasonLabel(G.season)}</h2>
+    ${entete}
     <p class="note">${T('coupe.engagees', { n: allCupTeamsCount() })}</p>
+    <p class="note">${T('coupe.niveauIndicatif')}</p>
     ${byesHtml}
     ${roundsHtml}
-    ${c.champion !== null && c.champion !== undefined ? `<div class="card"><b>🏆 ${T('coupe.vainqueur')}</b> ${cupTeam(c.champion).name}</div>` : ''}
+    ${c.champion !== null && c.champion !== undefined ? `<div class="card"><b>${pictoHtml('coupe')} ${T('coupe.vainqueur')}</b> ${cupTeam(c.champion).name}</div>` : ''}
     ${!cupIsDone() ? (
       c.humanOut ? `<button class="btn buy" onclick="advanceCup()">▶ ${T('coupe.resultatFinal')}</button>`
       : G.day < cupRoundUnlockDay(c.roundIdx)
@@ -8540,7 +9069,7 @@ function renderCoupe() {
 
 // Les rubriques de l'aide, dans l'ordre d'affichage. Ajouter une rubrique = une entrée ici
 // et deux clés (`aide.<nom>.titre`, `aide.<nom>.corps`), au lieu de recopier un bloc de HTML.
-const AIDE_CARTES = ["principe", "saison", "coupe1", "effectif", "tactique", "club", "staff", "transferts", "direct", "penalites", "coupe2", "direction", "sauvegarde"];
+const AIDE_CARTES = ["principe", "saison", "montee", "coupe", "effectif", "numeros", "tactique", "club", "staff", "transferts", "direct", "penalites", "direction", "sauvegarde"];
 
 function renderAide() {
   const box = document.getElementById('aideCartes');
@@ -8548,8 +9077,9 @@ function renderAide() {
   const club = (typeof G !== 'undefined' && G && myTeam()) ? myTeam().name : '';
   box.innerHTML = AIDE_CARTES.map(c => `
     <div class="card">
-      <b>${T('aide.' + c + '.titre')}</b>
-      <p class="note">${T('aide.' + c + '.corps', { clubHtml: `<b>${escHtml(club)}</b>` })}</p>
+      <b>${enteteAide(c)}${T('aide.' + c + '.titre')}</b>
+      <p class="note">${T('aide.' + c + '.corps', { clubHtml: `<b>${escHtml(club)}</b>`,
+        max: EFFECTIF_MAX, slots: NB_SLOTS })}</p>
     </div>`).join('');
 }
 
@@ -8576,10 +9106,9 @@ function renderInbox() {
   const box = document.getElementById('tab-inbox');
   if (!box) return;
   const items = (G.inbox || []);
-  const typeIcon = { board: '📋', contrat: '📝', objectif: '🎯', cup: '🏆', transfert: '💰', info: 'ℹ️' };
   const rows = items.slice().reverse().map(m => `
     <div class="msg t-${typeCourrier(m)}">
-      <span class="ic">${typeIcon[typeCourrier(m)] || 'ℹ️'}</span>
+      <span class="ic">${pictoHtml(pictoCourrier(m))}</span>
       <div class="tx">
         <b>${escHtml(messageTitre(m))}</b>
         <p>${assainirHtml(messageCorps(m))}</p>
@@ -8592,10 +9121,10 @@ function renderInbox() {
       <h3>${T('messages.vide.titre')}</h3>
       <p>${T('messages.vide.note')}</p>
       <div class="apercu">
-        <div class="apercu-l">🎯 ${T('messages.vide.objectifs')}</div>
-        <div class="apercu-l">🏥 ${T('messages.vide.blessures')}</div>
-        <div class="apercu-l">📝 ${T('messages.vide.contrats')}</div>
-        <div class="apercu-l">💰 ${T('messages.vide.sponsors')}</div>
+        <div class="apercu-l">${pictoHtml('objectif')} ${T('messages.vide.objectifs')}</div>
+        <div class="apercu-l">${pictoHtml('blessure')} ${T('messages.vide.blessures')}</div>
+        <div class="apercu-l">${pictoHtml('contrat')} ${T('messages.vide.contrats')}</div>
+        <div class="apercu-l">${pictoHtml('argent')} ${T('messages.vide.sponsors')}</div>
       </div>
     </div>`;
 
@@ -8615,7 +9144,7 @@ function renderHistorique() {
     return (d && DIV_COLORS[d.key]) || 'var(--div)';
   };
   const rows = hist.slice().reverse().map(h => {
-    const trophee = h.champion ? '🏆' : h.finalist ? '🥈' : h.promoted ? '🎉' : h.relegated ? '⚠️' : '';
+    const trophee = h.champion ? pictoHtml('coupe') : h.finalist ? '🥈' : h.promoted ? '🎉' : h.relegated ? '⚠️' : '';
     const mouv = h.promoted ? T('palmares.montee') : h.relegated ? T('palmares.descente') : T('palmares.maintien');
     const an = seasonLabel(h.season).split('-');
     return `<div class="saison" style="--sc:${couleurDiv(h.division)}">
@@ -8627,12 +9156,12 @@ function renderHistorique() {
   }).join('');
 
   const vide = `<div class="vide">
-      <div class="rond">🗓</div>
+      <div class="rond">${pictoHtml('calendrier')}</div>
       <h3>${T('palmares.vide.titre')}</h3>
       <p>${T('palmares.vide.note')}</p>
       <div class="apercu">
         <div class="apercu-l">🏁 ${T('palmares.vide.classement')}</div>
-        <div class="apercu-l">🏆 ${T('palmares.vide.playoffs')}</div>
+        <div class="apercu-l">${pictoHtml('coupe')} ${T('palmares.vide.playoffs')}</div>
         <div class="apercu-l">↕ ${T('palmares.vide.mouvement')}</div>
         <div class="apercu-l">⭐ ${T('palmares.vide.buteur')}</div>
       </div>
@@ -8669,7 +9198,7 @@ async function exportSaveFile() {
         dialogTitle: 'Exporter la sauvegarde'
       });
     } else {
-      notify({ title: T('dlg.exportOk.titre'), ico: '💾', kind: 'good',
+      notify({ title: T('dlg.exportOk.titre'), picto: 'sauvegarder', kind: 'good',
         text: T('dlg.exportOk.texte', { chemin: res.uri }) });
     }
     return;
@@ -8712,15 +9241,30 @@ function hydrateSave(data, emplacement, origines, generation) {
   // aucune autosauvegarde ne peut s'intercaler. La partie active ne voit rien passer.
   const candidat = nettoyerImport(data);
   validerCandidat(candidat);
+  // UN FICHIER IMPORTÉ est une entrée non fiable, et un identifiant qui désigne deux joueurs est une
+  // FORME INVALIDE, pas une collision à réparer en silence : six chemins du jeu suppriment par
+  // `filter(x => x.id !== …)` et emporteraient les deux. On refuse AVANT d'installer, en nommant le
+  // chemin — la partie en cours n'a rien vu passer.
+  //
+  // Une sauvegarde DÉJÀ INSTALLÉE n'est pas refusée ici : `validerCandidat` sert aussi à lire le
+  // stockage, et un refus rendrait illisible une partie que le jeu a lui-même abîmée. Celle-là est
+  // réparée par `normaliserIdentites()`, que `migrerPartie()` appelle quelques lignes plus bas.
+  if (emplacement !== undefined) {
+    const fautifs = identitesDupliquees(candidat.G);
+    if (fautifs.length) throw erreurImport(fautifs[0].chemin, T('import.identiteDupliquee', { id: String(fautifs[0].id), n: fautifs.length }));
+  }
   // La DESTINATION fait partie de l'état transactionnel : sans elle, un retour arrière rendait
   // l'ancienne partie à un autre emplacement que le sien (revue de la v154, S8).
   // La génération de la session sur l'emplacement visé en fait partie aussi (revue de la v172, S26) : un
   // retour arrière qui la laisserait à la génération neuve ferait écrire l'ancienne partie vivante.
   const cible = emplacement === undefined ? SLOT : emplacement;
   const avant = { G, nextPlayerId, lastTeamChoice, CLUB_ASSO, SLOT_PARTIE, poules: DIVISIONS.map(d => d.teams),
-                  generation: generationSession[cible], signale: emplacementEffaceSignale[cible] };
+                  generation: generationSession[cible], signale: emplacementEffaceSignale[cible],
+                  ambigu: emplacementAmbiguSignale[cible] };
   try {
-    G = candidat.G; nextPlayerId = candidat.nextPlayerId || 10000;
+    // Le repli ne vaut plus `10000` : `normaliserIdentites()` relève le compteur au-dessus de tous les
+    // identifiants vivants, ce qu'aucun nombre écrit d'avance ne peut faire.
+    G = candidat.G; nextPlayerId = (Number.isInteger(candidat.nextPlayerId) && candidat.nextPlayerId > 0) ? candidat.nextPlayerId : 1;
     migrerPartie();
     // L'installation est DANS la transaction (revue de la v145, R2) : un rendu qui lève
     // laissait la partie active remplacée par un candidat que la validation avait laissé passer.
@@ -8730,6 +9274,7 @@ function hydrateSave(data, emplacement, origines, generation) {
     G = avant.G; nextPlayerId = avant.nextPlayerId; lastTeamChoice = avant.lastTeamChoice; CLUB_ASSO = avant.CLUB_ASSO;
     SLOT_PARTIE = avant.SLOT_PARTIE;
     generationSession[cible] = avant.generation; emplacementEffaceSignale[cible] = avant.signale;
+    emplacementAmbiguSignale[cible] = avant.ambigu;
     DIVISIONS.forEach((d, i) => { d.teams = avant.poules[i]; });
     // Un rendu partiel a pu armer l'autosauvegarde sur le candidat : on la désarme, puis on
     // remet l'interface — la partie active réaffichée si elle existait, sinon le menu.
@@ -8752,6 +9297,7 @@ function hydrateSave(data, emplacement, origines, generation) {
 function migrerPartie() {
   relierPoules();   // avant tout le reste : myTeam() lit G.teams
   normaliserMaillots();   // v176 : une balise sur chaque équipe de chaque poule
+  normaliserIdentites();  // v190 : un identifiant par joueur — AVANT les numéros, qui s'en servent
   normaliserNumeros();    // v179 : un numéro sur chaque joueur, unique dans son équipe
   if (!G.coaches) G.coaches = { tir: 0, def: 0, vit: 0, gar: 0 };
   if (!G.lastTraining) G.lastTraining = [];
@@ -8885,6 +9431,7 @@ const REFUS_IMPORT = {
   occupe: ['conflit.occupeTitre', 'conflit.importOccupe'],
   conflit: ['conflit.titre', 'conflit.importRefuse'],
   incertain: ['conflit.incertainTitre', 'conflit.importIncertain'],
+  ambigu: ['conflit.ambiguTitre', 'conflit.importAmbigu'],
   divergent: ['conflit.divergentTitre', 'conflit.importDivergent'],
 };
 // Le motif qui interdit tout import dans l'emplacement, sans rien lire : `null` s'il n'y en a pas.
@@ -8965,7 +9512,7 @@ document.getElementById('fileLoad').addEventListener('change', e => {
 });
 document.getElementById('btnNew').addEventListener('click', async () => {
   if (await ask({
-    title: T('dlg.menu.titre'), ico: '🏠', okLabel: T('dlg.menu.ok'),
+    title: T('dlg.menu.titre'), picto: 'accueil', okLabel: T('dlg.menu.ok'),
     text: T('dlg.menu.texteLong')
   })) backToMenu();
 });
@@ -8998,7 +9545,7 @@ function initNative() {
       }
       if (document.body.classList.contains('game-started')) {
         flushSave();
-        if (await ask({ title: T('dlg.menu.titre'), ico: '🏠', okLabel: T('dlg.menu.ok'),
+        if (await ask({ title: T('dlg.menu.titre'), picto: 'accueil', okLabel: T('dlg.menu.ok'),
           text: T('dlg.menu.texteCourt') })) backToMenu();
         return;
       }
