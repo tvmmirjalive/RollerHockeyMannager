@@ -2213,6 +2213,8 @@ function tsSetFilter(key) {
     c.setAttribute('aria-pressed', String(sienne));
   });
   tsApplyFilters();
+  // Une région touchée : ses équipes sous le doigt, pas au bas d'un écran qu'il faut glisser (v195).
+  tsAmenerResultats();
 }
 
 function tsApplyFilters() {
@@ -2232,6 +2234,30 @@ function tsApplyFilters() {
   });
   const empty = document.getElementById('tsEmpty');
   if (empty) empty.classList.toggle('ts-hidden', anyVisible);
+}
+
+// AMENER LES RÉSULTATS SOUS LES YEUX (v195). Signalé sur un Galaxy S9 : « la recherche ne fonctionne pas du
+// tout ». Elle filtrait — HORS DE LA VUE : sur un téléphone, les résultats vivent sous l'en-tête, le champ et
+// les puces, et clavier ouvert il ne reste qu'environ 400 px d'écran. Après une recherche tapée ou une région
+// touchée, si le premier résultat n'est pas visible, l'écran glisse jusqu'à placer les COMMANDES en haut, les
+// résultats juste dessous. Pas plus loin : pendant une frappe, le navigateur ramène de lui-même le champ
+// focalisé à l'écran, et viser les résultats seuls le ferait se battre avec lui. Sur un grand écran, les
+// résultats suivent déjà les puces : rien ne bouge.
+// Le quart de seconde sans touche après lequel une frappe est tenue pour posée : assez pour ne pas glisser au
+// milieu d'un mot, assez peu pour que le joueur voie la liste répondre.
+const TS_PAUSE_FRAPPE_MS = 250;
+function tsAmenerResultats() {
+  const commandes = document.querySelector('#teamSelectScreen .ts-controls');
+  const premier = [...document.querySelectorAll('#tsDivisions .ts-team-card')].find(c => c.getClientRects().length)
+    || document.getElementById('tsEmpty');
+  if (!commandes || !premier || !premier.getClientRects().length) return;
+  // La hauteur VISIBLE : clavier ouvert, c'est le « viewport visuel » qui rétrécit, pas toujours la fenêtre.
+  const visible = Math.min(window.innerHeight, window.visualViewport ? window.visualViewport.height : Infinity);
+  const r = premier.getBoundingClientRect();
+  if (r.top >= 0 && r.top + Math.min(r.height, 60) <= visible) return;
+  let doux = true;
+  try { doux = !window.matchMedia('(prefers-reduced-motion: reduce)').matches; } catch (e) {}
+  commandes.scrollIntoView({ block: 'start', behavior: doux ? 'smooth' : 'auto' });
 }
 
 function openTeamConfirm(assoId) {
@@ -2632,7 +2658,7 @@ async function effacerSlot(s, ev) {
 // `versionName` du build Android par 4-outils/patch-version.py, qui refuse de s'appliquer
 // si les deux divergent. Le mode d'échec évité est réel : l'APK a annoncé « 1.0 » pendant
 // soixante-dix-sept versions parce que rien ne reliait le jeu à son numéro.
-const VERSION_JEU = '194';
+const VERSION_JEU = '195';
 
 function refreshMenu() {
   // Les textes de l'écran titre sont écrits ICI et non en HTML statique : sinon ils
@@ -2802,7 +2828,15 @@ function initMenu() {
 function initTeamSelect() {
   document.getElementById('tsCancelBtn').addEventListener('click', closeTeamConfirm);
   document.getElementById('tsValidateBtn').addEventListener('click', validateTeamChoice);
-  document.getElementById('tsSearch').addEventListener('input', tsApplyFilters);
+  // Une recherche tapée amène ses résultats sous les yeux ; un champ VIDÉ ne fait rien glisser. Et on glisse
+  // quand la frappe se POSE : chaque touche ramène le curseur à l'écran et interrompt un glissement doux lancé
+  // dans la même tâche — mesuré, l'écran restait en haut, alors que le même appel sans frappe glissait.
+  let glissement = null;
+  document.getElementById('tsSearch').addEventListener('input', (e) => {
+    tsApplyFilters();
+    clearTimeout(glissement);
+    if (e.target.value.trim()) glissement = setTimeout(tsAmenerResultats, TS_PAUSE_FRAPPE_MS);
+  });
   document.getElementById('tsBackBtn').addEventListener('click', backToMenu);
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape' && document.getElementById('tsConfirmOverlay').classList.contains('show')) closeTeamConfirm();

@@ -819,6 +819,18 @@
   }
   .ts-chip:hover { color: var(--txt); border-color: var(--bordure-vive); }
   .ts-chip.active { color: var(--noir); background: var(--chip-color, var(--tan)); border-color: var(--chip-color, var(--tan)); }
+  /* EN TÉLÉPHONE, UNE RANGÉE (v195). Signalé sur un Galaxy S9 : quinze puces passaient à la ligne sur 401 px
+     sous le champ de recherche ; clavier ouvert, il ne restait rien pour les résultats, et une recherche
+     semblait ne rien faire. La rangée défile dans son cadre, plus étroit que l'écran : la page, elle, ne
+     glisse pas. Quatre pixels de marge : l'anneau de focus déborde de 4 px, et une piste qui défile rogne. */
+  @media (max-width: 760px) {
+    .ts-chips { flex-wrap: nowrap; justify-content: flex-start; width: 100%; overflow-x: auto;
+      overscroll-behavior-x: contain; scrollbar-width: none; padding: 4px; }
+    .ts-chips::-webkit-scrollbar { display: none; }
+    .ts-chip { flex: 0 0 auto; white-space: nowrap; }
+  }
+  /* Quand l'écran glisse jusqu'aux résultats, les commandes s'arrêtent sous l'encoche, pas dessous. */
+  .ts-controls { scroll-margin-top: calc(8px + env(safe-area-inset-top, 0px)); }
 
   /* --- Grilles de clubs --- */
   .ts-inner { max-width: 980px; margin: 0 auto; padding: 0 16px; }
