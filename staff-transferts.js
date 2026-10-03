@@ -34,15 +34,17 @@
 // Libellés et descriptions sont sortis de ce tableau : ils vivent sous les clés
 // `staff.<poste>.label` et `staff.<poste>.desc`. L'icône et les seuils restent — ils ne se
 // traduisent pas.
+// `trains` : le poste fait progresser une statistique. `seance` : il le fait AUSSI en séance hors match — le coach mental
+// travaille en match seulement. La séance et sa garde lisent ce même drapeau (neuvième relecture).
 const ROLES = {
-  attaque:      { stat: "tir", icon: "🎯", trains: true, reqDiv: 0, reqCentre: 1 },
-  defense:      { stat: "def", icon: "🛡️", trains: true, reqDiv: 0, reqCentre: 1 },
-  physique:     { stat: "vit", icon: "⚡", trains: true, reqDiv: 0, reqCentre: 1 },
-  gardiens:     { stat: "gar", icon: "🥅", trains: true, reqDiv: 0, reqCentre: 1 },
-  discipline:   { stat: "agr", icon: "🧘", trains: true, reqDiv: 2, reqCentre: 1 },
-  medecin:      { stat: null, icon: "⚕️", trains: false, reqDiv: 2, reqCentre: 2 },
-  recruteur:    { stat: null, icon: "🔎", trains: false, reqDiv: 3, reqCentre: 2 },
-  specialistes: { stat: null, icon: "🎯⚡", trains: false, reqDiv: 3, reqCentre: 3 }
+  attaque:      { stat: "tir", icon: "🎯", trains: true, seance: true, reqDiv: 0, reqCentre: 1 },
+  defense:      { stat: "def", icon: "🛡️", trains: true, seance: true, reqDiv: 0, reqCentre: 1 },
+  physique:     { stat: "vit", icon: "⚡", trains: true, seance: true, reqDiv: 0, reqCentre: 1 },
+  gardiens:     { stat: "gar", icon: "🥅", trains: true, seance: true, reqDiv: 0, reqCentre: 1 },
+  discipline:   { stat: "agr", icon: "🧘", trains: true, seance: false, reqDiv: 2, reqCentre: 1 },
+  medecin:      { stat: null, icon: "⚕️", trains: false, seance: false, reqDiv: 2, reqCentre: 2 },
+  recruteur:    { stat: null, icon: "🔎", trains: false, seance: false, reqDiv: 3, reqCentre: 2 },
+  specialistes: { stat: null, icon: "🎯⚡", trains: false, seance: false, reqDiv: 3, reqCentre: 3 }
 };
 
 function roleLabel(role) { return T('staff.' + role + '.label'); }
@@ -88,17 +90,37 @@ function makeCoach() {
   return { id: nextCoachId++, sexe: femme ? 'F' : 'H',
            nom: prenom + " " + pick(NOMS), note: irnd(lo, hi) };
 }
+// Le compteur des coachs n'est pas dans la sauvegarde : à chaque chargement, il repart AU-DESSUS du plus grand
+// identifiant connu, et le second porteur d'un identifiant — ce que le compteur remis à 1 a pu produire — est renuméroté,
+// le coach en poste d'abord. Après un rechargement, deux coachs du même poste portaient le même identifiant, et embaucher
+// l'un faisait disparaître l'autre du marché (étude des décisions de l'argent).
+function normaliserIdentitesCoachs() {
+  const coachs = [...Object.values(G.staff || {}), ...Object.values(G.market || {}).flat()]
+    .filter(c => c && typeof c === 'object');
+  nextCoachId = Math.max(nextCoachId, 1 + coachs.reduce((m, c) => Math.max(m, Number.isInteger(c.id) ? c.id : 0), 0));
+  const vus = new Set();
+  coachs.forEach(c => {
+    if (!Number.isInteger(c.id) || vus.has(c.id)) c.id = nextCoachId++;
+    vus.add(c.id);
+  });
+}
 function coachBaseCost(note) {
-  // note 55 → ~1 200 € (accessible en N3), 70 → ~5 000 €, 80 → ~9 800 €, 92 → ~19 700 €
+  // note 55 → 600 €, 70 → 6 300 €, 80 → 13 300 €, 92 → 25 200 €, 95 → 28 700 € (calculé depuis la formule)
   return Math.round((note - 48) * (note - 48) * 13 / 100) * 100;
 }
+// Le salaire d'un coach, dû à chaque journée de championnat, match ou non. La paie de `playDay` et l'affichage lisent
+// cette règle, et elle seule.
+function salaireCoach(c) { return Math.round(c.note * 1.5); }
 function coachSeverance(c) {
   // indemnité de départ du coach en poste (25 % de sa valeur)
   return Math.round(coachBaseCost(c.note) * 0.25 / 100) * 100;
 }
 function coachTrainCost(note) {
-  // coût pour faire gagner +1 de note : de plus en plus cher à mesure que le coach est bon
-  return Math.round((coachBaseCost(note + 1) - coachBaseCost(note)) * 1.6 / 100) * 100 + 300;
+  // coût pour faire gagner +1 de note : de plus en plus cher à mesure que le coach est bon. L'écart se prend sur les prix
+  // EXACTS de `coachBaseCost`, avant l'arrondi à la centaine : deux prix arrondis donnaient un écart qui oscillait —
+  // 1 100 € de 64 à 65, puis 900 € de 65 à 66 (signalé par Mirja, 27 septembre 2026).
+  const exact = (n) => (n - 48) * (n - 48) * 13;
+  return Math.round((exact(note + 1) - exact(note)) * 1.6 / 100) * 100 + 300;
 }
 function fillMarket() {
   const m = {};
@@ -119,12 +141,16 @@ async function hireStaff(role, coachId) {
   const hireCost = Math.round(coachBaseCost(cand.note) / 100) * 100;
   const sev = current ? coachSeverance(current) : 0;
   const total = hireCost + sev;
-  if (G.budget < total) { toast("Budget insuffisant.", 'bad'); return; }
+  if (G.budget < total) { toast(T('toast.budgetInsuffisant'), 'bad'); return; }
+  // Le poste par son libellé traduit — `ROLES[role].label` n'existe plus, la fenêtre disait « comme undefined » —, et le
+  // salaire par journée, qu'on ne découvrait qu'après coup.
   const msg = current
-    ? `Remplacer ${current.nom} (note ${current.note}) par ${cand.nom} (note ${cand.note}) ?\n\nEmbauche : ${euros(hireCost)}\nIndemnité de départ de ${current.nom} : ${euros(sev)}\nTotal : ${euros(total)}`
-    : `Embaucher ${cand.nom} (note ${cand.note}) comme ${ROLES[role].label} pour ${euros(hireCost)} ?`;
-  if (!(await ask({ title: current ? "Remplacer le coach" : "Embaucher", ico: '', text: msg,
-    okLabel: current ? "Remplacer" : "Embaucher" }))) return;
+    ? T('dlg.remplacer.texte', { ancien: current.nom, noteAncien: current.note, nom: cand.nom, note: cand.note,
+        prix: euros(hireCost), indemnite: euros(sev), total: euros(total), salaire: euros(salaireCoach(cand)) })
+    : T('dlg.embaucher.texte', { nom: cand.nom, note: cand.note, poste: roleLabel(role), prix: euros(hireCost),
+        salaire: euros(salaireCoach(cand)) });
+  if (!(await ask({ title: T(current ? 'dlg.remplacer.titre' : 'dlg.embaucher.titre'), ico: '', text: msg,
+    okLabel: T(current ? 'dlg.remplacer.ok' : 'dlg.embaucher.titre') }))) return;
   G.budget -= total;
   // l'ancien coach retourne sur le marché, le nouveau quitte le marché
   G.market[role] = G.market[role].filter(c => c.id !== coachId);
@@ -139,7 +165,7 @@ async function fireStaff(role) {
   if (!c) return;
   const indemnite = coachSeverance(c);
   if (!(await ask({ title: T('dlg.licencier.titre'), ico: '', danger: true, okLabel: T('dlg.licencier.titre'),
-      text: T('dlg.licencier.texte', { nom: c.nom, montant: euros(indemnite) }) }))) return;
+      text: T(sexeCoach(c) === 'F' ? 'dlg.licencier.texteF' : 'dlg.licencier.texte', { nom: c.nom, montant: euros(indemnite) }) }))) return;
   if (G.budget < indemnite) { toast(T('toast.budgetIndemnite'), 'bad'); return; }
   G.budget -= indemnite;
   G.market[role].push(c); // il reste disponible sur le marché
@@ -153,9 +179,9 @@ async function trainCoach(role) {
   if (!c) return;
   if (c.note >= 95) { toast(T('toast.coachPlafond'), 'info'); return; }
   const cost = coachTrainCost(c.note);
-  if (G.budget < cost) { toast("Budget insuffisant pour cette formation.", 'bad'); return; }
-  if (!(await ask({ title: "Formation", picto: 'progression', okLabel: "Financer",
-    text: `Financer une formation pour ${c.nom} ?\n\nNote ${c.note} → ${c.note + 1} pour ${euros(cost)}.` }))) return;
+  if (G.budget < cost) { toast(T('toast.budgetFormation'), 'bad'); return; }
+  if (!(await ask({ title: T('dlg.formation.titre'), picto: 'progression', okLabel: T('dlg.formation.ok'),
+    text: T('dlg.formation.texte', { nom: c.nom, note: c.note, suivante: c.note + 1, prix: euros(cost) }) }))) return;
   G.budget -= cost;
   c.note++;
   renderAll();
@@ -175,8 +201,12 @@ function applyTraining(mode) {
   const me = myTeam();
   const gains = [];
   me.players.forEach(p => {
+    // Un blessé est à l'infirmerie : il ne progresse ni en match ni en séance, où il recevait le bonus « laissé au repos »
+    // (dixième relecture).
+    if (p.injured) return;
     Object.entries(ROLES).forEach(([role, def]) => {
       if (!def.trains) return; // spécialistes/recruteur/médecin agissent ailleurs, pas sur la progression des stats
+      if (mode === 'session' && !def.seance) return; // la discipline se travaille en match
       const coach = G.staff[role];
       if (!coach) return;
       const stat = def.stat;
@@ -195,7 +225,6 @@ function applyTraining(mode) {
       // saison, soit enfin l'écart entre deux divisions. Voir 3-documents/etude-equilibrage.md.
       const prob = ((coach.note - 42) / 40) * 0.13 * ageF * playF * centreF * sessionF;
       if (role === 'discipline') {
-        if (mode === 'session') return; // la discipline se travaille surtout en match
         if (p.agr <= 40) return;
         if (Math.random() < prob) {
           p.agr--;
@@ -222,46 +251,75 @@ function applyTraining(mode) {
 
 // Séance d'entraînement hors match : utilisable une fois entre deux journées, fait progresser
 // en priorité les joueurs laissés au repos (la ligne complète qui ne joue pas).
+// Un coach qui ENTRAÎNE, en match — le coach mental compris : sans lui, l'écran conseille d'embaucher un coach.
+function aUnEntraineur() {
+  return Object.keys(G.staff || {}).some(r => G.staff[r] && ROLES[r] && ROLES[r].trains);
+}
+// Une séance se mène avec un coach de SÉANCE : ni le médecin, ni le recruteur, ni le coach situations spéciales, ni le
+// coach mental, qui travaille en match. La séance était décomptée sans effet possible (huitième et neuvième relectures).
+function aUnCoachDeSeance() {
+  return Object.keys(G.staff || {}).some(r => G.staff[r] && ROLES[r] && ROLES[r].seance);
+}
 function runTrainingSession() {
+  // Au milieu d'un plateau, la raison n'est pas une séance déjà menée : il n'y en a pas (27 septembre 2026).
+  if (plateauEnCours()) { toast(T('entrainement.plateau'), 'info'); return; }
+  if (phaseFinaleFinie()) { toast(T('entrainement.finDePhase'), 'info'); return; }
   if (!(G.seancesRestantes > 0)) { toast(T('toast.seanceDeja'), 'info'); return; }
-  if (Object.values(G.staff).every(v => !v)) { toast("Aucun coach en poste : recrute au moins un membre du staff.", 'warn'); return; }
+  if (!aUnCoachDeSeance()) { toast(T(Object.values(G.staff).some(Boolean) ? 'toast.aucunEntraineur' : 'toast.aucunCoach'), 'warn'); return; }
   applyTraining('session');
+  // La séance se mène depuis l'onglet : ce que la pastille annonçait est vu. Elle restait allumée quand la journée avait
+  // été jouée depuis cet onglet (signalé par Mirja, 27 septembre 2026).
+  if (G.tabNotify) G.tabNotify.entrainement = false;
   renderAll();
   const gains = G.lastSessionTraining;
   if (!gains.length) {
     toast(T('toast.seanceSansGain'), 'info');
   } else {
     notify({
-      title: "Séance d'entraînement", picto: 'entrainement',
-      html: `<p class="modal-note">${gains.length} progression${gains.length > 1 ? 's' : ''} enregistrée${gains.length > 1 ? 's' : ''}.</p>
+      title: T('seance.titre'), picto: 'entrainement',
+      html: `<p class="modal-note">${T('seance.progressions', { n: gains.length })}</p>
         <ul class="modal-list">${gains.map(g => `<li><span class="nm">${escHtml(ligneGain(g))}</span></li>`).join('')}</ul>`
     });
   }
+}
+
+// Le coach en poste : portrait, nom, note. Une seule écriture pour un poste ouvert et un poste reverrouillé.
+function ligneCoachEnPoste(c) {
+  return `<div class="coach-ligne">
+        <img class="coach-photo" src="${coachPortrait(c)}" alt="" onerror="this.remove()">
+        <div class="coach-txt"><b style="color:var(--tan)">${escHtml(c.nom)}</b> — ${T('staff.note', { n: c.note })} · ${T('staff.salaireJournee', { prix: euros(salaireCoach(c)) })}</div>
+        </div>`;
+}
+function boutonLicencier(role, c) {
+  // Grisé sans le budget de l'indemnité, comme tout bouton qu'on ne peut pas payer (huitième relecture).
+  return `<button class="btn sell" ${G.budget < coachSeverance(c) ? 'disabled' : ''} onclick="fireStaff('${role}')">${T('staff.licencier', { prix: euros(coachSeverance(c)) })}</button>`;
 }
 
 function renderEntrainement() {
   const cards = Object.entries(ROLES).map(([role, def]) => {
     const unlocked = roleUnlocked(role);
     if (!unlocked) {
-      return `<div class="card" style="opacity:.6">
+      // Un poste reverrouillé par une descente GARDE son coach : il agit, il est payé à chaque journée — il se voit donc, et
+      // il peut partir (étude des décisions de l'argent). Il disparaissait de l'écran, sans bouton « Licencier ».
+      const enPoste = G.staff[role];
+      return `<div class="card"${enPoste ? '' : ' style="opacity:.6"'}>
         <b>${def.icon} ${roleLabel(role)}</b><br>
         <span class="note">${roleDesc(role)}.</span><br><br>
         <span class="tag" style="color:var(--rouge)">🔒 ${T('staff.requis', { quoi: roleRequirementText(role) })}</span>
+        ${enPoste ? `<div style="margin-top:8px">${ligneCoachEnPoste(enPoste)}</div>
+        <div style="margin-top:6px">${boutonLicencier(role, enPoste)}</div>` : ''}
       </div>`;
     }
     const c = G.staff[role];
     let current;
     if (c) {
       const trainCost = c.note < 95 ? coachTrainCost(c.note) : null;
-      current = `<div class="coach-ligne">
-        <img class="coach-photo" src="${coachPortrait(c)}" alt="" onerror="this.remove()">
-        <div class="coach-txt"><b style="color:var(--tan)">${escHtml(c.nom)}</b> — ${T('staff.note', { n: c.note })}</div>
-        </div>
+      current = `${ligneCoachEnPoste(c)}
         <div style="margin-top:6px">
           ${trainCost !== null
             ? `<button class="btn buy" ${G.budget < trainCost ? 'disabled' : ''} onclick="trainCoach('${role}')">📈 ${T('staff.former', { prix: euros(trainCost) })}</button>`
             : `<span class="tag">${T('staff.maximum')}</span>`}
-          <button class="btn sell" onclick="fireStaff('${role}')">${T('staff.licencier', { prix: euros(coachSeverance(c)) })}</button>
+          ${boutonLicencier(role, c)}
         </div>`;
     } else {
       current = `<span class="tag">${T('staff.vacant')}</span>`;
@@ -276,8 +334,8 @@ function renderEntrainement() {
         const total = hireCost + sev;
         const label = c ? T('staff.remplacer', { prix: euros(total) }) : T('staff.embaucher', { prix: euros(hireCost) });
         return `<div style="margin-top:5px;display:flex;justify-content:space-between;align-items:center;gap:8px">
-          <span>${escHtml(cand.nom)} — ${T('staff.noteCourte', { n: cand.note })}</span>
-          <button class="btn buy" data-hire="${role}" ${G.budget < total ? 'disabled' : ''} onclick="hireStaff('${role}',${cand.id})">${label}</button>
+          <span>${escHtml(cand.nom)} — ${T('staff.noteCourte', { n: cand.note })} · ${T('staff.salaireJournee', { prix: euros(salaireCoach(cand)) })}</span>
+          <button class="btn buy" data-hire="${role}" data-prix="${total}" ${G.budget < total ? 'disabled' : ''} onclick="hireStaff('${role}',${cand.id})">${label}</button>
         </div>`;
       }).join('');
     return `<div class="card">
@@ -292,17 +350,27 @@ function renderEntrainement() {
   }).join('');
   const lastGains = (G.lastTraining && G.lastTraining.length)
     ? `<div class="card"><b>${T('entrainement.derniereSeance')}</b><ul>${G.lastTraining.map(g => `<li>${ligneGain(g)}</li>`).join('')}</ul></div>`
-    : `<p class="note">${Object.values(G.staff).every(v => !v) ? T('entrainement.aucune.sansCoach') : T('entrainement.aucune')}</p>`;
+    : `<p class="note">${!aUnEntraineur() ? T('entrainement.aucune.sansCoach') : T('entrainement.aucune')}</p>`;
   const sessionGains = (G.lastSessionTraining && G.lastSessionTraining.length)
     ? `<div class="card"><b>${T('entrainement.derniereHorsMatch')}</b><ul>${G.lastSessionTraining.map(g => `<li>${ligneGain(g)}</li>`).join('')}</ul></div>` : '';
+  // Au milieu d'un plateau, le bouton s'éteint et l'écran dit pourquoi : « séance déjà menée » aurait été faux.
+  const enPlateau = plateauEnCours();
+  // Éliminé, ou la phase finale jouée : plus de match cette saison, et l'écran le dit (onzième relecture).
+  const finie = phaseFinaleFinie();
+  const possible = G.seancesRestantes > 0 && !enPlateau && !finie;
   document.getElementById('tab-entrainement').innerHTML = `
     ${bandeau('entrainement', myTeam().name, T('ecran.entrainement.label'),
-              G.seancesRestantes > 0
-                ? T('entrainement.dispoN', { n: G.seancesRestantes, date: formatDateJournee(dateJournee(G.day), false) })
+              enPlateau ? T('entrainement.plateau')
+              : finie ? T('entrainement.finDePhase')
+              : G.seancesRestantes > 0
+                // Pendant la phase finale, `G.day` reste sur la dernière journée, déjà jouée : pas de date. La phrase nomme le
+                // match qui vient — playoffs, barrage, play-down ou tournoi d'accession —, pas toujours « la phase finale ».
+                ? (G.playoff ? T(cleSeanceAvantMatch(), { n: G.seancesRestantes })
+                   : T('entrainement.dispoN', { n: G.seancesRestantes, date: formatDateJournee(dateJournee(G.day), false) }))
                 : T('entrainement.deja'))}
     <div class="card">
-      <button class="btn buy" ${!(G.seancesRestantes > 0) ? 'disabled' : ''} onclick="runTrainingSession()">
-        ${G.seancesRestantes > 0 ? pictoHtml('entrainement') + ' ' + T('entrainement.lancer') : '✔️ ' + T('entrainement.deja')}
+      <button class="btn buy" ${!possible ? 'disabled' : ''} onclick="runTrainingSession()">
+        ${possible || enPlateau || finie ? pictoHtml('entrainement') + ' ' + T('entrainement.lancer') : '✔️ ' + T('entrainement.deja')}
       </button>
       ${regleRepliable(T('entrainement.info'))}
     </div>
@@ -315,11 +383,14 @@ function renderEntrainement() {
 }
 
 // ---------------- Transferts ----------------
+// Le plancher d'une vente : deux lignes complètes de joueurs de champ, et un gardien. La règle et le message de refus
+// lisent cette constante ; le message disait « 5 joueurs de champ ».
+const JOUEURS_DE_CHAMP_MIN = 8;
 function canSell(team, p) {
   const gks = team.players.filter(x => x.pos === 'G').length;
   const field = team.players.filter(x => x.pos !== 'G').length;
   if (p.pos === 'G') return gks > 1;
-  return field > 8; // garde toujours au moins 2 lignes complètes (8 joueurs de champ)
+  return field > JOUEURS_DE_CHAMP_MIN;
 }
 // Négociation : chance de refus pur, ou de contre-offre à un prix plus élevé (réduites par un bon recruteur)
 function negotiatePrice(p, basePrice) {
@@ -338,7 +409,6 @@ function negotiatePrice(p, basePrice) {
 function signNewContract(p) {
   p.contractYears = irnd(2, 4);
   p.moral = irnd(70, 90); // heureux de sa nouvelle signature
-  p.salaire = playerSalary(p);
 }
 
 // Le joueur portait un numéro que quelqu'un porte déjà chez nous : il en a reçu un autre, et
@@ -348,31 +418,43 @@ function annoncerNumeroDArrivee(p, voulu, porte) {
 }
 
 async function buyPlayer(teamId, playerId) {
-  if (G.season < 2) { toast(T('toast.marcheFerme'), 'info'); return; }
-  const seller = G.teams[teamId];
-  const p = seller.players.find(x => x.id === playerId);
+  if (!marcheOuvert()) { toast(T('toast.marcheFerme', { saison: SAISON_OUVERTURE_MARCHE }), 'info'); return; }
+  // Par l'IDENTIFIANT : `G.teams` est la poule, rangée de 0 à n-1, et les identifiants sont renumérotés sur toute la
+  // division. `G.teams[teamId]` ne trouvait personne dès la N3 hors de la première poule. Un club ou un joueur disparu entre
+  // l'affichage et le clic — une fin de saison — ne fait rien, comme avant.
+  const seller = G.teams.find(t => t.id === teamId);
+  const p = seller ? seller.players.find(x => x.id === playerId) : null;
   if (!p) return;
-  if (!canSell(seller, p)) { toast("Ce club refuse de vendre : son effectif est trop court.", 'warn'); return; }
+  if (!canSell(seller, p)) { toast(T('toast.clubEffectifCourt'), 'warn'); return; }
   if (effectifPlein()) { toast(T('toast.effectifPlein', { n: EFFECTIF_MAX }), 'warn'); return; }
   const basePrice = playerValue(p) * 1.1;
   const neg = negotiatePrice(p, basePrice);
   if (!neg.ok) { toast(T('toast.refuseVendre', { club: seller.name, nom: p.nom }), 'bad'); return; }
-  if (G.budget < neg.price) { toast("Budget insuffisant." + (neg.countered ? ` ${seller.name} demandait ${euros(neg.price)} (contre-offre).` : ''), 'bad'); return; }
+  if (G.budget < neg.price) { toast(T('toast.budgetInsuffisant') + (neg.countered ? ' ' + T('toast.contreOffre', { club: seller.name, prix: euros(neg.price) }) : ''), 'bad'); return; }
   const msg = neg.countered
-    ? `${seller.name} refuse le prix affiché et demande ${euros(neg.price)} pour ${p.nom}. Accepter ?`
-    : `Acheter ${p.nom} pour ${euros(neg.price)} ?`;
-  if (!(await ask({ title: "Transfert", picto: 'argent', text: msg,
-    okLabel: neg.countered ? "Accepter" : "Acheter" }))) return;
+    ? T('dlg.achat.contre', { club: seller.name, prix: euros(neg.price), nom: p.nom })
+    : T('dlg.achat.texte', { nom: p.nom, prix: euros(neg.price) });
+  if (!(await ask({ title: T('dlg.achat.titre'), picto: 'argent', text: msg,
+    okLabel: T(neg.countered ? 'dlg.accepter' : 'dlg.achat.ok') }))) return;
   G.budget -= neg.price;
   seller.players = seller.players.filter(x => x.id !== playerId);
   p.starter = false;
   signNewContract(p);
+  oublierLigne(p);   // une place retenue ne vaut que dans le club qui l'a donnée
   myTeam().players.push(p);
   annoncerNumeroDArrivee(p, p.num, attribuerNumero(myTeam(), p));
   renderAll();
 }
 
 // ---------------- Recrutement hors division ----------------
+// Le supplément d'une recrue venue d'une autre division : débaucher PLUS HAUT coûte 25 % de plus, recruter plus bas 5 %
+// de moins. Les divisions montent du Régional (0) à l'Élite (5) ; le code comparait à l'envers depuis toujours (étude des
+// décisions de l'argent, 26 septembre 2026). Une seule fonction pour le prix affiché et le prix demandé.
+function primeHorsDivision(divIdx) {
+  if (divIdx > G.divIdx) return 1.25;
+  if (divIdx < G.divIdx) return 0.95;
+  return 1;
+}
 function buildScoutPool() {
   const pool = [];
   DIVISIONS.forEach((div, di) => {
@@ -388,24 +470,24 @@ function buildScoutPool() {
   return pool;
 }
 async function buyScoutPlayer(scoutId) {
-  if (G.season < 2) { toast(T('toast.marcheFerme'), 'info'); return; }
+  if (!marcheOuvert()) { toast(T('toast.marcheFerme', { saison: SAISON_OUVERTURE_MARCHE }), 'info'); return; }
   const entry = G.scoutPool.find(e => e.p.id === scoutId);
   if (!entry) return;
   const { p, divIdx, clubName } = entry;
   if (effectifPlein()) { toast(T('toast.effectifPlein', { n: EFFECTIF_MAX }), 'warn'); return; }
-  const premium = divIdx < G.divIdx ? 1.25 : 0.95; // débaucher d'une division supérieure coûte plus cher
-  const basePrice = playerValue(p) * 1.1 * premium;
+  const basePrice = playerValue(p) * 1.1 * primeHorsDivision(divIdx);
   const neg = negotiatePrice(p, basePrice);
   if (!neg.ok) { toast(T('toast.refusePartir', { club: clubName, nom: p.nom }), 'bad'); return; }
-  if (G.budget < neg.price) { toast("Budget insuffisant." + (neg.countered ? ` ${clubName} demandait ${euros(neg.price)} (contre-offre).` : ''), 'bad'); return; }
+  if (G.budget < neg.price) { toast(T('toast.budgetInsuffisant') + (neg.countered ? ' ' + T('toast.contreOffre', { club: clubName, prix: euros(neg.price) }) : ''), 'bad'); return; }
   const msg = neg.countered
-    ? `${clubName} (${DIVISIONS[divIdx].label}) refuse le prix affiché et demande ${euros(neg.price)} pour ${p.nom}. Accepter ?`
-    : `Recruter ${p.nom} (${DIVISIONS[divIdx].label}, ${clubName}) pour ${euros(neg.price)} ?`;
-  if (!(await ask({ title: "Recrutement", picto: 'loupe', text: msg,
-    okLabel: neg.countered ? "Accepter" : "Recruter" }))) return;
+    ? T('dlg.recrutement.contre', { club: clubName, division: DIVISIONS[divIdx].label, prix: euros(neg.price), nom: p.nom })
+    : T('dlg.recrutement.texte', { nom: p.nom, division: DIVISIONS[divIdx].label, club: clubName, prix: euros(neg.price) });
+  if (!(await ask({ title: T('dlg.recrutement.titre'), picto: 'loupe', text: msg,
+    okLabel: T(neg.countered ? 'dlg.accepter' : 'dlg.recrutement.ok') }))) return;
   G.budget -= neg.price;
   G.scoutPool = G.scoutPool.filter(e => e.p.id !== scoutId);
   signNewContract(p);
+  oublierLigne(p);   // une place retenue ne vaut que dans le club qui l'a donnée
   myTeam().players.push(p);
   annoncerNumeroDArrivee(p, p.num, attribuerNumero(myTeam(), p));
   renderAll();
@@ -414,12 +496,15 @@ async function sellPlayer(playerId) {
   const me = myTeam();
   const p = me.players.find(x => x.id === playerId);
   if (!p) return;
-  if (!canSell(me, p)) { toast("Impossible : il te faut au moins 1 gardien et 5 joueurs de champ.", 'warn'); return; }
+  if (!canSell(me, p)) { toast(T('toast.venteImpossible', { champ: JOUEURS_DE_CHAMP_MIN }), 'warn'); return; }
   const price = Math.round(playerValue(p) * 0.9 / 10) * 10;
-  if (!(await ask({ title: "Vendre un joueur", picto: 'argent', danger: true, okLabel: "Vendre",
-    text: `Vendre ${p.nom} pour ${euros(price)} ?` }))) return;
+  if (!(await ask({ title: T('dlg.vente.titre'), picto: 'argent', danger: true, okLabel: T('dlg.vente.ok'),
+    text: T('dlg.vente.texte', { nom: p.nom, prix: euros(price) }) }))) return;
   G.budget += price;
   me.players = me.players.filter(x => x.id !== playerId);
+  // Sa place retenue revient au dépanneur qui la tient, et il part sans la mémoire du club.
+  promouvoirDepanneur(me, p);
+  oublierLigne(p);
   // le joueur part dans un club aléatoire
   const acheteur = pick(G.teams.filter(t => !t.human));
   acheteur.players.push(p);
@@ -430,7 +515,7 @@ async function sellPlayer(playerId) {
   renderAll();
 }
 
-// Prêt : le joueur quitte l'effectif pour la saison (plus de salaire à payer) et revient à l'intersaison,
+// Prêt : le joueur quitte l'effectif pour la saison (plus d'indemnité de match à payer, dès la Pré-Nationale) et revient à l'intersaison,
 // avec un peu de développement grâce au temps de jeu ailleurs.
 async function loanPlayer(playerId) {
   const me = myTeam();
@@ -441,6 +526,9 @@ async function loanPlayer(playerId) {
   if (!(await ask({ title: T('dlg.pret.titre'), picto: 'transferts', okLabel: T('effectif.preter'),
     text: T('dlg.pret.texte', { nom: p.nom }) }))) return;
   me.players = me.players.filter(x => x.id !== playerId);
+  // Sa place retenue revient au dépanneur qui la tient, et il part sans la mémoire du club.
+  promouvoirDepanneur(me, p);
+  oublierLigne(p);
   p.starter = false;
   if (!G.loanedOut) G.loanedOut = [];
   G.loanedOut.push(p);

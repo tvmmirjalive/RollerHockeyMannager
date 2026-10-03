@@ -9,7 +9,10 @@
 //
 //    ENTRÉE   `watchMatch(report)` — un rapport complet : `report.res.gH`, `res.gA`,
 //             `res.scorers` (chaque but avec sa minute et son auteur), `res.penalties`,
-//             `res.wentOT`.
+//             `res.wentOT`. Et, facultatif, `report.alignes` : `{ home, away }`, chacun
+//             `{ gk, field }` en identifiants — les joueurs qui ont JOUÉ le match, relevés par
+//             `playDay` avant les blessures du jour. Absent, la piste prend la composition
+//             du moment (`lineupOf`).
 //
 //    SORTIE   du pixel et du texte. RIEN d'autre. La visionneuse n'écrit jamais dans `G` :
 //             ni budget, ni journée, ni points, ni moral, ni forme. Un contrôle du test le
@@ -47,7 +50,8 @@ const mv = {
   gH: 0, gA: 0, events: [], nextEvt: 0, pens: [], nextPen: 0, activePP: null,
   puck: { x: 370, y: 210, vx: 0, vy: 0, owner: null, ownerCooldown: 0 },
   skaters: [], goalies: [], press: { home: 0, away: 0 },
-  goalFlash: 0, lastFrame: 0, retarget: 0, flavor: 0, scriptedShot: null, faceoff: 0
+  goalFlash: 0, lastFrame: 0, retarget: 0, flavor: 0, scriptedShot: null, faceoff: 0,
+  fermeture: null   // la fermeture différée du direct fini : voir mvAnnulerFermeture
 };
 // Le contexte est résolu à la PREMIÈRE utilisation, pas à l'analyse. Dans un fichier annexe
 // chargé en tête de page, le <canvas> n'existe pas encore : `getContext` sur `null` casserait
@@ -141,9 +145,9 @@ function mvKickPuck(tx, ty, power) {
 function mvTriggerGoal(e) {
   if (!e) return;
   if (e.side === 'home') mv.gH++; else mv.gA++;
-  feedLine(`${Math.floor(mv.t)}' — <b>BUT !</b> ${numeroTexte(e)} ${escHtml(e.nom)} (${escHtml(e.team)})`
-    + (e.pp ? ' <span class="tag">(supériorité numérique)</span>' : '')
-    + (e.prolongation ? ' <span class="tag">(but en or)</span>' : ''), true);
+  feedLine(`${mvMinute()}' — <b>${T('direct.but')}</b> ${numeroTexte(e)} ${escHtml(e.nom)} (${escHtml(e.team)})`
+    + (e.pp ? ` <span class="tag">${T('direct.butSuperiorite')}</span>` : '')
+    + (e.prolongation ? ` <span class="tag">${T('direct.butEnOr')}</span>` : ''), true);
   mv.goalFlash = 1.2;
   if (mv.activePP && mv.activePP.endsOnGoal && mv.activePP.against === (e.side === 'home' ? 'away' : 'home')) mv.activePP = null;
   mv.puck.x = MW/2; mv.puck.y = mCY; mv.puck.vx = 0; mv.puck.vy = 0;
@@ -197,7 +201,7 @@ function forceScriptedShot() {
   mv.puck.ownerCooldown = 2.0; // tir cadré : personne ne l'intercepte en vol
   ss.fired = true;
   if (mv.report.home.human || mv.report.away.human) {
-    feedLine(`${Math.floor(mv.t)}' — ${pictoHtml('jouer')} Lancer de ${escHtml(nxt.nom)} (${escHtml(nxt.side === 'home' ? mv.report.home.short : mv.report.away.short)}) depuis le slot !`);
+    feedLine(`${mvMinute()}' — ${pictoHtml('jouer')} ${T('direct.lancer', { nom: escHtml(nxt.nom), equipe: escHtml(nxt.side === 'home' ? mv.report.home.short : mv.report.away.short) })}`);
   }
 }
 
@@ -282,9 +286,9 @@ function updateMvPuck(simDt) {
         if (Math.random() < chance * simDt) {
           p.owner = s;
           if (mv.report.home.human || mv.report.away.human) {
-            const now = Math.floor(mv.t);
+            const now = mvMinute();
             if (now - (mv.lastTurnoverT || -99) >= 2) {
-              feedLine(`${now}' — Interception de ${escHtml(s.p.nom)} (${escHtml(s.team === 'home' ? mv.report.home.short : mv.report.away.short)}) sur ${escHtml(o.p.nom)} !`);
+              feedLine(`${now}' — ${T('direct.interception', { nom: escHtml(s.p.nom), equipe: escHtml(s.team === 'home' ? mv.report.home.short : mv.report.away.short), cible: escHtml(o.p.nom) })}`);
               mv.lastTurnoverT = now;
             }
           }
@@ -302,9 +306,9 @@ function updateMvPuck(simDt) {
       else { tx = rnd(mxMin + 60, mxMax - 60); ty = rnd(myMin + 50, myMax - 50); }
       mvKickPuck(tx, ty, 95 + own.p.tir * 0.35);
       if (mate && (mv.report.home.human || mv.report.away.human)) {
-        const now = Math.floor(mv.t);
+        const now = mvMinute();
         if (now - (mv.lastPassT || -99) >= 2) {
-          feedLine(`${now}' — Passe de ${escHtml(own.p.nom)} vers ${escHtml(mate.p.nom)} (${escHtml(own.team === 'home' ? mv.report.home.short : mv.report.away.short)}).`);
+          feedLine(`${now}' — ${T('direct.passe', { nom: escHtml(own.p.nom), cible: escHtml(mate.p.nom), equipe: escHtml(own.team === 'home' ? mv.report.home.short : mv.report.away.short) })}`);
           mv.lastPassT = now;
         }
       }
@@ -354,9 +358,19 @@ function mvMaillotDistinct(receveur, visiteur) {
   return blanc >= noir ? { corps: '#ffffff', epaules: '#141414' } : { corps: '#141414', epaules: '#ffffff' };
 }
 
-// Ligne de champ affichée : les 2 meilleurs Tir jouent attaquants, les 2 meilleurs Déf jouent défenseurs
-function mvPickLine(team) {
-  const { gk, field } = lineupOf(team);
+// Ligne de champ affichée : les 2 meilleurs Tir jouent attaquants, les 2 meilleurs Déf jouent défenseurs.
+// Parmi les joueurs qui ont JOUÉ le match (`al`, relevé par playDay avant les blessures du jour) : relire la
+// composition à l'ouverture montrait l'équipe d'après, sans le blessé du match. Un relevé absent — Coupe, séries,
+// rapport d'une sauvegarde d'avant — ou qui nomme un joueur introuvable retombe sur la composition du moment. Un
+// relevé sans gardien (`gk: null`) est un relevé : le match s'est joué sans.
+function mvPickLine(team, al) {
+  let gk, field;
+  if (al && Array.isArray(al.field) && al.field.length) {
+    const parId = id => team.players.find(p => p.id === id);
+    gk = al.gk === null ? undefined : parId(al.gk);
+    field = al.field.map(parId);
+  }
+  if (!field || field.some(p => !p) || (!gk && !(al && al.gk === null))) ({ gk, field } = lineupOf(team));
   const byTir = [...field].sort((a, b) => b.tir - a.tir);
   const fwds = byTir.slice(0, 2);
   const rest = field.filter(p => !fwds.includes(p));
@@ -372,8 +386,8 @@ function initMvSkaters(report) {
   const aM = mvMaillotDistinct(hM, maillotDe(report.away));
   const hCol = hM.corps, aCol = aM.corps;
   mv.maillots = { home: hM, away: aM };
-  const hLine = mvPickLine(report.home);
-  const aLine = mvPickLine(report.away);
+  const hLine = mvPickLine(report.home, report.alignes && report.alignes.home);
+  const aLine = mvPickLine(report.away, report.alignes && report.alignes.away);
   function mk(p, team, role, idx, col, x, y) {
     return { x, y, homeX: x, homeY: y, heading: team === 'home' ? 0 : Math.PI, speed: 0, team, role, idx, col,
       col2: mv.maillots[team].epaules, p, isLead: false };
@@ -598,8 +612,40 @@ function updateMvSkaters(simDt) {
   }
 }
 
+// Au coup de sifflet final, le direct se ferme de lui-même 1,4 s plus tard. Cette fermeture n'appartient qu'à LUI :
+// gardée nulle part, elle survivait à son direct — « Passer » puis « Jouer » dans ce délai, et elle fermait le direct
+// du match suivant dès ses premières minutes, rapport affiché avant que le match ait été vu. Un direct qui s'ouvre, ou
+// qui se ferme, l'annule donc.
+function mvAnnulerFermeture() {
+  clearTimeout(mv.fermeture);
+  mv.fermeture = null;
+}
+
+// Les commandes du direct — « Passer », la barre des consignes et ses trois boutons — sont du HTML statique d'`index.html`,
+// en français : à l'écran anglais elles y seraient restées, à côté d'un fil traduit (douzième relecture, cause R7). On les
+// pose à chaque ouverture du direct, comme `renderTop` pose le bandeau : le HTML garde le français pour la première peinture.
+// Et la langue peut changer PENDANT qu'il est ouvert — la barre du bas reste au-dessus de lui, le direct n'est pas inerte, et
+// Tab mène au bouton de langue des Réglages derrière : `mvSuivreLaLangue` les repose alors (cause R13). Un bouton de consigne
+// se reconnaît à son `data-style`, jamais à son libellé : un libellé se traduit.
+function mvPoserTextes() {
+  const poser = (e, cle) => { if (e) e.textContent = T(cle); };
+  poser(document.getElementById('mvSkip'), 'direct.passer');
+  poser(document.querySelector('#mvTactics .tag'), 'direct.consignes');
+  document.querySelectorAll('#mvTactics [data-style]').forEach(b => poser(b, 'direct.consigne.' + b.dataset.style));
+}
+
+// `choisirLangue` l'appelle : les commandes et l'en-tête d'un direct déjà ouvert passent dans la nouvelle langue. Les commandes
+// se posent SANS condition — cinq éléments statiques, une écriture idempotente. L'en-tête se relit tout de suite si la
+// visionneuse est à l'écran, et on lit l'AFFICHAGE, pas `mv.open` : au coup de sifflet `mv.open` passe à false et la boucle
+// s'arrête, mais le direct reste affiché 1,4 s (`mv.fermeture`) — sa seule relecture serait celle-ci.
+function mvSuivreLaLangue() {
+  mvPoserTextes();
+  if (mv.report && document.getElementById('matchViewer').style.display === 'flex') updateMvHead();
+}
+
 function watchMatch(report) {
   mvInitCanvas();          // seul endroit d'où le dessin peut partir : on résout ici
+  mvAnnulerFermeture();    // celle d'un direct précédent ne fermera pas celui-ci
   mv.open = true; mv.report = report;
   mv.t = 0; mv.gH = 0; mv.gA = 0; mv.nextEvt = 0; mv.nextPen = 0; mv.activePP = null;
   mv.events = report.res.scorers;
@@ -610,7 +656,9 @@ function watchMatch(report) {
   mv.goalFlash = 0; mv.retarget = 0.4; mv.flavor = irnd(4, 8); mv.prolongationAnnoncee = false;
   mv.scriptedShot = null; mv.lastTurnoverT = -99; mv.lastPassT = -99; mv.lastTouchTeam = 'home'; mv.faceoff = 0;
   document.getElementById('mvFeed').innerHTML =
-    `<div>0' — Coup d'envoi ! ${escHtml(report.home.name)} reçoit ${escHtml(report.away.name)}.</div>`;
+    // Un match de plateau se joue sur terrain neutre : personne n'y reçoit (onzième relecture).
+    `<div>0' — ${T(report.neutre ? 'direct.coupEnvoiNeutre' : 'direct.coupEnvoi', { hote: escHtml(report.home.name), visiteur: escHtml(report.away.name) })}</div>`;
+  mvPoserTextes();   // les commandes dans la langue du moment, avant que le direct se montre
   document.getElementById('matchViewer').style.display = 'flex';
   document.body.classList.add('direct-ouvert');   // cache le bouton « Jouer » (styles.css)
   updateMvHead();
@@ -618,7 +666,17 @@ function watchMatch(report) {
   requestAnimationFrame(mvLoop);
 }
 
+// Le direct est à l'ÉCRAN du `watchMatch` qui l'ouvre au `closeViewer` qui le ferme, et cet intervalle n'a que deux états : il
+// se joue (`mv.open`), ou il est fini et sa fermeture différée est armée (`mv.fermeture`) — au coup de sifflet `mvLoop` passe
+// `mv.open` à false, mais le direct reste affiché 1,4 s. On lit l'ÉTAT du jeu, jamais le style calculé de `#matchViewer` : son
+// `display: none` vit dans `styles.css`, pièce NON critique, et sans elle plus rien ne masque le direct — il passait pour ouvert
+// dès le menu, et le retour physique d'Android fermait un direct qui n'existait pas, `G` nul (cause R14).
+function directALEcran() {
+  return mv.open || !!mv.fermeture;
+}
+
 function closeViewer() {
+  mvAnnulerFermeture();
   mv.open = false;
   document.getElementById('matchViewer').style.display = 'none';
   document.body.classList.remove('direct-ouvert');
@@ -654,14 +712,29 @@ function mvLigneSuperiorite() {
   return ligne;
 }
 
+// Le direct a-t-il une prolongation ? Le rapport le dit, et lui seul : le chrono passe 50' à la dernière image de TOUT
+// match, prolongation ou non.
+function mvProlongation() { return !!(mv.report && mv.report.res && mv.report.res.wentOT); }
+
+// La minute que le direct ÉCRIT — horloge, fil, ligne finale. Le chrono interne peut dépasser la fin du match : le
+// garde-fou de la prolongation ne coupe qu'à 56', pour laisser au tir scripté d'un but en or de 55' le temps d'arriver.
+// Mais la prolongation finit à 55' — le but en or est daté de 51' à 55' —, le temps réglementaire à 50', et rien de ce
+// que le direct écrit ne va au-delà. Sans cette borne, un but en or de 54' ou 55' rattrapé par le garde-fou s'écrivait
+// « 56' », suivi de « 55' — Fin du match », sous « Prol. · 56' » (douzième relecture). Tronquée partout, ligne finale
+// comprise : l'horloge et « Fin du match » disent la même minute, celle du but en or quand la mort subite finit le match.
+function mvMinute() { return Math.min(Math.floor(mv.t), mvProlongation() ? 55 : 50); }
+
 function updateMvHead() {
   const r = mv.report;
   // La supériorité a sa propre ligne, TOUJOURS présente même vide : écrite à la suite du
   // score, elle le faisait passer à la ligne en 390 px et tout le cadre descendait de 5 px.
-  let ppTag = '4 contre 4';
-  if (mv.activePP && mv.t < mv.activePP.until) {
+  // Le BOOLÉEN décide, pas le texte : comparer la ligne à « 4 contre 4 » dépendait de la langue, et une traduction posée d'un
+  // seul côté l'aurait éteinte pour toujours (cause R7).
+  const enSuperiorite = !!(mv.activePP && mv.t < mv.activePP.until);
+  let ppTag = T('direct.quatreContreQuatre');
+  if (enSuperiorite) {
     const teamShort = mv.activePP.against === 'home' ? r.away.short : r.home.short;
-    ppTag = `${teamShort} en supériorité (${Math.ceil(mv.activePP.until - mv.t)}')`;
+    ppTag = T('direct.superiorite', { equipe: teamShort, n: Math.ceil(mv.activePP.until - mv.t) });
   }
   const pastille = c => `<i class="mv-pastille" style="background:${c.corps};border-color:${c.epaules}"></i>`;
   const m = mv.maillots || { home: maillotDe(r.home), away: maillotDe(r.away) };
@@ -669,10 +742,12 @@ function updateMvHead() {
     `${pastille(m.home)}<span class="h">${r.home.short}</span> <b class="mv-marque">${mv.gH} — ${mv.gA}</b> <span class="a">${r.away.short}</span>${pastille(m.away)}`;
   const sup = mvLigneSuperiorite();
   sup.textContent = ppTag;
-  sup.classList.toggle('actif', ppTag !== '4 contre 4');
-  // Deux périodes de 25 minutes (Sportif 9.1.2), puis la mort subite.
-  const periode = mv.t < 25 ? '1re' : mv.t < 50 ? '2e' : 'Prol.';
-  document.getElementById('mvClock').textContent = `${periode} · ${Math.floor(mv.t)}'`;
+  sup.classList.toggle('actif', enSuperiorite);
+  // Deux périodes de 25 minutes (Sportif 9.1.2), puis la mort subite — s'il y en a une. À la dernière image d'un match
+  // sans prolongation, le chrono passe 50' avant que `mvLoop` dise le match fini : l'horloge écrivait « Prol. · 50' », et
+  // le gardait pendant toute la fermeture différée (douzième relecture).
+  const periode = T(mv.t < 25 ? 'direct.periode.1' : (mv.t < 50 || !mvProlongation()) ? 'direct.periode.2' : 'direct.periode.prol');
+  document.getElementById('mvClock').textContent = `${periode} · ${mvMinute()}'`;
 }
 
 function mvReposition(simDt) {
@@ -750,14 +825,14 @@ function mvLoop(now) {
     const p = mv.pens[mv.nextPen];
     const icon = PENALTY_LABEL[p.type];
     const typeLabel = T('penalite.' + p.type);
-    feedLine(`${p.minute}' — ${icon} <b>${typeLabel}</b> — ${numeroTexte(p)} ${escHtml(p.nom)} (${escHtml(p.team)}) : ${fauteLabel(p.faute)}.${p.shorthand ? ` ${T('penalite.inferiorite', { n: p.dur })}` : ''}`);
+    feedLine(`${p.minute}' — ${icon} <b>${typeLabel}</b> — ${numeroTexte(p)} ${escHtml(p.nom)} ${T('penalite.motif', { equipe: escHtml(p.team), faute: fauteLabel(p.faute) })}${p.shorthand ? ` ${T('penalite.inferiorite', { n: p.dur })}` : ''}`);
     if (p.shorthand) mv.activePP = { against: p.side, until: mv.t + p.dur, endsOnGoal: p.endsOnGoal };
     mv.nextPen++;
   }
 
   // lignes d'ambiance
   if (mv.t >= mv.flavor) {
-    feedLine(`${Math.floor(mv.t)}' — ${T('direct.ambiance.' + irnd(0, FLAVOR_N - 1))}`);
+    feedLine(`${mvMinute()}' — ${T('direct.ambiance.' + irnd(0, FLAVOR_N - 1))}`);
     mv.flavor += irnd(5, 9);
   }
 
@@ -771,7 +846,7 @@ function mvLoop(now) {
   // Fin du temps réglementaire. S'il y a eu prolongation, le match ne s'arrête PAS ici : le
   // but en or est daté 51'-55' depuis la v104, et l'animation le manquait complètement —
   // tableau 1–1 pour un rapport 2–1, un match sur cinq. Mesuré, pas supposé.
-  const prolongation = !!(mv.report.res && mv.report.res.wentOT);
+  const prolongation = mvProlongation();
   if (mv.t >= 50 && prolongation && !mv.prolongationAnnoncee) {
     mv.prolongationAnnoncee = true;
     feedLine(`50' — <b>${T('direct.prolongation')}</b>`, true);
@@ -790,10 +865,10 @@ function mvLoop(now) {
     while (mv.nextEvt < mv.events.length) mvTriggerGoal(mv.events[mv.nextEvt]);
     // Le compteur AFFICHÉ, pas le score calculé : la ligne annonçait auparavant
     // `mv.report.res`, ce qui masquait toute divergence entre l'animation et la simulation.
-    feedLine(`${Math.min(Math.round(mv.t), prolongation ? 55 : 50)}' — <b>${T('direct.finMatch')}</b> ${T('direct.scoreFinal', { a: mv.gH, b: mv.gA })}`, true);
+    feedLine(`${mvMinute()}' — <b>${T('direct.finMatch')}</b> ${T('direct.scoreFinal', { a: mv.gH, b: mv.gA })}`, true);
     drawMvPiste();
     mv.open = false;
-    setTimeout(closeViewer, 1400);
+    mv.fermeture = setTimeout(closeViewer, 1400);
     return;
   }
   requestAnimationFrame(mvLoop);
@@ -982,7 +1057,7 @@ function drawMvPiste() {
     mvCtx.fillStyle = '#201503';
     mvCtx.font = 'bold 46px Tomorrow, sans-serif';
     mvCtx.textAlign = 'center'; mvCtx.textBaseline = 'middle';
-    mvCtx.fillText('BUT !', MW/2, MH/2);
+    mvCtx.fillText(T('direct.but'), MW/2, MH/2);
   }
 }
 

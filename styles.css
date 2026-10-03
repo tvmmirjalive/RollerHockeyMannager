@@ -697,7 +697,6 @@
   .card-duo { font-size: var(--fs-2xs); margin-top: 2px; white-space: nowrap; overflow: hidden;
     text-overflow: ellipsis; }
   .duo-plus { color: var(--vert); } .duo-moins { color: var(--rouge); opacity: .8; }
-  .tr-salaire { display: block; font-size: var(--fs-xs); opacity: .6; white-space: nowrap; }
   .tr-apport { font-size: var(--fs-xs); font-weight: 700; padding: 1px 5px; border-radius: var(--r-pilule);
     white-space: nowrap; vertical-align: middle; }
   .tr-plus  { color: var(--vert);  background: rgba(60,190,120,.14); }
@@ -831,6 +830,12 @@
   }
   /* Quand l'écran glisse jusqu'aux résultats, les commandes s'arrêtent sous l'encoche, pas dessous. */
   .ts-controls { scroll-margin-top: calc(8px + env(safe-area-inset-top, 0px)); }
+  /* Et le premier résultat, quand c'est lui qui s'aligne : son début sous l'encoche, son bas à 8 px du bord — les
+     marges que `tsAmenerResultats` mesure pour décider (v197, seconde relecture). */
+  .ts-team-card, .ts-empty { scroll-margin-top: calc(8px + env(safe-area-inset-top, 0px)); scroll-margin-bottom: 8px; }
+  /* Une puce gardée au clavier s'aligne ELLE-MÊME, anneau de focus compris — il déborde de 4 px : en haut sous la même
+     marge que les commandes, et de côté dans le cadre de sa rangée (v197, cinquième relecture). */
+  .ts-chip { scroll-margin-top: calc(12px + env(safe-area-inset-top, 0px)); scroll-margin-inline: 4px; }
 
   /* --- Grilles de clubs --- */
   .ts-inner { max-width: 980px; margin: 0 auto; padding: 0 16px; }
@@ -906,6 +911,9 @@
     letter-spacing: .8px; color: var(--vert); font-weight: 700;
   }
   .ts-empty { text-align: center; color: var(--muted); padding: 40px 16px; font-size: var(--fs-base); }
+  /* Le message ne dit « aucun club » que s'il n'y en a aucun : `tsApplyFilters` bascule cette classe, et la
+     règle manquait depuis la v57 — il restait affiché sous les clubs trouvés (v197, seconde relecture). */
+  .ts-empty.ts-hidden { display: none; }
 
   /* ==================== Double confirmation ==================== */
   .ts-confirm-overlay {
@@ -1052,10 +1060,11 @@
     padding: 12px 14px; border-radius: var(--r-md); margin-bottom: 8px; font-size: var(--fs-md);
     background: rgba(255,255,255,.04); border-left: 3px solid var(--muted); line-height: 1.5;
   }
-  .modal-flash b { display: block; font-size: var(--fs-base); margin-bottom: 2px; }
-  .modal-flash.good { border-left-color: var(--vert); } .modal-flash.good b { color: var(--vert); }
-  .modal-flash.warn { border-left-color: var(--tan);  } .modal-flash.warn b { color: var(--tan); }
-  .modal-flash.bad  { border-left-color: var(--rouge);} .modal-flash.bad b  { color: var(--rouge); }
+  /* Le TITRE seul, premier enfant : « .modal-flash b » attrapait le gras de la phrase (dixième relecture). */
+  .modal-flash > b:first-child { display: block; font-size: var(--fs-base); margin-bottom: 2px; }
+  .modal-flash.good { border-left-color: var(--vert); } .modal-flash.good > b:first-child { color: var(--vert); }
+  .modal-flash.warn { border-left-color: var(--tan);  } .modal-flash.warn > b:first-child { color: var(--tan); }
+  .modal-flash.bad  { border-left-color: var(--rouge);} .modal-flash.bad > b:first-child  { color: var(--rouge); }
   .modal-score {
     display: flex; align-items: center; gap: 8px; padding: 7px 11px; border-radius: var(--r-sm);
     background: rgba(255,255,255,.035); margin-bottom: 5px; font-size: var(--fs-sm);
@@ -1397,7 +1406,8 @@
   .msg.t-cup { border-left-color: var(--div); }
   .msg .ic { flex: 0 0 auto; font-size: var(--fs-xl); }
   .msg .tx { flex: 1 1 auto; min-width: 0; }
-  .msg .tx b { display: block; font-size: var(--fs-md); margin-bottom: 2px; }
+  /* Le TITRE seul : « .msg .tx b » attrapait le gras du corps, « classe E » en gros sur sa ligne (27 septembre 2026). */
+  .msg .tx > b { display: block; font-size: var(--fs-md); margin-bottom: 2px; }
   .msg .tx p { margin: 0; font-size: var(--fs-xs); color: var(--muted); line-height: 1.45; }
   .msg .tx .q { font-size: var(--fs-3xs); color: #6b7480; margin-top: 4px; display: block; }
 

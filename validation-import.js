@@ -115,45 +115,52 @@ const SCHEMA_SAUVEGARDE = 1;
 const TAILLE_MAX_SAUVEGARDE = 8 * 1024 * 1024;
 const IMPORT_BORNES = { poules: 16, equipes: 40, joueurs: 60, journees: 120,
                         inbox: 2000, history: 2000, market: 500, scoutPool: 500, loanedOut: 200 };
+// La note d'un coach : 95 au plus aujourd'hui, jusqu'à 108 au marché d'Élite d'avant la v176.
+const IMPORT_COACH_NOTE_MAX = 120;
+// Le club : les bornes que le jeu respecte lui-même, larges devant les choix de l'écran (étude des décisions de l'argent).
+const IMPORT_CLUB = { niveaux: ['stade', 'confort', 'buvette', 'centre', 'pole'], niveauMax: 10, logesMax: 15,
+                      billetMax: 100, communicationMax: 100000, contrats: 50 };
 
-function erreurImport(chemin, attendu) { return new Error(chemin + ' : ' + attendu); }
+// Le chemin (`G.poules[0][1]`) est un identifiant technique : il ne se traduit pas. Ce qui l'accompagne est une phrase, et le gabarit
+// `import.refus` porte sa propre ponctuation — l'espace avant les deux-points est une règle du français.
+function erreurImport(chemin, attendu) { return new Error(T('import.refus', { chemin, attendu })); }
 
 // Vérifie la FORME d'un candidat AVANT toute migration : types, bornes, références. Ce qui
 // n'est pas listé ici est complété par la migration ; ce qui est listé est ce sans quoi le
 // moteur plante ou boucle. Les sauvegardes anciennes doivent passer : on n'exige que ce que
 // toutes les versions ont écrit — `teams`/`schedule` seuls valent `poules`/`calendriers`.
 function validerCandidat(data) {
-  if (!data || typeof data !== 'object' || Array.isArray(data)) throw erreurImport('sauvegarde', 'objet attendu');
+  if (!data || typeof data !== 'object' || Array.isArray(data)) throw erreurImport(T('import.chemin.sauvegarde'), T('import.attendu.objet'));
   if (data.schema !== undefined) {
-    if (!Number.isInteger(data.schema) || data.schema < 0) throw erreurImport('schema', 'entier attendu');
+    if (!Number.isInteger(data.schema) || data.schema < 0) throw erreurImport('schema', T('import.attendu.entier'));
     if (data.schema > SCHEMA_SAUVEGARDE) throw new Error(T('import.schemaRecent', { n: data.schema, max: SCHEMA_SAUVEGARDE }));
   }
   const g = data.G;
-  if (!g || typeof g !== 'object' || Array.isArray(g)) throw erreurImport('G', 'objet attendu');
-  if (data.nextPlayerId !== undefined && !(Number.isInteger(data.nextPlayerId) && data.nextPlayerId >= 0)) throw erreurImport('nextPlayerId', 'entier attendu');
-  const entier = (v, chemin, min, max) => { if (!Number.isInteger(v) || v < min || v > max) throw erreurImport(chemin, `entier entre ${min} et ${max} attendu`); };
-  const nombre = (v, chemin) => { if (typeof v !== 'number' || !isFinite(v)) throw erreurImport(chemin, 'nombre attendu'); };
+  if (!g || typeof g !== 'object' || Array.isArray(g)) throw erreurImport('G', T('import.attendu.objet'));
+  if (data.nextPlayerId !== undefined && !(Number.isInteger(data.nextPlayerId) && data.nextPlayerId >= 0)) throw erreurImport('nextPlayerId', T('import.attendu.entier'));
+  const entier = (v, chemin, min, max) => { if (!Number.isInteger(v) || v < min || v > max) throw erreurImport(chemin, T('import.attendu.entierEntre', { min, max })); };
+  const nombre = (v, chemin) => { if (typeof v !== 'number' || !isFinite(v)) throw erreurImport(chemin, T('import.attendu.nombre')); };
   const tableau = (v, chemin, max) => {
-    if (!Array.isArray(v)) throw erreurImport(chemin, 'tableau attendu');
-    if (v.length > max) throw erreurImport(chemin, `${v.length} éléments, ${max} au plus`);
+    if (!Array.isArray(v)) throw erreurImport(chemin, T('import.attendu.tableau'));
+    if (v.length > max) throw erreurImport(chemin, T('import.attendu.tropDElements', { n: v.length, max }));
   };
   entier(g.season, 'G.season', 1, 10000);
   nombre(g.budget, 'G.budget');
   if (g.divIdx !== undefined) entier(g.divIdx, 'G.divIdx', 0, DIVISIONS.length - 1);
   const poules = g.poules !== undefined ? g.poules : (g.teams !== undefined ? [g.teams] : undefined);
-  if (poules === undefined) throw erreurImport('G.poules', 'aucune équipe');
+  if (poules === undefined) throw erreurImport('G.poules', T('import.attendu.aucuneEquipe'));
   tableau(poules, 'G.poules', IMPORT_BORNES.poules);
-  if (!poules.length) throw erreurImport('G.poules', 'au moins une poule');
+  if (!poules.length) throw erreurImport('G.poules', T('import.attendu.unePoule'));
   const pouleIdx = g.poules !== undefined ? (g.pouleIdx === undefined ? 0 : g.pouleIdx) : 0;
   entier(pouleIdx, 'G.pouleIdx', 0, poules.length - 1);
   let humains = 0;
   poules.forEach((poule, k) => {
     tableau(poule, `G.poules[${k}]`, IMPORT_BORNES.equipes);
-    if (poule.length < 2) throw erreurImport(`G.poules[${k}]`, 'au moins deux équipes');
+    if (poule.length < 2) throw erreurImport(`G.poules[${k}]`, T('import.attendu.deuxEquipes'));
     poule.forEach((t, i) => {
       const ch = `G.poules[${k}][${i}]`;
-      if (!t || typeof t !== 'object') throw erreurImport(ch, 'équipe attendue');
-      if (typeof t.name !== 'string' || !t.name) throw erreurImport(ch + '.name', 'nom attendu');
+      if (!t || typeof t !== 'object') throw erreurImport(ch, T('import.attendu.equipe'));
+      if (typeof t.name !== 'string' || !t.name) throw erreurImport(ch + '.name', T('import.attendu.nom'));
       if (t.id !== undefined) nombre(t.id, ch + '.id');        // interpolé dans un onclick (buyPlayer)
       tableau(t.players, ch + '.players', IMPORT_BORNES.joueurs);
       if (t.human) humains++;
@@ -161,17 +168,17 @@ function validerCandidat(data) {
       // présente, elle doit être un objet de deux couleurs `#rrggbb` minuscules : elles finissent
       // dans un attribut `style`, et un refus nommé vaut mieux qu'une correction silencieuse.
       if (t.maillot !== undefined) {
-        if (!t.maillot || typeof t.maillot !== 'object' || Array.isArray(t.maillot)) throw erreurImport(ch + '.maillot', 'objet attendu');
+        if (!t.maillot || typeof t.maillot !== 'object' || Array.isArray(t.maillot)) throw erreurImport(ch + '.maillot', T('import.attendu.objet'));
         ['corps', 'epaules'].forEach(z => {
-          if (typeof t.maillot[z] !== 'string' || !/^#[0-9a-f]{6}$/.test(t.maillot[z])) throw erreurImport(`${ch}.maillot.${z}`, 'couleur #rrggbb attendue');
+          if (typeof t.maillot[z] !== 'string' || !/^#[0-9a-f]{6}$/.test(t.maillot[z])) throw erreurImport(`${ch}.maillot.${z}`, T('import.attendu.couleur'));
         });
       }
       t.players.forEach((p, j) => {
         const cp = `${ch}.players[${j}]`;
-        if (!p || typeof p !== 'object') throw erreurImport(cp, 'joueur attendu');
+        if (!p || typeof p !== 'object') throw erreurImport(cp, T('import.attendu.joueur'));
         nombre(p.id, cp + '.id');
-        if (typeof p.nom !== 'string') throw erreurImport(cp + '.nom', 'nom attendu');
-        if (p.pos !== 'G' && p.pos !== 'D' && p.pos !== 'A') throw erreurImport(cp + '.pos', 'G, D ou A attendu');
+        if (typeof p.nom !== 'string') throw erreurImport(cp + '.nom', T('import.attendu.nom'));
+        if (p.pos !== 'G' && p.pos !== 'D' && p.pos !== 'A') throw erreurImport(cp + '.pos', T('import.attendu.poste'));
         ['tir', 'def', 'vit', 'gar'].forEach(a => nombre(p[a], `${cp}.${a}`));
         // v179 : le numéro est facultatif — aucune sauvegarde d'avant n'en a, et un DOUBLON
         // n'est pas un motif de refus, la migration le répare. Mais présent, c'est un entier de
@@ -180,22 +187,22 @@ function validerCandidat(data) {
       });
     });
   });
-  if (humains !== 1) throw erreurImport('G.poules', `${humains} équipe(s) humaine(s), une attendue`);
+  if (humains !== 1) throw erreurImport('G.poules', T('import.attendu.humaines', { n: humains }));
   const calendriers = g.calendriers !== undefined ? g.calendriers : (g.schedule !== undefined ? [g.schedule] : undefined);
   if (calendriers !== undefined) {
     tableau(calendriers, 'G.calendriers', IMPORT_BORNES.poules);
-    if (calendriers.length !== poules.length) throw erreurImport('G.calendriers', `${calendriers.length} calendrier(s) pour ${poules.length} poule(s)`);
+    if (calendriers.length !== poules.length) throw erreurImport('G.calendriers', T('import.attendu.calendriers', { n: calendriers.length, poules: poules.length }));
     calendriers.forEach((cal, k) => {
       tableau(cal, `G.calendriers[${k}]`, IMPORT_BORNES.journees);
       cal.forEach((journee, d) => {
         tableau(journee, `G.calendriers[${k}][${d}]`, IMPORT_BORNES.equipes);
         journee.forEach((m, i) => {
           const cm = `G.calendriers[${k}][${d}][${i}]`;
-          if (!m || typeof m !== 'object') throw erreurImport(cm, 'match attendu');
+          if (!m || typeof m !== 'object') throw erreurImport(cm, T('import.attendu.match'));
           entier(m.home, cm + '.home', 0, poules[k].length - 1);
           entier(m.away, cm + '.away', 0, poules[k].length - 1);
           if (m.score !== null && m.score !== undefined) {
-            if (!(Array.isArray(m.score) && m.score.length === 2)) throw erreurImport(cm + '.score', 'nul ou [buts, buts] attendu');
+            if (!(Array.isArray(m.score) && m.score.length === 2)) throw erreurImport(cm + '.score', T('import.attendu.score'));
             entier(m.score[0], cm + '.score[0]', 0, 99); entier(m.score[1], cm + '.score[1]', 0, 99);
           }
         });
@@ -213,7 +220,7 @@ function validerCandidat(data) {
   // sont des objets. Ce qui finit dans un attribut HTML est d'un type qui ne peut pas en
   // sortir : un type de lettre est une chaîne (ramenée à l'énumération par la migration), un
   // identifiant interpolé dans un onclick est un nombre.
-  const objet = (o, chemin) => { if (!o || typeof o !== 'object' || Array.isArray(o)) throw erreurImport(chemin, 'objet attendu'); };
+  const objet = (o, chemin) => { if (!o || typeof o !== 'object' || Array.isArray(o)) throw erreurImport(chemin, T('import.attendu.objet')); };
   const identifiant = (o, chemin) => { if (o.id !== undefined) nombre(o.id, chemin + '.id'); };
   const tableauObjets = (k, parElement) => {
     const v = g[k];
@@ -221,20 +228,46 @@ function validerCandidat(data) {
     tableau(v, 'G.' + k, IMPORT_BORNES[k]);
     v.forEach((e, i) => { objet(e, `G.${k}[${i}]`); if (parElement) parElement(e, `G.${k}[${i}]`); });
   };
-  tableauObjets('inbox', (m, ch) => { if (m.type !== undefined && typeof m.type !== 'string') throw erreurImport(ch + '.type', 'texte attendu'); });
+  tableauObjets('inbox', (m, ch) => { if (m.type !== undefined && typeof m.type !== 'string') throw erreurImport(ch + '.type', T('import.attendu.texte')); });
   tableauObjets('history');
   // Les joueurs hors équipe voyagent avec leur numéro : même exigence de type.
   const numeroFacultatif = (o, chemin) => { if (o.num !== undefined) entier(o.num, chemin + '.num', 0, 99); };
   tableauObjets('scoutPool', (e, ch) => { objet(e.p, ch + '.p'); identifiant(e.p, ch + '.p'); numeroFacultatif(e.p, ch + '.p'); });
   tableauObjets('loanedOut', (e, ch) => { identifiant(e, ch); numeroFacultatif(e, ch); });
+  // Le club (étude des décisions de l'argent) : rien n'en était vérifié, et un prix textuel mettait `NaN` au budget.
+  // Absent, la migration le crée ; présent, chaque champ a le type et les bornes que le jeu lui donne.
+  if (g.club !== undefined && g.club !== null) {
+    objet(g.club, 'G.club');
+    const c = g.club;
+    IMPORT_CLUB.niveaux.forEach(k => { if (c[k] !== undefined) entier(c[k], 'G.club.' + k, 0, IMPORT_CLUB.niveauMax); });
+    if (c.loges !== undefined) entier(c.loges, 'G.club.loges', 0, IMPORT_CLUB.logesMax);
+    const somme = (v, chemin, max) => { nombre(v, chemin); if (v < 0 || v > max) throw erreurImport(chemin, T('import.attendu.nombreEntre', { min: 0, max })); };
+    if (c.ticketPrice !== undefined) somme(c.ticketPrice, 'G.club.ticketPrice', IMPORT_CLUB.billetMax);
+    if (c.marketing !== undefined) somme(c.marketing, 'G.club.marketing', IMPORT_CLUB.communicationMax);
+    if (c.sponsors !== undefined) {
+      tableau(c.sponsors, 'G.club.sponsors', IMPORT_CLUB.contrats);
+      c.sponsors.forEach((k, i) => entier(k, `G.club.sponsors[${i}]`, 0, IMPORT_CLUB.contrats));
+    }
+  }
+  // Un coach : un objet, un identifiant numérique, une note — son salaire en dépend, un texte mettait NaN au budget.
+  const coach = (c, chemin) => {
+    objet(c, chemin); identifiant(c, chemin);
+    nombre(c.note, chemin + '.note');
+    if (c.note < 0 || c.note > IMPORT_COACH_NOTE_MAX) throw erreurImport(chemin + '.note', T('import.attendu.nombreEntre', { min: 0, max: IMPORT_COACH_NOTE_MAX }));
+  };
   if (g.market !== undefined && g.market !== null) {
     objet(g.market, 'G.market');
     const roles = Object.keys(g.market);
-    if (roles.length > IMPORT_BORNES.market) throw erreurImport('G.market', `${roles.length} postes, ${IMPORT_BORNES.market} au plus`);
+    if (roles.length > IMPORT_BORNES.market) throw erreurImport('G.market', T('import.attendu.postes', { n: roles.length, max: IMPORT_BORNES.market }));
     roles.forEach(r => {
       tableau(g.market[r], `G.market.${r}`, IMPORT_BORNES.market);
-      g.market[r].forEach((c, i) => { objet(c, `G.market.${r}[${i}]`); identifiant(c, `G.market.${r}[${i}]`); });
+      g.market[r].forEach((c, i) => coach(c, `G.market.${r}[${i}]`));
     });
+  }
+  // L'encadrement en poste : un objet de postes, chacun vide ou un coach (huitième relecture).
+  if (g.staff !== undefined && g.staff !== null) {
+    objet(g.staff, 'G.staff');
+    Object.keys(g.staff).forEach(r => { if (g.staff[r] !== null && g.staff[r] !== undefined) coach(g.staff[r], 'G.staff.' + r); });
   }
 }
 
