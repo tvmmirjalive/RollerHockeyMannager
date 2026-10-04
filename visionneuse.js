@@ -39,6 +39,7 @@
 //
 // Ce que ce fichier emprunte au reste du jeu, et qui doit donc rester disponible :
 //   `clampV`, `irnd`, `pick`, `escHtml`, `T`, `portraitFor`, `showReport`,
+//   `confinerLeDirect`, `libererLeDirect` (le confinement, avec celui des fenêtres),
 //   `PENALTY_LABEL`, `fauteLabel`, `overall`, `effOv`, `lineupOf`, `maillotDe`,
 //   `numeroValide`, `numeroTexte`.
 // Toutes sont appelées à l'exécution, jamais à l'analyse : l'ordre de chargement est donc
@@ -624,9 +625,9 @@ function mvAnnulerFermeture() {
 // Les commandes du direct — « Passer », la barre des consignes et ses trois boutons — sont du HTML statique d'`index.html`,
 // en français : à l'écran anglais elles y seraient restées, à côté d'un fil traduit (douzième relecture, cause R7). On les
 // pose à chaque ouverture du direct, comme `renderTop` pose le bandeau : le HTML garde le français pour la première peinture.
-// Et la langue peut changer PENDANT qu'il est ouvert — la barre du bas reste au-dessus de lui, le direct n'est pas inerte, et
-// Tab mène au bouton de langue des Réglages derrière : `mvSuivreLaLangue` les repose alors (cause R13). Un bouton de consigne
-// se reconnaît à son `data-style`, jamais à son libellé : un libellé se traduit.
+// La langue ne change plus sous un direct ouvert par l'écran : il retient le clavier et masque le reste (3 octobre 2026), les Réglages
+// ne sont ni touchables ni atteignables. Elle le peut encore par un appel de code, et `mvSuivreLaLangue` repose alors les commandes
+// (cause R13). Un bouton de consigne se reconnaît à son `data-style`, jamais à son libellé : un libellé se traduit.
 function mvPoserTextes() {
   const poser = (e, cle) => { if (e) e.textContent = T(cle); };
   poser(document.getElementById('mvSkip'), 'direct.passer');
@@ -656,11 +657,12 @@ function watchMatch(report) {
   mv.goalFlash = 0; mv.retarget = 0.4; mv.flavor = irnd(4, 8); mv.prolongationAnnoncee = false;
   mv.scriptedShot = null; mv.lastTurnoverT = -99; mv.lastPassT = -99; mv.lastTouchTeam = 'home'; mv.faceoff = 0;
   document.getElementById('mvFeed').innerHTML =
-    // Un match de plateau se joue sur terrain neutre : personne n'y reçoit (onzième relecture).
+    // Un match où ni l'un ni l'autre des deux clubs ne reçoit — un plateau sans hôte, ou chez un troisième club — se dit « terrain neutre ».
     `<div>0' — ${T(report.neutre ? 'direct.coupEnvoiNeutre' : 'direct.coupEnvoi', { hote: escHtml(report.home.name), visiteur: escHtml(report.away.name) })}</div>`;
   mvPoserTextes();   // les commandes dans la langue du moment, avant que le direct se montre
   document.getElementById('matchViewer').style.display = 'flex';
   document.body.classList.add('direct-ouvert');   // cache le bouton « Jouer » (styles.css)
+  confinerLeDirect();      // le reste de la page devient inerte et le focus entre ici : voir index.html, au confinement des fenêtres
   updateMvHead();
   mv.lastFrame = performance.now();
   requestAnimationFrame(mvLoop);
@@ -680,6 +682,9 @@ function closeViewer() {
   mv.open = false;
   document.getElementById('matchViewer').style.display = 'none';
   document.body.classList.remove('direct-ouvert');
+  // La page est rendue et le focus est revenu AVANT le rapport : `showReport` présente les lettres du jour, et la fenêtre qui s'ouvre
+  // prend pour déclencheur ce qui a le focus à cet instant.
+  libererLeDirect();
   showReport();
 }
 

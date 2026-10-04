@@ -76,14 +76,20 @@
     --ombre-1: 0 1px 3px rgba(0,0,0,.5);
     --ombre-2: 0 12px 28px -10px rgba(0,0,0,.75);
     --ombre-3: 0 26px 70px -12px rgba(0,0,0,.8);
-    /* Plans — nommés sans être renumérotés : seul l'ordre compte, et il est voulu. */
-    --z-visionneuse: 50; --z-bouton-flottant: 118; --z-nav: 120; --z-ecran: 200;
-    --z-menu: 205; --z-confirmation: 210; --z-tuto: 250; --z-toast: 300; --z-modale: 320;
+    /* Plans — nommés sans être renumérotés : seul l'ordre compte, et il est voulu. Le direct est AU-DESSUS de la barre du bas, du
+       bouton flottant et du tiroir (3 octobre 2026, « Bloquer le reste ») : il retient le clavier et masque la page, et la barre
+       recouvrait deux des trois consignes en paysage. Il reste sous le tutoriel, qui s'efface tant qu'il est ouvert, les toasts et
+       les fenêtres, qui s'ouvrent par-dessus lui. */
+    --z-bouton-flottant: 118; --z-nav: 120; --z-ecran: 200;
+    --z-menu: 205; --z-confirmation: 210; --z-visionneuse: 230; --z-tuto: 250; --z-toast: 300; --z-modale: 320;
   }
   * { box-sizing: border-box; }
   /* Focus clavier : :focus-visible, pas :focus — un clic à la souris ne doit pas faire
      apparaître le contour. Sans cette règle, rien dans la feuille ne montrait où l'on est. */
   :focus-visible { outline: 2px solid var(--bleu); outline-offset: 2px; }
+  /* La zone principale reçoit le focus PAR PROGRAMME quand le direct se ferme sans autre cible (index.html, `cibleApresDirect`).
+     Elle garde le contour de :focus-visible, que le navigateur ne pose qu'au clavier : c'est à l'utilisateur du clavier qu'il dit
+     où est le focus (patch-focus-main.py). */
   /* UN CHAMP DE FICHIER MASQUÉ, PAS RETIRÉ. `display: none` sort de la tabulation et de l'arbre
      d'accessibilité : sans souris, la commande n'existe plus. Ici le champ reste dans la page,
      réduit à un pixel découpé — il garde son focus, son nom et sa place dans l'ordre du clavier. */

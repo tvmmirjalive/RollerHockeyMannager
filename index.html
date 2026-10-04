@@ -74,7 +74,7 @@
 <div id="tsConfirmOverlay" class="ts-confirm-overlay">
   <div class="ts-confirm-box" id="tsConfirmBox">
     <div class="ts-confirm-crest" id="tsConfirmCrest">—</div>
-    <p class="ts-confirm-lead" id="tsConfirmLead">Tu prends les rênes de</p>
+    <p class="ts-confirm-lead" id="tsConfirmLead">Tu prends les rênes du club</p>
     <p class="ts-confirm-name" id="tsConfirmName">—</p>
     <p class="ts-confirm-origin" id="tsConfirmOrigin">—</p>
     <p class="ts-confirm-note" id="tsConfirmNote">La partie démarre en <b>Régional</b>, quelle que soit la division d'origine de ce club.
@@ -674,7 +674,7 @@ function construireBulle(titre, texte, boutonLabel) {
   document.getElementById('tutoPasser').addEventListener('click', () => { if (tutoResolve) tutoResolve('passer'); });
 }
 
-// La visionneuse de match est à z-index 50, le voile à 250 : le voile la recouvrait et
+// La visionneuse de match est à z-index 230 (`--z-visionneuse`), le voile à 250 : le voile la recouvrait et
 // rendait « Passer » inatteignable — le joueur restait coincé devant son match. Le
 // projecteur s'efface donc tant qu'elle est ouverte, et revient quand elle se ferme.
 // Elle lit le RENDU — ce qui recouvre réellement le projecteur —, pas l'état du jeu : pour savoir si un direct est ouvert,
@@ -2906,7 +2906,7 @@ async function effacerSlot(s, ev) {
 // `versionName` du build Android par 4-outils/patch-version.py, qui refuse de s'appliquer
 // si les deux divergent. Le mode d'échec évité est réel : l'APK a annoncé « 1.0 » pendant
 // soixante-dix-sept versions parce que rien ne reliait le jeu à son numéro.
-const VERSION_JEU = '198';
+const VERSION_JEU = '199';
 
 function refreshMenu() {
   // Les textes de l'écran titre sont écrits ICI et non en HTML statique : sinon ils
@@ -3179,39 +3179,64 @@ let modalTapHandler = null;
 let declencheurModale = null;      // ce qui avait le focus avant la PREMIÈRE modale de la file
 let fileModaleEnCours = false;
 let arrierePlanNeutralise = [];
+let racineNeutralisee = null;      // la racine dont `arrierePlanNeutralise` est l'arrière-plan : la fenêtre, le direct, ou rien
 
-// Ce qui peut recevoir le focus dans la fenêtre. On NE SE SERT PAS de `offsetParent` pour juger
+// Ce qui peut recevoir le focus dans une racine confinée — la fenêtre, ou le direct. On NE SE SERT PAS de `offsetParent` pour juger
 // de la visibilité : il vaut `null` pour tout élément `position: fixed`, ce que la fenêtre est
 // justement — le piège est connu et coûte déjà cher au projet.
 const SELECTEUR_FOCALISABLE = 'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
-function focalisablesModale() {
-  const ov = document.getElementById('modalOverlay');
-  if (!ov) return [];
-  return [...ov.querySelectorAll(SELECTEUR_FOCALISABLE)].filter(el => el.getClientRects().length > 0);
+function focalisablesDans(racine) {
+  if (!racine) return [];
+  return [...racine.querySelectorAll(SELECTEUR_FOCALISABLE)].filter(el => el.getClientRects().length > 0);
 }
 
-// Neutraliser l'ARRIÈRE-PLAN, jamais la fenêtre. `inert` retire d'un coup le focus, le clic et
+// QUI RETIENT LE CLAVIER. Deux candidats, et une règle pour chacun :
+//
+//   1. la FENÊTRE d'abord. Elle s'ouvre PAR-DESSUS le direct (z-modale au-dessus de z-visionneuse), et quand elle se ferme c'est au
+//      direct qu'elle rend la main, pas à la page ;
+//   2. le DIRECT ensuite (décision de Mirja, 3 octobre 2026, « Bloquer le reste » : pendant le match, on ne peut rien faire d'autre
+//      que regarder, passer ou changer la consigne). Du lancement à la fermeture — la fermeture différée qui suit le coup de sifflet
+//      COMPRISE —, tout ce qui n'est pas lui est inerte : ni touchable, ni focalisable, ni lu.
+//
+// C'est UN mécanisme, pas deux : le même `inert`, le même piège de tabulation, le même retour du focus. Et l'état se LIT, il ne se
+// compte pas : deux drapeaux « je confine » tenus à la main se désaccordent à la première fenêtre fermée pendant qu'un direct est
+// ouvert — l'arrière-plan serait rendu à la page, direct compris. Lu à chaque fois, il ne peut pas diverger.
+//
+// Le direct confine ce qu'il a réellement AFFICHÉ : `mv.open` seul resterait vrai si l'ouverture levait à mi-chemin, et la page
+// resterait inerte sous un direct qu'on ne voit pas. Le `display` lu est celui que `watchMatch` et `closeViewer` posent EN LIGNE,
+// jamais le style calculé : le `display: none` de la feuille vit dans `styles.css`, pièce non critique (cause R14). `typeof` :
+// visionneuse.js est une pièce CRITIQUE, et une fenêtre peut s'ouvrir sur l'écran rouge qui la constate manquante.
+function racineConfinee() {
+  if (fileModaleEnCours) return document.getElementById('modalOverlay');
+  const direct = document.getElementById('matchViewer');
+  if (direct && direct.style.display === 'flex' && typeof directALEcran === 'function' && directALEcran()) return direct;
+  return null;
+}
+
+// Neutraliser l'ARRIÈRE-PLAN, jamais la racine. `inert` retire d'un coup le focus, le clic et
 // la lecture par les technologies d'assistance ; `aria-hidden` double la mise pour les moteurs
 // qui ne connaissent pas encore `inert`. La pile de toasts est épargnée : elle porte
-// `aria-live`, et la rendre inerte ferait taire les annonces au moment où elles comptent.
-function neutraliserArrierePlan(actif) {
-  if (actif) {
-    if (arrierePlanNeutralise.length) return;
-    const ov = document.getElementById('modalOverlay');
-    for (const el of [...document.body.children]) {
-      if (el === ov || el.id === 'toastStack') continue;
-      arrierePlanNeutralise.push(el);
-      try { el.inert = true; } catch (e) {}
-      el.setAttribute('inert', '');
-      el.setAttribute('aria-hidden', 'true');
-    }
-  } else {
-    for (const el of arrierePlanNeutralise) {
-      try { el.inert = false; } catch (e) {}
-      el.removeAttribute('inert');
-      el.removeAttribute('aria-hidden');
-    }
-    arrierePlanNeutralise = [];
+// `aria-live`, et la rendre inerte ferait taire les annonces au moment où elles comptent. La fenêtre l'est aussi — elle doit
+// pouvoir s'ouvrir au-dessus du direct. Rien ne se fait si la racine n'a pas changé : c'est `modalPump`, à chaque fenêtre d'une
+// file, qui l'appelle.
+function majConfinement() {
+  const racine = racineConfinee();
+  if (racine === racineNeutralisee) return;
+  for (const el of arrierePlanNeutralise) {
+    try { el.inert = false; } catch (e) {}
+    el.removeAttribute('inert');
+    el.removeAttribute('aria-hidden');
+  }
+  arrierePlanNeutralise = [];
+  racineNeutralisee = racine;
+  if (!racine) return;
+  const ov = document.getElementById('modalOverlay');
+  for (const el of [...document.body.children]) {
+    if (el === racine || el === ov || el.id === 'toastStack') continue;
+    arrierePlanNeutralise.push(el);
+    try { el.inert = true; } catch (e) {}
+    el.setAttribute('inert', '');
+    el.setAttribute('aria-hidden', 'true');
   }
 }
 
@@ -3224,6 +3249,54 @@ function rendreLeFocusAuDeclencheur() {
   if (!cible || !document.contains(cible) || cible.disabled) return;
   if (cible.closest('[inert]')) return;
   try { cible.focus(); } catch (e) {}
+}
+
+// LE DIRECT RETIENT LE CLAVIER, COMME UNE FENÊTRE (décision de Mirja, 3 octobre 2026). `watchMatch` l'appelle une fois le direct
+// affiché, `closeViewer` appelle `libererLeDirect` avant de présenter le rapport.
+let declencheurDirect = null;      // ce qui avait le focus avant le direct — le bouton « Jouer », quand il a été activé au clavier
+
+function confinerLeDirect() {
+  const racine = document.getElementById('matchViewer');
+  const a = document.activeElement;
+  // Relevé à l'ouverture, et seulement s'il vient d'AILLEURS : un direct rouvert pendant qu'il est ouvert prendrait sinon l'un de
+  // ses propres boutons pour déclencheur. Une fenêtre déjà ouverte a le focus : ce n'est pas lui.
+  if (!fileModaleEnCours && a && a !== document.body && a !== document.documentElement && !racine.contains(a)) declencheurDirect = a;
+  // Un tiroir ouvert passerait sous le direct, inerte, et Échap le refermerait à l'insu du joueur.
+  ouvrirTiroir(false);
+  majConfinement();
+  if (fileModaleEnCours) return;   // une fenêtre est devant : le focus est à elle
+  // Le focus entre sur la vitesse choisie : une commande sans danger, que la touche qui a lancé le direct, rejouée, ne fait pas
+  // sauter. SANS défiler : en paysage la première commande est sous la ligne de flottaison, et un focus qui défile cache la piste.
+  const cible = racine.querySelector('#mvCtrls [data-spd].on') || focalisablesDans(racine)[0];
+  if (cible) { try { cible.focus({ preventScroll: true }); } catch (e) {} }
+}
+
+// Où le focus va quand le direct finit : le déclencheur, s'il existe encore et peut le recevoir ; sinon le bouton « Jouer » ; sinon la
+// zone principale, rendue focalisable par programme — jamais le document, où le clavier ne sait plus d'où il part. On ne juge pas
+// ici de l'inertie : quand une fenêtre est ouverte, la page est inerte, et la cible n'en serait pas moins la bonne.
+function cibleApresDirect() {
+  const utilisable = (el) => !!el && document.contains(el) && !el.disabled && el.getClientRects().length > 0;
+  if (utilisable(declencheurDirect)) return declencheurDirect;
+  const jouer = document.getElementById('btnPlay');
+  if (utilisable(jouer)) return jouer;
+  const zone = document.querySelector('main');
+  if (zone && !zone.hasAttribute('tabindex')) zone.setAttribute('tabindex', '-1');
+  return zone;
+}
+
+function libererLeDirect() {
+  // L'arrière-plan redevient utilisable AVANT qu'on lui rende le focus : un élément encore inerte refuserait de le recevoir.
+  majConfinement();
+  const cible = cibleApresDirect();
+  declencheurDirect = null;
+  if (fileModaleEnCours) {
+    // Une fenêtre ouverte pendant le direct lui survit — la fermeture différée tombe pendant une lettre : elle garde le focus, et ce
+    // qu'elle rendra à sa fermeture ne peut plus être un contrôle du direct, désormais masqué.
+    const racine = document.getElementById('matchViewer');
+    if (declencheurModale && racine && racine.contains(declencheurModale)) declencheurModale = cible;
+    return;
+  }
+  if (cible) { try { cible.focus({ preventScroll: true }); } catch (e) {} }
 }
 
 // UN RENDU QUI DÉTRUIT LA COMMANDE FOCALISÉE LA REND AU CLAVIER. Le rendu du jeu est une chaîne
@@ -3280,12 +3353,13 @@ function rendreEnGardantLeFocus(rendu, portee) {
 // verrait pas la tabulation qui vient de l'extérieur, et un écouteur en phase de remontée
 // arriverait après que le navigateur a déjà choisi sa cible.
 document.addEventListener('keydown', (e) => {
-  if (e.key !== 'Tab' || !modalIsOpen()) return;
-  const ov = document.getElementById('modalOverlay');
-  const f = focalisablesModale();
+  if (e.key !== 'Tab') return;
+  const racine = racineConfinee();
+  if (!racine) return;
+  const f = focalisablesDans(racine);
   if (!f.length) { e.preventDefault(); return; }
   const premier = f[0], dernier = f[f.length - 1], actif = document.activeElement;
-  if (!ov.contains(actif)) { e.preventDefault(); (e.shiftKey ? dernier : premier).focus(); return; }
+  if (!racine.contains(actif)) { e.preventDefault(); (e.shiftKey ? dernier : premier).focus(); return; }
   if (e.shiftKey && actif === premier) { e.preventDefault(); dernier.focus(); }
   else if (!e.shiftKey && actif === dernier) { e.preventDefault(); premier.focus(); }
 }, true);
@@ -3321,7 +3395,7 @@ function modalPump() {
     const a = document.activeElement;
     declencheurModale = (a && a !== document.body && a !== document.documentElement) ? a : null;
   }
-  neutraliserArrierePlan(true);
+  majConfinement();
   modalCurrent = next;
   const o = next.opts;
 
@@ -3370,7 +3444,7 @@ function modalPump() {
   body.scrollTop = 0;
   // Le focus ENTRE dans la fenêtre, TOUT DE SUITE. Le report de quarante millisecondes laissait
   // le temps de tabuler dans le vide, et c'est exactement là que le clavier s'échappait.
-  const focalisables = focalisablesModale();
+  const focalisables = focalisablesDans(document.getElementById('modalOverlay'));
   const cible = body.querySelector('[data-focus-initial]') || foot.lastElementChild || focalisables[focalisables.length - 1] || box;
   if (cible === box && !box.hasAttribute('tabindex')) box.setAttribute('tabindex', '-1');
   // Un champ de saisie arrive SÉLECTIONNÉ : la première frappe remplace, elle ne s'ajoute pas.
@@ -3391,10 +3465,11 @@ function closeModal(value) {
   if (modalQueue.length) modalPump();
   else {
     document.getElementById('modalOverlay').classList.remove('show');
-    // L'arrière-plan redevient utilisable AVANT qu'on lui rende le focus : un élément encore
-    // inerte refuserait de le recevoir, et le focus resterait sur `body`.
-    neutraliserArrierePlan(false);
+    // La file est vide : la fenêtre ne confine plus, et l'arrière-plan redevient utilisable — celui de la PAGE, ou le direct s'il est
+    // encore ouvert, qui attendait derrière elle — AVANT qu'on lui rende le focus : un élément encore inerte refuserait de le
+    // recevoir, et le focus resterait sur `body`.
     fileModaleEnCours = false;
+    majConfinement();
     rendreLeFocusAuDeclencheur();
   }
 }
@@ -5901,21 +5976,38 @@ const PAR_POSTE_AUTO = 2;
 // lui-même, par la fenêtre de composition ou par le cycle des cartes.
 const LIGNES_AUTO = 2;
 
+// LE critère du « meilleur gardien valide » — celui de `reparerComposition`, qui trie par lui, et de `rendreCage`, qui décide par
+// lui : le GÉNÉRAL AFFICHÉ sur la carte du joueur, `overall`, sans la forme ni le moral du jour. Décision de Mirja, 3 octobre 2026 (cause
+// W2) : à « meilleur selon quoi ? », elle a choisi « Le Général affiché » — un titulaire mieux noté reprend la cage dès son retour. Le
+// rétabli revient à la forme 65 : mesuré à la note du jour, `effOv`, il perdait la cage devant un moins bon en pleine forme, sous une
+// lettre qui disait « meilleur » d'un gardien dont la carte affichait moins (voir 4-outils/patch-retour-gardien-meilleur.py, qui l'avait
+// posée à `effOv`, puis 4-outils/patch-retour-gardien-general.py). Un tri décroissant : `parNoteGardien(a, b) < 0` dit que `a` passe
+// avant `b`. À égalité EXACTE de Général — un entier : l'égalité n'est pas rare —, c'est celui qui retient la cage, le titulaire
+// rétabli : la réparation prenait sinon le premier de l'effectif pendant que `rendreCage` rendait la cage au titulaire, et le rapport
+// nommait un gardien que la lettre disait « remplacé » le soir même (voir 4-outils/patch-retour-cage-egalite.py). À Général égal et
+// retenue égale, l'ordre de l'effectif décide, comme avant : le tri est stable.
+function parNoteGardien(a, b) {
+  const retient = p => (ligneMemorisee(p.ligneRetour) === 1 ? 1 : 0);
+  return (overall(b) - overall(a)) || (retient(b) - retient(a));
+}
+
 // Un titulaire qui manque ne refait pas la composition du joueur : le meilleur gardien VALIDE prend la cage — le geste de
 // l'éditeur, `alignerDansLigne(id, 0)` —, les autres gardiens la quittent, et aucun joueur de champ ne bouge. La
 // composition automatique efface toutes les lignes et n'en refait que deux : la troisième ligne de Mirja disparaissait à
 // la blessure de son gardien (27 septembre 2026). Elle ne sert plus que s'il ne reste pas quatre joueurs de champ alignés.
-// Le gardien qu'elle met en cage y DÉPANNE — le jeu l'y a mis sans toi —, et le titulaire rétabli la reprendra
-// (`rendreCage`). Sauf s'il retenait la cage : il y est chez lui, et n'a plus rien à retenir. Et sauf si personne ne la
-// retient — le titulaire est parti sain — : elle est à lui (`marquerDepanneurs`). Et celui qui la retient,
-// valide — ton titulaire, rétabli le jour même où son remplaçant se blesse —, passe AVANT le meilleur : il la reprend, même
-// moins bon, comme `rendreCage` la lui rendrait. Le meilleur, un troisième gardien, y entrait pour en ressortir le soir même :
-// le rapport le nommait, et la lettre du retour disait qu'il « l'a remplacé » (voir 4-outils/patch-retour-dit-vrai.py).
+// Le gardien qu'elle met en cage y DÉPANNE — le jeu l'y a mis sans toi — quand un autre la retient, blessé : il y est chez lui
+// quand personne ne la retient — le titulaire est parti sain (`marquerDepanneurs`) —, ou quand c'est lui qui la retenait et que
+// sa guérison du jour le remet en cage, où il oublie ce qu'il retenait. C'est le MEILLEUR gardien valide qui la prend, sans
+// égard à la marque d'un titulaire rétabli : décision de Mirja, 3 octobre 2026 (« Le meilleur garde la cage »), par la mesure
+// de `rendreCage` — `parNoteGardien`, le Général affiché sur la carte. Le titulaire rétabli le jour même où son remplaçant se blesse
+// la prend s'il est le mieux noté, ou aussi bien — à égalité exacte de Général, c'est lui, comme au retour ; sinon un troisième
+// gardien, mieux noté, la garde, et la lettre du retour le dit sans l'en faire sortir (voir
+// 4-outils/patch-retour-dit-vrai.py : la v198 donnait d'abord la cage à celui qui la retenait, même moins bon).
 function reparerComposition(team) {
   const valide = p => !p.injured;
   if (team.players.filter(p => p.pos === 'G' && p.starter && valide(p)).length !== 1) {
-    const gardiens = team.players.filter(p => p.pos === 'G' && valide(p)).sort((a, b) => effOv(b) - effOv(a));
-    const remplacant = gardiens.find(p => ligneMemorisee(p.ligneRetour) === 1) || gardiens[0];
+    const gardiens = team.players.filter(p => p.pos === 'G' && valide(p)).sort(parNoteGardien);
+    const remplacant = gardiens[0];
     team.players.forEach(p => { if (p.pos === 'G') { p.starter = false; p.ligne = 0; delete p.ligneDepannage; } });
     if (remplacant) {
       remplacant.starter = true; remplacant.ligne = 1;
@@ -7208,18 +7300,44 @@ function restesAuBanc(team, n, guerisIci) {
   });
 }
 
-// Le gardien rétabli et la cage qu'il retient (voir 4-outils/patch-retour-gardien.py). La cage n'a qu'une place. Le jeu y
-// avait mis un remplaçant sans toi — il y dépanne — : le rétabli la reprend, même si le remplaçant est meilleur, parce que
-// c'est TON titulaire, et le remplaçant retourne sur le banc. Tu y as mis toi-même un gardien pendant la blessure : il la
-// garde, le rétabli l'oublie et attend sur le banc. Personne de valide en cage — un filet : la réparation du jour y en met
-// toujours un — : il la reprend. Rend le fait de sa lettre.
+// Le gardien rétabli et la cage qu'il retenait (voir 4-outils/patch-retour-gardien.py, puis
+// 4-outils/patch-retour-gardien-meilleur.py). La cage n'a qu'une place, et elle va au MEILLEUR gardien valide — décision de Mirja,
+// 3 octobre 2026, « Le meilleur garde la cage » ; la mesure est celle de `reparerComposition`, `parNoteGardien` — le Général
+// affiché sur la carte, « Le Général affiché » (cause W2). Tu y as mis toi-même un gardien pendant la blessure : il la garde, le
+// rétabli l'oublie et attend sur le banc, quel que soit le meilleur —
+// ton choix n'est pas le jeu. Le jeu y avait mis un remplaçant sans toi — il y dépanne — : le rétabli la reprend, et le
+// remplaçant retourne sur le banc, SAUF si le remplaçant est strictement meilleur que lui — à égalité, c'est le titulaire : alors
+// le rétabli attend sur le banc, et le remplaçant la garde — il y est désormais chez lui, il n'y dépanne plus : blessé à son tour,
+// il retiendra sa place. SAUF si un AUTRE gardien la retient encore — tu as mis R en cage toi-même pendant la blessure de T, puis R
+// s'est blessé : T et R la retiennent, et celui qui la garde y dépanne pour eux deux : il garde son dépannage, et le retour de
+// l'autre la lui reprendra s'il est meilleur, sous la lettre de la cage reprise et non celle de ton choix (voir
+// 4-outils/patch-retour-cage-deux-retiennent.py). Le rétabli qui la reprend s'y trouve de même, dépanneur de l'autre. Personne de
+// valide en cage — un filet, que l'intersaison peut atteindre : deux gardiens blessés ensemble
+// en fin de saison, la cage est rendue AVANT la réparation — : le meilleur des gardiens valides la prend, le rétabli si c'est
+// lui, et à égalité, c'est le rétabli. Dans les deux issues il oublie la cage : une marque ne la lui promet plus. La lettre
+// « meilleur » ne part que si l'autre est STRICTEMENT meilleur : elle est toujours vraie. Rend le fait de sa lettre.
 function rendreCage(team, g) {
-  const enCage = team.players.find(p => p.pos === 'G' && p !== g && p.starter && !p.injured) || null;
+  const valides = team.players.filter(p => p.pos === 'G' && p !== g && !p.injured);
+  const enCage = valides.find(p => p.starter) || null;
   if (enCage && ligneMemorisee(enCage.ligneDepannage) !== 1) {
     oublierLigne(g);
     return { joueur: g, n: 0, issue: 'cagePrise', gardien: enCage };
   }
-  return alignerDansLigne(g.id, 0) ? { joueur: g, n: 0, issue: 'cage', gardien: enCage } : null;
+  // La cage reste attendue tant qu'un gardien — blessé, ou rétabli du jour que la boucle de `rendreLignes` n'a pas encore rendu — la
+  // retient : `ligneRetour` à 1. Celui qui la garde ici, hors ceux qu'on exclut, y dépanne pour lui.
+  const retenueParUnAutre = (...exclus) => team.players.some(p => p.pos === 'G' && !exclus.includes(p) && ligneMemorisee(p.ligneRetour) === 1);
+  // Celui qui lui dispute la cage : le remplaçant que le jeu y a mis, ou, faute de remplaçant, le meilleur des autres valides. Il
+  // ne l'emporte que s'il est STRICTEMENT meilleur : à égalité, c'est le titulaire rétabli.
+  const rival = enCage || valides.slice().sort(parNoteGardien)[0] || null;
+  if (rival && parNoteGardien(rival, g) < 0) {
+    if (!enCage) alignerDansLigne(rival.id, 0);
+    if (retenueParUnAutre(g, rival)) rival.ligneDepannage = 1; else delete rival.ligneDepannage;
+    oublierLigne(g);
+    return { joueur: g, n: 0, issue: 'cageMeilleur', gardien: rival };
+  }
+  if (!alignerDansLigne(g.id, 0)) return null;
+  if (retenueParUnAutre(g)) g.ligneDepannage = 1;
+  return { joueur: g, n: 0, issue: 'cage', gardien: enCage };
 }
 
 // Les lignes que les rétablis du jour retiennent, dans l'ordre des numéros. Chaque ligne rendue peut en relancer une
@@ -7234,7 +7352,8 @@ function rendreLignes(gueris) {
     .sort((a, b) => a - b);
   let faits = [];
   for (let tour = 0; tour < 2 * LIGNES_MAX && file.length; tour++) faits = faits.concat(rendreLigne(team, file.shift(), gueris, file));
-  // La cage ne se dissout pas et ne relance rien : chaque gardien rétabli qui la retient, valide et au banc, est rendu à part.
+  // La cage ne se dissout pas et ne relance rien : chaque gardien rétabli qui la retient, valide et au banc, est rendu à part —
+  // elle va au meilleur gardien valide (`rendreCage`).
   const cage = gueris.filter(p => p.pos === 'G' && !p.injured && ligneDe(p) === 0 && ligneMemorisee(p.ligneRetour) === 1)
     .map(p => rendreCage(team, p)).filter(Boolean);
   return faits.filter((f, i) => !faits.slice(i + 1).some(g => g.joueur === f.joueur)).concat(cage);
@@ -7248,8 +7367,10 @@ function rendreLignes(gueris) {
 // qui ne se reformera plus a sa lettre, qui ne promet rien (voir 4-outils/patch-retour-dit-vrai.py).
 function annoncerRetours(faits, opts = {}) {
   faits.forEach(f => {
-    if (f.issue === 'cagePrise') {
-      pushInbox('courrier.retourBanc.titre', 'courrier.retourCage.prise', { nom: f.joueur.nom, gardien: f.gardien.nom }, 'club');
+    // Il attend sur le banc : tu as choisi le gardien en cage (`prise`), ou c'est le meilleur qui la garde (`meilleur`).
+    if (f.issue === 'cagePrise' || f.issue === 'cageMeilleur') {
+      pushInbox('courrier.retourBanc.titre', f.issue === 'cagePrise' ? 'courrier.retourCage.prise' : 'courrier.retourCage.meilleur',
+        { nom: f.joueur.nom, gardien: f.gardien.nom }, 'club');
       return;
     }
     if (f.issue === 'cage') {
@@ -7313,7 +7434,10 @@ function nettoyerMarquesLigne() {
 }
 
 // Dans le club : une marque qui n'est pas un numéro de ligne, une autre que la cage (1) pour un gardien, un dépannage d'une
-// ligne qu'il ne tient pas, le retour dans une ligne qu'il tient déjà. Le reste décrit ce que le jeu a défait, et reste.
+// ligne qu'il ne tient pas, le retour dans une ligne qu'il tient déjà, et le retour d'un gardien VALIDE — au banc comme en
+// cage : la cage va au meilleur gardien valide, et une marque la lui promettrait (voir
+// 4-outils/patch-retour-gardien-meilleur.py). Celle d'un gardien blessé reste : c'est elle qui lui vaudra, à son retour, la
+// décision de la cage. Le reste décrit ce que le jeu a défait, et reste.
 function nettoyerMarquesJoueur(p) {
   ['ligneRetour', 'ligneDepannage'].forEach(k => {
     if (p[k] === undefined) return;
@@ -7322,7 +7446,7 @@ function nettoyerMarquesJoueur(p) {
   });
   const tenue = p.injured ? 0 : ligneDe(p);
   if (p.ligneDepannage !== undefined && p.ligneDepannage !== tenue) delete p.ligneDepannage;
-  if (p.ligneRetour !== undefined && !p.injured && p.ligneRetour === tenue) delete p.ligneRetour;
+  if (p.ligneRetour !== undefined && !p.injured && (p.pos === 'G' || p.ligneRetour === tenue)) delete p.ligneRetour;
 }
 
 function playDay(forfait) {
@@ -7526,8 +7650,9 @@ function playDay(forfait) {
 }
 
 // ---------------- Playoffs (top 4, demi-finales puis finale) ----------------
-// `options.plateau` : un match de plateau (N3, N2) se joue sur terrain neutre et au format standard — ni avantage du
-// terrain, ni prolongation : le nul y est permis (voir `simulerRencontrePlateau`).
+// `options.plateau` : un match de plateau (N3, N2) se joue au format standard — ni avantage du terrain, même pour l'hôte du
+// plateau (la décision de Mirja porte sur la recette, pas sur le jeu), ni prolongation : le nul y est permis (voir
+// `simulerRencontrePlateau`).
 function simulatePlayoffMatch(home, away, options) {
   const plateau = !!(options && options.plateau);
   const sh = teamStrength(home), sa = teamStrength(away);
@@ -7912,14 +8037,51 @@ function divisionAvecArticle(valeur, forme) {
   return article + nom;
 }
 
+// « de » s'élide devant une voyelle et devant un h — accent retiré avant de regarder la lettre : « É » est une voyelle ; « Œ » n'est pas décomposé
+// par NFD, on le nomme. Tous les prénoms du jeu qui commencent par un h sont des h muets (Hugo : la liste est fermée) et aucun nom de club n'en
+// commence un sans article. Le « y » est une consonne : « de Yanis ». Un mot d'UNE lettre n'élide pas : « I Barbi Neri » porte l'article italien
+// « I », pas une voyelle française — « de I Barbi Neri ».
+function seElideApresDe(nom) {
+  if (/^[A-Za-z](?:\s|$)/.test(nom)) return false;
+  return /^[aeiouhœ]/i.test(nom.normalize('NFD'));
+}
+
+// Un nom de club ou de personne précédé de « de » ou de « à », contracté et élidé comme le français l'exige (cause V4). Un gabarit écrit
+// `{club:de}` (« des Aiglons », « du Kraken », « de la Chooper Squad », « de l'Armada », « de Valence », « d'Orléans »), `{club:a}` (« aux Aiglons »,
+// « au Kraken », « à la Chooper Squad », « à l'Armada », « à Valence »), `{nom:de}` pour un joueur (« d'Enzo Durand », « de Rémi Moreau ») ; `De` et
+// `A` le font en tête de phrase (« Des Aiglons », « À Valence »). Un « de {club} » écrit en dur disait « de Les Aiglons », « de Le Kraken », « de
+// L'Armada » : 186 clubs sur 192 portent « Les », et un gabarit ne peut pas connaître la forme de l'article. L'article que porte le nom se
+// reconnaît sous trois formes d'apostrophe — droite, typographique, échappée (`&#39;`, c'est ainsi qu'une lettre rangée passe un nom au gabarit) —
+// et le reste du nom garde son échappement. Un nom sans article se traite comme une personne : « à » ne change rien, « de » s'élide (`seElideApresDe`).
+// Un nom vide ne laisse pas de « de » orphelin. L'anglais n'a rien à accorder : ses gabarits n'emploient jamais ce modificateur
+// (`test-noms-contractes.mjs` §9). Le tableau est local à la fonction : un gabarit peut être rendu avant que cette ligne du script ne s'exécute.
+function nomAvecPreposition(valeur, forme) {
+  const nom = String(valeur);
+  if (nom === '') return '';
+  const ARTICLES = [
+    { motif: /^[Ll]es\s+/, de: 'des ', a: 'aux ' },
+    { motif: /^[Ll]e\s+/, de: 'du ', a: 'au ' },
+    { motif: /^[Ll]a\s+/, de: 'de la ', a: 'à la ' },
+    { motif: /^[Ll](?:'|’|&#39;|&#x27;)/, de: "de l'", a: "à l'" }
+  ];
+  const enA = forme === 'a' || forme === 'A';
+  const article = ARTICLES.find(x => x.motif.test(nom));
+  const rendu = article
+    ? (enA ? article.a : article.de) + nom.replace(article.motif, '')
+    : (enA ? 'à ' : seElideApresDe(nom) ? "d'" : 'de ') + nom;
+  return forme === 'De' || forme === 'A' ? rendu.charAt(0).toUpperCase() + rendu.slice(1) : rendu;
+}
+
 // `{cle}` pose la valeur ; `{cle:ord}` pose le suffixe ordinal de la valeur, dans la langue de la lecture ; `{cle:la}`, `{cle:La}` et
-// `{cle:du}` posent un nom de division avec son article (voir `divisionAvecArticle`).
+// `{cle:du}` posent un nom de division avec son article (voir `divisionAvecArticle`) ; `{cle:de}`, `{cle:De}`, `{cle:a}` et `{cle:A}` posent un nom
+// de club ou de personne après « de » ou « à » (voir `nomAvecPreposition`).
 function interpolerTexte(s, params) {
   if (!params) return s;
-  return s.replace(/\{(\w+)(?::(ord|la|La|du))?\}/g, (marqueur, cle, modificateur) => {
+  return s.replace(/\{(\w+)(?::(ord|la|La|du|de|De|a|A))?\}/g, (marqueur, cle, modificateur) => {
     const v = params[cle];
     if (v === undefined || v === null) return marqueur;
     if (modificateur === 'ord') return suffixeOrdinal(v);
+    if (/^(?:de|De|a|A)$/.test(modificateur)) return nomAvecPreposition(v, modificateur);
     return modificateur ? divisionAvecArticle(v, modificateur) : v;
   });
 }
@@ -7967,8 +8129,9 @@ function choisirLangue(l) {
   // les onglets restaient en français après un changement de langue — visible au premier
   // coup d'œil, et pourtant facile à manquer en écrivant le code.
   if (typeof construireBarre === 'function') construireBarre(true);
-  // Le direct non plus ne fait pas partie du rendu courant, et il peut être ouvert quand la langue change : la barre du bas reste
-  // au-dessus de lui et Tab mène aux Réglages derrière (cause R13).
+  // Le direct non plus ne fait pas partie du rendu courant. Il retient le clavier depuis le 3 octobre 2026 : les Réglages sont hors
+  // d'atteinte tant qu'il est ouvert, et la langue ne change plus sous lui que par un appel de code — la relecture de ses commandes
+  // reste, parce qu'elle ne coûte que cinq écritures et qu'une porte qu'on ferme un jour se rouvre (cause R13).
   if (typeof mvSuivreLaLangue === 'function') mvSuivreLaLangue();
   // Le tournoi d'accession range ses adversaires avec leur nom : on le réécrit dans la langue du moment, AVANT le rendu (cause E3).
   if (typeof renommerAdversairesAccession === 'function' && typeof G !== 'undefined' && G) renommerAdversairesAccession();
@@ -9713,8 +9876,10 @@ function renderClub() {
       <p class="note">${T('club.sansMatch.explication')}</p>
     </div>` : fin ? `
     <div class="card">
-      <b>${fin.coupe ? T(fin.attendance ? 'club.recettes.coupe.domicile' : 'club.recettes.coupe.deplacement', { n: nombreLocal(fin.attendance || 0) })
-          : fin.forfait ? T('club.recettes.forfait') : fin.attendance ? T('club.recettes.domicile', { n: nombreLocal(fin.attendance) }) : T('club.recettes.deplacement')}</b>
+      <b>${fin.forfait ? T('club.recettes.forfait')
+          : fin.coupe ? T(fin.attendance ? 'club.recettes.coupe.domicile' : 'club.recettes.coupe.deplacement', { n: nombreLocal(fin.attendance || 0) })
+          : fin.phaseFinale ? T(fin.neutre ? 'club.recettes.phase.neutre' : fin.attendance ? 'club.recettes.phase.domicile' : 'club.recettes.phase.deplacement', { n: nombreLocal(fin.attendance || 0) })
+          : fin.attendance ? T('club.recettes.domicile', { n: nombreLocal(fin.attendance) }) : T('club.recettes.deplacement')}</b>
       <table>
         ${POSTES_MATCH.filter(([k]) => typeof fin[k] === 'number').map(([k, cle]) => `<tr><td>${T(cle)}</td><td>${euros(fin[k])}</td></tr>`).join('')}
         ${POSTES_RETIRES.filter(([k]) => typeof fin[k] === 'number' && fin[k] !== 0).map(([k, cle]) => `<tr><td>${T('club.poste.retire', { libelle: T(cle) })}</td><td>${euros(fin[k])}</td></tr>`).join('')}
@@ -9812,7 +9977,7 @@ function composerRapport() {
     ? `<p class="tag" style="color:var(--vert)">${T('rapport.entrainement')} ${G.lastTraining.map(ligneGain).join(' • ')}</p>` : '';
   const injuries = (!isPlayoff && G.lastInjuries && G.lastInjuries.length)
     ? `<p class="tag" style="color:var(--rouge)">🤕 ${G.lastInjuries.map(ligneBlessure).filter(Boolean).join(' • ')}</p>` : '';
-  // Un match de coupe porte ses comptes ; les playoffs n'en ont pas.
+  // Un match de coupe ou de phase finale porte ses comptes (`finance`) ; un match de championnat, ceux de `G.lastFinance`.
   const fin = isPlayoff ? (G.lastReport.finance || null) : G.lastFinance;
   const finTag = fin ? `<p class="tag">${T('rapport.recette', { montantHtml: `<b style="color:${fin.total>=0?'var(--vert)':'var(--rouge)'}">${euros(fin.total)}</b>` })}</p>` : '';
   const cardsHtml = (res.penalties && res.penalties.length)
@@ -10067,15 +10232,45 @@ function equipeDuChampionnat(t) {
   return (G.poules || []).some(p => p.indexOf(t) >= 0);
 }
 
-// UN MATCH DE COUPE SE PAIE COMME UN MATCH DE CHAMPIONNAT (décision de Mirja, 27 septembre 2026) : les comptes de
-// `computeMatchFinance` — billetterie, buvette et loges à domicile, frais de route à l'extérieur, fixe des contrats,
-// indemnités de match — et la clause de victoire des contrats. L'encadrement est payé à chaque journée de championnat,
-// match ou non : pas une seconde fois pour la coupe. Une seule écriture du budget, celle des comptes affichés.
-function encaisserMatchDeCoupe(r) {
-  const finance = computeMatchFinance(!!(r.home && r.home.human), true);
+// Où le club joue un match hors championnat : 'domicile', 'deplacement' ou 'neutre'. Un plateau le dit (`r.lieu`) ; sans lieu, le
+// terrain neutre (`r.neutre`) puis le camp du club (`home.human`) décident, comme avant — la Coupe, les séries, le barrage, le play-down.
+function lieuDuMatch(r) {
+  if (r.lieu === 'domicile' || r.lieu === 'deplacement' || r.lieu === 'neutre') return r.lieu;
+  if (r.neutre) return 'neutre';
+  return r.home && r.home.human ? 'domicile' : 'deplacement';
+}
+
+// UN MATCH DU CLUB HORS CHAMPIONNAT SE PAIE COMME UN MATCH DE CHAMPIONNAT : la Coupe (décision de Mirja, 27 septembre 2026)
+// comme les phases finales (décision du 3 octobre 2026 : « Comme en championnat »). Les comptes de `computeMatchFinance` —
+// billetterie, buvette et loges à domicile, frais de route à l'extérieur, fixe des contrats, indemnités de match — et la
+// clause de victoire des contrats. L'encadrement est payé à chaque journée de championnat, match ou non : pas une seconde fois
+// ici. UNE SEULE écriture du budget, celle des comptes affichés — la fonction de tous les matchs que le club joue hors du
+// championnat : la Coupe, les séries, les plateaux, le barrage, le play-down et le tournoi d'accession.
+//
+// `r` est le rapport du match — `home`, `away`, `res` —, ou `{ forfait: true }` pour un forfait. `nature` : 'coupe' ou 'phase'.
+//   · LIEU (`r.lieu`, voir `lieuDuMatch`) : 'domicile', 'deplacement' ou 'neutre'. Un plateau de N3 ou de N2 se joue chez le club que le
+//     règlement désigne — décision de Mirja, 3 octobre 2026, « Suivre le règlement » : le quart de finale chez l'équipe de la poule
+//     ayant obtenu la meilleure place lors de la phase de qualification (art. 4.5.2 A a pour la N3, 3.6.2 A a pour la N2), la
+//     demi-finale chez un premier de son quart qui n'a pas reçu de quart, à défaut chez un deuxième, à défaut chez personne (4.5.3 A a et d,
+//     3.6.3 A a et d ; sans candidat libre le plateau est neutre, voir plus bas). Cet HÔTE encaisse comme à domicile :
+//     billetterie, buvette et loges. Tous les autres se déplacent : des frais de route, et le fixe des contrats, leur clause de victoire et
+//     les indemnités se paient comme à l'extérieur au championnat. L'hôte est rangé dans le plateau (`plateau.hote`, phases-finales.js).
+//   · TERRAIN NEUTRE. D'abord un plateau SANS hôte, dont le rapport porte `r.lieu === 'neutre'` : la finale, qui se joue vraiment en un lieu
+//     désigné par la Commission Technique Sportive (4.5.4 A, 3.6.4 A) ; une demi-finale dont aucun club libre ne peut être l'hôte (4.5.3 A a et d,
+//     3.6.3 A a et d) ; et un plateau d'une version d'avant dont l'hôte n'a pas pu se calculer. Ensuite `r.neutre` SANS `r.lieu` : le tournoi
+//     d'accession (art. 9.3 D : « lieux désignés […] après appel à candidature »), son match comme son forfait, et le forfait d'un plateau, où
+//     rien ne se paie de toute façon. Un terrain neutre n'est le domicile de personne : le club s'y déplace, frais de route, ni billetterie, ni
+//     buvette, ni loges. La carte de l'écran Club le dit (« terrain neutre ») ; un déplacement chez l'hôte d'un plateau se dit « déplacement ».
+//   · FORFAIT : comme au championnat, ni public, ni fixe, ni indemnité — rien —, mais la carte le DIT au lieu de montrer le match
+//     d'avant. Le forfait de Coupe ne passe pas ici : il ne touche pas la carte.
+function encaisserMatchHorsChampionnat(r, nature) {
+  const forfait = !!r.forfait, lieu = lieuDuMatch(r);
+  const finance = computeMatchFinance(lieu === 'domicile', !forfait);
   finance.primesContrats = primesDesContrats(r);
   finance.total += finance.primesContrats;
-  finance.coupe = true;
+  if (nature === 'coupe') finance.coupe = true; else finance.phaseFinale = true;
+  if (lieu === 'neutre') finance.neutre = true;
+  if (forfait) finance.forfait = true;
   G.budget += finance.total;
   G.lastFinance = finance;
   return finance;
@@ -10172,7 +10367,7 @@ function cupAutoResolveRest() {
       // Comme avant une journée : une ligne à trois se complète depuis la réserve (onzième relecture).
       if (cupHumanInMatch(m)) preparerLignesAvantMatch();
       const r = runCupMatch(m);
-      if (cupHumanInMatch(m)) encaisserMatchDeCoupe(r);
+      if (cupHumanInMatch(m)) encaisserMatchHorsChampionnat(r, 'coupe');
     });
     cupBuildNextRound();
   }
@@ -10272,7 +10467,7 @@ function advanceCupStep() {
     // affichés tels quels dans l'écran de rapport.
     G.lastReport = { m: humanMatch, res, home, away, playoff: true,
                      titreCle: 'rapport.titreCoupe', titreParams: { tour: humanMatch.label } };
-    G.lastReport.finance = encaisserMatchDeCoupe(G.lastReport);
+    G.lastReport.finance = encaisserMatchHorsChampionnat(G.lastReport, 'coupe');
     if (humanMatch.winner !== myTeam().cupId) G.cup.humanOut = true;
     if (round.every(m => m.winner !== null)) cupBuildNextRound();
     renderAll();
@@ -10357,7 +10552,7 @@ function renderAide() {
   box.innerHTML = AIDE_CARTES.map(c => `
     <div class="card">
       <b>${enteteAide(c)}${T('aide.' + c + '.titre')}</b>
-      <p class="note">${T('aide.' + c + '.corps', { clubHtml: `<b>${escHtml(club)}</b>`,
+      <p class="note">${T('aide.' + c + '.corps', { club: escHtml(club),
         max: EFFECTIF_MAX, slots: NB_SLOTS, subvention: euros(SUBVENTION_COMMUNE[0]), pct: Math.round((1 - PART_CLUB_SALLE) * 100),
         divisionSponsors: DIVISIONS[Math.min(...SPONSOR_TIERS.map(s => s.reqDiv))].label, chantiers: MAX_UPGRADES_PER_SEASON,
         champMax: MAX_JOUEURS_CHAMP, parLigne: PAR_LIGNE,
@@ -10718,6 +10913,8 @@ function migrerPartie() {
   if (G.playoff === undefined) G.playoff = null;
   if (G.playoff && !('quarts' in G.playoff)) G.playoff = null; // ancien format Top4, incompatible
   if (G.playoff && G.playoff.humanOut === undefined) G.playoff.humanOut = false;
+  // Les plateaux d'une version d'avant n'ont pas d'hôte : un quart le retrouve de la qualification, le reste reste neutre (cause W1).
+  reparerHotesPlateaux();
   if (!G.lastInjuries) G.lastInjuries = [];
   G.teams.forEach(t => t.players.forEach(p => {
     if (p.injured === undefined) p.injured = false;

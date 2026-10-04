@@ -46,10 +46,86 @@ function libellePlateau(label) {
   if (label && typeof label === 'object' && typeof label.cle === 'string') return T(label.cle, label);
   return String(label || '');
 }
-function makePlateau(ids, label) {
+// `hote` : l'identifiant du club qui ORGANISE le plateau et y joue chez lui, ou null quand personne ne reçoit — la finale, le tournoi
+// d'accession. Un plateau rangé par une version d'avant n'a pas ce champ : voir `hoteDuPlateau` et `reparerHotesPlateaux`.
+function makePlateau(ids, label, hote) {
   const table = {};
   ids.forEach(id => { table[id] = { pts: 0, bp: 0, bc: 0, j: 0 }; });
-  return { label: label || '', ids: ids.slice(), table: table, duels: {}, matchs: [], fait: false };
+  return { label: label || '', ids: ids.slice(), table: table, duels: {}, matchs: [], fait: false, hote: hote === undefined ? null : hote };
+}
+
+// ---- Qui reçoit un plateau (cause W1, décision de Mirja du 3 octobre 2026 : « Suivre le règlement ») ----
+// Règlement particulier 2026-2027 : le QUART de finale est confié « à l'équipe de la poule ayant obtenu la meilleure place lors de la
+// phase de qualification » (art. 4.5.2 A a en N3, 3.6.2 A a en N2) ; la DEMI-finale à l'une des deux équipes classées 1ères de leur poule
+// de quart « si elle n'a pas accueilli un ¼ de finale » (4.5.3 A a, 3.6.3 A a), à défaut à l'une des deux classées 2es (A d) ; la finale
+// et le tournoi d'accession se tiennent en un lieu désigné par la Commission (4.5.4 A, 3.6.4 A, 9.3 D) : personne n'y reçoit.
+
+// L'hôte d'un plateau — un identifiant de club DU plateau — ou null. Un champ absent (plateau d'avant) ou qui ne désigne aucun club du
+// plateau (fichier importé fabriqué) ne désigne personne : le plateau reste neutre. L'identifiant 0 est un club : jamais `if (hote)`.
+function hoteDuPlateau(pl) {
+  if (!pl || !Array.isArray(pl.ids) || pl.hote === null || pl.hote === undefined) return null;
+  return pl.ids.indexOf(pl.hote) >= 0 ? pl.hote : null;
+}
+
+// Où le club joue ses matchs de ce plateau : 'domicile' s'il l'organise, 'deplacement' chez un autre club, 'neutre' sans hôte.
+function lieuDuPlateau(pl, moiId) {
+  const hote = hoteDuPlateau(pl);
+  return hote === null ? 'neutre' : hote === moiId ? 'domicile' : 'deplacement';
+}
+
+// Le rang de chaque qualifié à la phase de qualification : son rang dans sa poule, et son ORDRE parmi tous les qualifiés — les premiers
+// de poule d'abord, puis les points, la différence, les buts : le même tri que partout. Les équipes portent encore leurs points pendant toute
+// la phase finale (elle ne les touche pas). `{ id: { rang, ordre } }`.
+function rangsDeQualification() {
+  const tri = (a, c) => c.pts - a.pts || (c.bp - c.bc) - (a.bp - a.bc) || c.bp - a.bp;
+  const out = {};
+  qualifiesAvecRang(G.divIdx).slice().sort((x, y) => x.rang - y.rang || tri(x.t, y.t))
+    .forEach((q, i) => { out[q.t.id] = { rang: q.rang, ordre: i }; });
+  return out;
+}
+
+// L'hôte d'un QUART : le club le mieux classé de la phase de qualification, c'est-à-dire le plus petit rang dans sa poule (le plateau
+// réunit un premier, un deuxième, un troisième et un quatrième). `membres` : [{ id, rang }]. null si le plateau est vide.
+function hoteDuQuart(membres) {
+  const premier = membres.reduce((meilleur, m) => meilleur === null || m.rang < meilleur.rang ? m : meilleur, null);
+  return premier === null ? null : premier.id;
+}
+
+// L'hôte d'une DEMI-FINALE : un PREMIER de son quart qui n'a pas reçu de quart (4.5.3 A a) ; à défaut, un DEUXIÈME de son quart qui n'a pas
+// reçu de quart (A d) ; à défaut personne — la Commission désignerait une salle, le plateau reste neutre. Entre deux candidats l'article dit
+// « la plus centrale » : le jeu n'a pas de géographie, il prend le MIEUX CLASSÉ de la phase de qualification — un choix du jeu, écrit.
+// `membres` : [{ id, rangQuart (0 = premier de son quart), aRecu, ordre }].
+function hoteDeDemiFinale(membres) {
+  for (const rangQuart of [0, 1]) {
+    const libres = membres.filter(m => m.rangQuart === rangQuart && !m.aRecu);
+    if (libres.length) return libres.reduce((meilleur, m) => m.ordre < meilleur.ordre ? m : meilleur).id;
+  }
+  return null;
+}
+
+// Les plateaux d'une partie rangée par une version d'avant n'ont pas d'hôte. Un QUART l'a calculé d'après la qualification ; une
+// demi-finale ou une finale ne peut pas — les quarts ne sont plus là, qui a fini premier et qui a reçu un quart ne se sait plus — et reste
+// neutre : null. Appelée par `migrerPartie`, jamais pendant le jeu. Idempotente : un plateau qui porte le champ n'est pas touché.
+function reparerHotesPlateaux() {
+  const po = G && G.playoff;
+  if (!po || po.format !== 'plateau' || !Array.isArray(po.plateaux)) return;
+  const rangs = po.stage === 'quarts' ? rangsDeQualification() : null;
+  po.plateaux.forEach(pl => {
+    if (!pl || typeof pl !== 'object' || !Array.isArray(pl.ids) || pl.hote !== undefined) return;
+    pl.hote = rangs
+      ? hoteDuQuart(pl.ids.filter(id => rangs[id] !== undefined).map(id => ({ id: id, rang: rangs[id].rang })))
+      : null;
+  });
+}
+
+// La phrase qui dit où se joue un plateau, pour une fenêtre : le club l'organise, il se déplace chez l'hôte, ou personne ne reçoit.
+function phraseLieuPlateau(pl) {
+  if (!pl) return '';
+  const hote = hoteDuPlateau(pl);
+  if (hote === null) return `<p class="modal-note">${T('playoffs.plateau.lieu.designe')}</p>`;
+  if (hote === myTeam().id) return `<p class="modal-note">${T('playoffs.plateau.lieu.recoit')}</p>`;
+  const equipe = playoffTeam(hote);
+  return `<p class="modal-note">${T('playoffs.plateau.lieu.chez', { hote: escHtml(equipe ? equipe.name : '') })}</p>`;
 }
 
 // Enregistre un résultat déjà connu. Séparé de la simulation pour que le classement soit
@@ -76,9 +152,19 @@ function simulerRencontrePlateau(equipeA, equipeB) {
   const sa = teamStrength(equipeA), sb = teamStrength(equipeB);
   const fa = tacticFactor(equipeA), fb = tacticFactor(equipeB);
   sa.atk *= fa.atk; sa.def *= fa.def; sb.atk *= fb.atk; sb.def *= fb.def;
-  // Terrain neutre : un plateau se joue chez un organisateur désigné, pas chez l'un des deux.
+  // Aucun avantage du terrain, même pour l'hôte du plateau : la décision de Mirja (3 octobre 2026, « Suivre le règlement ») porte sur la
+  // recette — billetterie, buvette, loges —, pas sur le jeu. Y toucher changerait toute trajectoire du banc ; ce n'est pas tranché.
   return { ga: poisson(butsAttendus(sa.atk, sb.def, false)),
            gb: poisson(butsAttendus(sb.atk, sa.def, false)) };
+}
+
+// Une rencontre de plateau que le CLUB joue sans passer par le bouton — résolue d'un bloc — se paie comme celle du bouton : à domicile
+// si le plateau est le sien, des frais de route chez un autre hôte, terrain neutre sans hôte (le tournoi d'accession). Les rencontres
+// entre AUTRES clubs ne touchent jamais le budget.
+function encaisserRencontreResolue(pl, equipeA, equipeB, r) {
+  if (!(equipeA && equipeB && (equipeA.human || equipeB.human))) return;
+  const lieu = lieuDuPlateau(pl, (equipeA.human ? equipeA : equipeB).id);
+  encaisserMatchHorsChampionnat({ home: equipeA, away: equipeB, res: { gH: r.ga, gA: r.gb }, lieu: lieu, neutre: lieu === 'neutre' }, 'phase');
 }
 
 // Joue toutes les rencontres non encore disputées. `resoudre(id)` rend l'équipe.
@@ -89,8 +175,12 @@ function resolvePlateau(pl, resoudre) {
     for (let k = i + 1; k < pl.ids.length; k++) {
       const idA = pl.ids[i], idB = pl.ids[k];
       if (pl.duels[clePlateauDuel(idA, idB)]) continue;   // déjà joué
-      const r = simulerRencontrePlateau(trouve(idA), trouve(idB));
+      const equipeA = trouve(idA), equipeB = trouve(idB);
+      const r = simulerRencontrePlateau(equipeA, equipeB);
       enregistrerRencontrePlateau(pl, idA, idB, r.ga, r.gb);
+      // Au bouton, chaque match du club est déjà joué, donc enregistré : cette boucle ne lui en laisse aucun. Elle ne paie que le
+      // repli d'`endSeason()` — le chemin du banc —, où le tournoi d'accession se joue d'un bloc.
+      encaisserRencontreResolue(pl, equipeA, equipeB, r);
     }
   }
   pl.fait = true;
@@ -364,8 +454,11 @@ function jouerMatchAccession(e) {
   jouerAutresMatchsDuTour(e, autre);
   if (!adversairesRestantsAccession(e).length) conclureAccession(e);
   const rang = classerPlateau(pl).indexOf(moi) + 1;
-  return { m: { home: moi, away: autre, score: [res.gH, res.gA] }, res: res, home: a, away: b, playoff: true,
-           titreCle: 'rapport.titreAccession', titreParams: { plateau: pl.label, rang: rang }, neutre: true };
+  const rapport = { m: { home: moi, away: autre, score: [res.gH, res.gA] }, res: res, home: a, away: b, playoff: true,
+                    titreCle: 'rapport.titreAccession', titreParams: { plateau: pl.label, rang: rang }, neutre: true };
+  // Terrain neutre : des frais de route, aucune billetterie. Le résultat et son paiement sont rangés ensemble, avant tout rendu.
+  rapport.finance = encaisserMatchHorsChampionnat(rapport, 'phase');
+  return rapport;
 }
 
 // Forfait sous le seuil fédéral : le match compte 0-5, sur tapis vert, sans être joué — comme en plateau (art. 6.1.1 A).
@@ -375,6 +468,7 @@ function forfaitAccession(e) {
   const pl = tournoiDuClub(e);
   enregistrerRencontrePlateau(pl, myTeam().id, autre, 0, 5);
   pl.matchs[pl.matchs.length - 1].forfait = true;
+  encaisserMatchHorsChampionnat({ forfait: true, neutre: true }, 'phase');
   // Les autres clubs jouent leur tour : le forfait du club n'arrête pas le tournoi.
   jouerAutresMatchsDuTour(e, autre);
   if (!adversairesRestantsAccession(e).length) conclureAccession(e);
@@ -483,16 +577,17 @@ function composerPlateauxQuarts(qualifies, def) {
   for (let c = 0; c < def.conferences; c++) bases.push(c * 4);
   bases.forEach((base, iConf) => {
     for (let s = 0; s < 4; s++) {
-      const ids = [];
+      const ids = [], membres = [];
       for (let rang = 0; rang < 4; rang++) {
         // +1 en N3, −1 en N2 : le modulo est écrit avec un « + 4 » pour rester positif.
         const poule = base + (((rang + def.sens * s) % 4 + 4) % 4);
         const eq = parPouleRang[poule + ':' + rang];
-        if (eq) ids.push(eq.id);
+        if (eq) { ids.push(eq.id); membres.push({ id: eq.id, rang: rang }); }
       }
+      // Le quart est confié au club le mieux classé de la phase de qualification (art. 4.5.2 A a, 3.6.2 A a) : le premier de poule.
       plateaux.push(makePlateau(ids, def.conferences > 1
         ? { cle: 'plateau.quartConf', n: plateaux.length + 1, conf: iConf === 0 ? 'A' : 'B' }
-        : { cle: 'plateau.quart', n: plateaux.length + 1 }));
+        : { cle: 'plateau.quart', n: plateaux.length + 1 }, hoteDuQuart(membres)));
     }
   });
   return plateaux;
@@ -516,7 +611,7 @@ let stage, quarts = null, demis = null, finale = null;
       html: `<p class="modal-note">${T('playoffs.plateaux.qualif', { n: seeds.length, plateaux: plateaux.length })}</p>
         <p class="modal-note">${T('playoffs.plateaux.regle')}</p>
         <p class="modal-note">${T('playoffs.plateaux.montee', { montees: defPlateau.montees,
-          division: escHtml(DIVISIONS[G.divIdx + 1] ? DIVISIONS[G.divIdx + 1].label : T('playoffs.plateaux.divisionSup')) })}</p>`
+          division: escHtml(DIVISIONS[G.divIdx + 1] ? DIVISIONS[G.divIdx + 1].label : T('playoffs.plateaux.divisionSup')) })}</p>${phraseLieuPlateau(monPlateau())}`
     });
     return;
   }
@@ -607,6 +702,7 @@ function forfaitSerie(series) {
   const res = { gH: moiHote ? 0 : 5, gA: moiHote ? 5 : 0, scorers: [], penalties: [], wentOT: false, forfait: true };
   series.games.push({ home: hostId, away: guestId, res, num: gameNumber });
   compterMatchDeSerie(series, moiHote ? guestId : hostId);
+  encaisserMatchHorsChampionnat({ forfait: true }, 'phase');
 }
 
 // Plateau où figure le club du joueur, s'il en reste un.
@@ -632,13 +728,17 @@ function avancerPlateaux() {
     for (const autre of mien.ids) {
       if (autre === moi) continue;
       if (pl_duelJoue(mien, moi, autre)) continue;
-      const chezMoi = mien.ids.indexOf(moi) < mien.ids.indexOf(autre);
+      // Chez qui : l'hôte du plateau reçoit, tous les autres se déplacent — le club est alors le VISITEUR du rapport, que l'hôte soit son
+      // adversaire ou un troisième club. Sans hôte (plateau d'avant dont l'hôte n'a pas pu se calculer), l'ordre du plateau décide, comme avant.
+      const lieu = lieuDuPlateau(mien, moi), hoteId = hoteDuPlateau(mien);
+      const chezMoi = lieu === 'neutre' ? mien.ids.indexOf(moi) < mien.ids.indexOf(autre) : lieu === 'domicile';
       // Sous le seuil fédéral, le forfait se demande, comme au championnat : déclaré, le match compte 0-5 (onzième relecture).
       if (!etatEffectif(myTeam()).ok) {
         confirmerForfaitSiNecessaire('phaseFinale').then(choix => {
           if (choix !== 'forfait' || pl_duelJoue(mien, moi, autre)) return;
           enregistrerRencontrePlateau(mien, moi, autre, 0, 5);
           mien.matchs[mien.matchs.length - 1].forfait = true;
+          encaisserMatchHorsChampionnat({ forfait: true, neutre: true }, 'phase');
           // Les autres clubs jouent leur tour : le forfait du club n'arrête pas le plateau, et le rang du match suivant
           // se lit contre des clubs qui ont joué autant que lui.
           jouerAutresRencontresDuTour(mien, moi, autre, playoffTeam);
@@ -651,7 +751,7 @@ function avancerPlateaux() {
       const a = playoffTeam(moi), b = playoffTeam(autre);
       const hote = chezMoi ? a : b, visiteur = chezMoi ? b : a;
       // Le match du club se joue EN ENTIER — buteurs, pénalités — puis passe par la visionneuse : ce n'était qu'une carte
-      // de score (signalé par Mirja, 27 septembre 2026). Terrain neutre et nul permis : c'est un plateau.
+      // de score (signalé par Mirja, 27 septembre 2026). Le nul est permis : c'est un plateau.
       // Comme avant une journée : une ligne à trois se complète depuis la réserve (onzième relecture).
       preparerLignesAvantMatch();
       const res = simulatePlayoffMatch(hote, visiteur, { plateau: true });
@@ -661,15 +761,23 @@ function avancerPlateaux() {
       // autant que lui. Il se calculait avant leur rencontre — « 1er du plateau » d'un 6-0, puis le club finissait 3e,
       // éliminé (cause R6). Les rencontres de l'accession sont jouées de même (`jouerAutresMatchsDuTour`).
       jouerAutresRencontresDuTour(mien, moi, autre, playoffTeam);
-      joue = { adverse: autre, hote: hote, visiteur: visiteur, res: res };
+      joue = { adverse: autre, hote: hote, visiteur: visiteur, res: res, lieu: lieu, hoteId: hoteId };
       break;
     }
     if (joue) {
       const cl = classerPlateau(mien);
       const rang = cl.indexOf(moi) + 1;
+      // `lieu` : ce que le club paie. `neutre` : ni l'un ni l'autre des deux clubs de CE match ne reçoit — le plateau n'a pas d'hôte, ou son
+      // hôte est un troisième club — et le coup d'envoi du direct le dit. Le titre dit chez qui se joue le plateau.
       G.lastReport = { m: { home: joue.hote.id, away: joue.visiteur.id, score: [joue.res.gH, joue.res.gA] },
         res: joue.res, home: joue.hote, away: joue.visiteur, playoff: true,
-        titreCle: 'rapport.titrePlateau', titreParams: { plateau: mien.label, rang: rang }, neutre: true };
+        titreCle: joue.hoteId === null ? 'rapport.titrePlateau' : 'rapport.titrePlateauChez',
+        titreParams: joue.hoteId === null ? { plateau: mien.label, rang: rang }
+          : { plateau: mien.label, rang: rang, hote: playoffTeam(joue.hoteId).name },
+        neutre: joue.lieu === 'neutre' || (joue.lieu === 'deplacement' && joue.hoteId !== joue.adverse), lieu: joue.lieu };
+      // Chaque match du plateau se paie comme au championnat : à domicile, billetterie comprise, si le club l'organise ; des frais de route
+      // sinon.
+      G.lastReport.finance = encaisserMatchHorsChampionnat(G.lastReport, 'phase');
       if (mien.ids.every(x => x === moi || pl_duelJoue(mien, moi, x))) resolvePlateau(mien, playoffTeam);
       // Un plateau se joue le même jour ou le même week-end : aucune séance entre ses matchs, pas même celle qui restait
       // d'avant le plateau (signalé par Mirja, 27 septembre 2026). La séance d'entre deux matchs vaut pour les séries.
@@ -750,7 +858,7 @@ function presenterPlateauTermine(pl) {
   const champion = po.stage === 'done' && po.champion !== null && po.champion !== undefined ? playoffTeam(po.champion) : null;
   const issue = po.stage === 'done'
     ? (champion ? `<p class="modal-text">${T('playoffs.fin.champion', { nom: escHtml(champion.name) })}</p>` : '') + `<p class="modal-note">${T('playoffs.fin.suite')}</p>`
-    : `<p class="modal-note">${T(monPlateau() ? 'playoffs.plateau.qualifie' : 'playoffs.plateau.elimine')}</p>`;
+    : `<p class="modal-note">${T(monPlateau() ? 'playoffs.plateau.qualifie' : 'playoffs.plateau.elimine')}</p>` + phraseLieuPlateau(monPlateau());
   notify({ title: T('playoffs.plateau.titre', { plateau: escHtml(libellePlateau(pl.label)) }), picto: 'classement', html: lignes + issue });
 }
 
@@ -776,20 +884,30 @@ function buildNextRoundPlateau() {
     // quart A, le 2ᵉ du quart B, le 1ᵉʳ du quart C, le 2ᵉ du quart D ; le second prend le
     // complément. Un plateau étant un mini-championnat, l'ordre des équipes n'y compte pas.
     const classes = po.plateaux.map(pl => classerPlateau(pl));
+    // Qui a reçu un quart, et le rang de chacun à la qualification : relus AVANT que les quarts soient remplacés par les demi-finales.
+    const hotesQuarts = po.plateaux.map(pl => hoteDuPlateau(pl));
+    const rangs = rangsDeQualification();
     po.plateaux = [];
     for (let g = 0; g < classes.length; g += 4) {
       const groupe = classes.slice(g, g + 4);
       if (groupe.length < 4) break;
       [0, 1].forEach(decalage => {
-        const ids = groupe.map((cl, i) => cl[(i + decalage) % 2]).filter(x => x !== undefined);
-        po.plateaux.push(makePlateau(ids, { cle: 'plateau.demi', n: po.plateaux.length + 1 }));
+        // Le membre venu du quart i est son premier ou son deuxième (rangQuart 0 ou 1) : l'ordre des identifiants est celui d'avant.
+        const membres = [];
+        groupe.forEach((cl, i) => {
+          const rangQuart = (i + decalage) % 2, id = cl[rangQuart];
+          if (id === undefined) return;
+          membres.push({ id: id, rangQuart: rangQuart, aRecu: hotesQuarts[g + i] === id, ordre: rangs[id] ? rangs[id].ordre : Infinity });
+        });
+        po.plateaux.push(makePlateau(membres.map(m => m.id), { cle: 'plateau.demi', n: po.plateaux.length + 1 }, hoteDeDemiFinale(membres)));
       });
     }
     po.stage = 'demis';
   } else if (po.stage === 'demis') {
     const finalistes = [];
     po.plateaux.forEach(pl => classerPlateau(pl).slice(0, def.passeDemies).forEach(id => finalistes.push(id)));
-    po.plateaux = [makePlateau(finalistes, { cle: 'plateau.final' })];
+    // La finale se tient en un lieu désigné par la Commission (art. 4.5.4 A, 3.6.4 A) : aucun hôte.
+    po.plateaux = [makePlateau(finalistes, { cle: 'plateau.final' }, null)];
     po.stage = 'finale';
   } else if (po.stage === 'finale') {
     const cl = classerPlateau(po.plateaux[0]);
@@ -954,6 +1072,9 @@ function advancePlayoffs() {
       m: game, res, home, away, playoff: true,
       titreCle: CLE_TITRE_SERIE, titreParams: donneesTitreSerie(humanSeries, game.num)
     };
+    // L'aller et l'appui se jouent chez le mieux classé, le retour chez l'autre : à domicile billetterie, buvette et loges, à l'extérieur
+    // les frais de route. Les séries des AUTRES clubs, résolues plus haut, ne touchent pas le budget.
+    G.lastReport.finance = encaisserMatchHorsChampionnat(G.lastReport, 'phase');
     if (humanSeries.winner !== null && humanSeries.winner !== myTeam().id) po.humanOut = true;
 
     // le tour est peut-être déjà complet (les autres séries étaient déjà résolues) : on enchaîne tout de suite
@@ -1367,13 +1488,18 @@ function jouerMatchSec(e) {
   const res = simulatePlayoffMatch(home, away);
   const mes = e.aDomicile ? res.gH : res.gA, siens = e.aDomicile ? res.gA : res.gH;
   e.issue = { mes: mes, siens: siens, ot: !!res.wentOT, gagne: mes > siens };
-  return { m: { home: home.id, away: away.id, score: [res.gH, res.gA] }, res: res, home: home, away: away, playoff: true,
-           titreCle: CLES_FIN_DE_SAISON[e.type].titre };
+  const rapport = { m: { home: home.id, away: away.id, score: [res.gH, res.gA] }, res: res, home: home, away: away, playoff: true,
+                    titreCle: CLES_FIN_DE_SAISON[e.type].titre };
+  // L'issue et son paiement sont rangés ensemble : un rechargement pendant le direct ne rejoue rien, et ne repaie rien. Le repli
+  // d'`endSeason()` passe par ici lui aussi — le banc paie son barrage comme le joueur.
+  rapport.finance = encaisserMatchHorsChampionnat(rapport, 'phase');
+  return rapport;
 }
 
 // Forfait sous le seuil fédéral : perdu 5-0 sur tapis vert (art. 6.1.1 A), et ce que le match décidait avec lui.
 function forfaitFinDeSaison(e) {
   e.issue = { mes: 0, siens: 5, ot: false, gagne: false, forfait: true };
+  encaisserMatchHorsChampionnat({ forfait: true }, 'phase');
 }
 
 // Le bouton, les playoffs finies : présenter l'étape, puis la jouer. Sous le seuil, le forfait se demande, comme en
