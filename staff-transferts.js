@@ -416,6 +416,15 @@ function signNewContract(p) {
 function annoncerNumeroDArrivee(p, voulu, porte) {
   if (numeroValide(voulu) && porte !== voulu) toast(T('numero.arrivee', { nom: p.nom, n: porte, ancien: voulu }), 'info');
 }
+// Même chose pour le NOM : la recrue s'appelle comme l'un de nos joueurs — ou comme un prêté, dont le nom reste réservé —, elle change de
+// prénom en arrivant, et on le DIT. Un joueur ne change pas de nom en silence. `voulu` est le nom qu'elle portait au marché. Le toast dit
+// qui le porte : quelqu'un de l'effectif, ou — `attribuerNom` ne refuse un nom que s'il est pris dans l'effectif ou chez les prêtés — un joueur
+// PRÊTÉ, qui n'est pas dans l'effectif affiché et revient à l'intersaison (cause N2).
+function annoncerNomDArrivee(voulu, porte) {
+  if (porte === voulu) return;
+  const dansLEffectif = myTeam().players.some(q => cleNom(q.nom) === cleNom(voulu));
+  toast(T(dansLEffectif ? 'nom.arrivee' : 'nom.arrivee.prete', { ancien: voulu, nom: porte }), 'info');
+}
 
 async function buyPlayer(teamId, playerId) {
   if (!marcheOuvert()) { toast(T('toast.marcheFerme', { saison: SAISON_OUVERTURE_MARCHE }), 'info'); return; }
@@ -442,6 +451,7 @@ async function buyPlayer(teamId, playerId) {
   signNewContract(p);
   oublierLigne(p);   // une place retenue ne vaut que dans le club qui l'a donnée
   myTeam().players.push(p);
+  annoncerNomDArrivee(p.nom, attribuerNom(myTeam(), p));   // le nom d'abord : le numéro l'annonce sous le nom d'arrivée
   annoncerNumeroDArrivee(p, p.num, attribuerNumero(myTeam(), p));
   renderAll();
 }
@@ -457,6 +467,7 @@ function primeHorsDivision(divIdx) {
 }
 function buildScoutPool() {
   const pool = [];
+  const moi = myTeam();   // le vivier se fabrique sans le club : on vérifie que personne n'y porte le nom d'un de nos joueurs (cause N1)
   DIVISIONS.forEach((div, di) => {
     if (di === G.divIdx) return;
     const clubNames = div.teams.filter(t => !t.human).map(t => t.name);
@@ -464,6 +475,8 @@ function buildScoutPool() {
       const pos = ['G', 'D', 'D', 'A', 'A'][irnd(0, 4)];
       const quality = rnd(div.qual[0], div.qual[1]);
       const p = makePlayer(pos, quality);
+      // La joueuse ne doit pas voir « Hugo Martin » deux fois, puis découvrir l'un des deux rebaptisé à l'achat. Sans tirage de plus.
+      if (moi) attribuerNom(moi, p);
       pool.push({ p, divIdx: di, clubName: pick(clubNames) });
     }
   });
@@ -489,6 +502,7 @@ async function buyScoutPlayer(scoutId) {
   signNewContract(p);
   oublierLigne(p);   // une place retenue ne vaut que dans le club qui l'a donnée
   myTeam().players.push(p);
+  annoncerNomDArrivee(p.nom, attribuerNom(myTeam(), p));   // le nom d'abord : le numéro l'annonce sous le nom d'arrivée
   annoncerNumeroDArrivee(p, p.num, attribuerNumero(myTeam(), p));
   renderAll();
 }
@@ -508,6 +522,7 @@ async function sellPlayer(playerId) {
   // le joueur part dans un club aléatoire
   const acheteur = pick(G.teams.filter(t => !t.human));
   acheteur.players.push(p);
+  attribuerNom(acheteur, p);       // celui qui arrive cède : il ne s'appelle pas comme l'un des joueurs du club acheteur
   attribuerNumero(acheteur, p);
   // Pas de recomposition ici : `lineupOf()` et `preparerLignesAvantMatch()` s'en chargent au
   // moment de jouer. L'appel qui se trouvait là visait une fonction retirée en v128, et levait

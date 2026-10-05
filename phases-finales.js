@@ -1819,6 +1819,7 @@ function endSeason() {
       p[stat] = Math.round(clampV(p[stat] + irnd(0, 2), 30, cap));
       p.forme = irnd(80, 100);
       me.players.push(p);
+      attribuerNom(me, p);      // son nom est resté réservé pendant le prêt : il ne change que si une sauvegarde d'avant l'avait laissé pris
       attribuerNumero(me, p);   // son numéro a pu être repris pendant le prêt
       pushInbox('courrier.retourPret.titre', 'courrier.retourPret.corps',
         { nom: p.nom }, 'transfert');
@@ -1895,6 +1896,7 @@ function endSeason() {
       prospect.potentiel = Math.round(clampV(prospect.potentiel + potentielBonus, 45, 99));
       prospect.contractYears = irnd(3, 5); // premier contrat pro, plus long
       me.players.push(prospect);
+      attribuerNom(me, prospect);   // AVANT la lettre, qui le nomme
       attribuerNumero(me, prospect);
       // Le poste se range par la CLÉ de son libellé court, composée à la lecture (ATT, FWD) : le code interne, « A », n'est pas un mot, et
       // la lettre s'écrivait « (17 ans, A) » (cause F1). Une lettre d'avant, qui porte le code seul, se lit par `paramsCourrier`.
@@ -1922,7 +1924,7 @@ function endSeason() {
   });
   if (me.players.filter(p => p.pos === 'G').length < 1 || me.players.filter(p => p.pos !== 'G').length < 8) {
     // sécurité : jamais sous l'effectif minimum viable après des départs
-    const renfort = (pos) => { const j = makePlayer(pos, DIVISIONS[G.divIdx].qual[0]); me.players.push(j); attribuerNumero(me, j); };
+    const renfort = (pos) => { const j = makePlayer(pos, DIVISIONS[G.divIdx].qual[0]); me.players.push(j); attribuerNom(me, j); attribuerNumero(me, j); };
     const avant = me.players.length;
     while (me.players.filter(p => p.pos === 'G').length < 2) renfort('G');
     while (me.players.filter(p => p.pos !== 'G').length < 12) renfort(Math.random() < 0.5 ? 'D' : 'A');

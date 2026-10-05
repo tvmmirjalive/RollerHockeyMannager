@@ -1695,6 +1695,129 @@ function attribuerNumero(equipe, joueur) {
   if (!numeroValide(joueur.num) || numerosPris(equipe, joueur).has(joueur.num)) joueur.num = numeroLibre(equipe, joueur);
   return joueur.num;
 }
+
+// ==================== Noms distincts ====================
+// Deux joueurs d'une même équipe ne portent jamais le même NOM COMPLET — prénom et nom. Décision de Mirja, 4 octobre 2026 (cause N1) : à
+// « Environ un club sur dix a deux joueurs du même nom (le jeu tire parmi 30 prénoms et 30 noms). Veux-tu que le jeu tire des noms distincts
+// dans un club ? », elle a répondu « Noms distincts ». Les listes PRENOMS et NOMS ne changent pas : 900 combinaisons pour un effectif de 40
+// au plus (`EFFECTIF_MAX`). « Martin » seul n'est pas un doublon, « Hugo Martin » deux fois en est un.
+//
+// La règle se tient à l'ARRIVÉE dans une équipe, pas dans `makePlayer` : le fabricant ne voit pas le club. `makeTeam` la tient pour les
+// quatorze joueurs qu'il vient de tirer, `attribuerNom` pour tout joueur qui arrive ensuite — elle se pose à côté d'`attribuerNumero`, aux
+// mêmes huit sites —, `normaliserNoms` pour une sauvegarde d'avant. Et AUCUN de ces gestes ne tire au hasard : le nom libre se déduit de
+// l'identifiant du joueur, comme le numéro (`numeroLibre`). Une partie d'avant est réparée à chaque chargement tant qu'elle n'a pas été
+// réenregistrée, et un joueur ne doit pas changer de nom d'un démarrage à l'autre — ni la trajectoire du banc d'équilibrage d'une exécution
+// à l'autre : corriger APRÈS le tirage n'en consomme aucun de plus.
+//
+// CELUI QUI ARRIVE CÈDE, celui qui est déjà là ne change jamais de nom. L'arrivant garde son NOM DE FAMILLE et change de PRÉNOM : c'est le
+// nom qu'on dit (« But de Martin »), et la carte du joueur n'écrit que « H. Martin » quand deux coéquipiers le partagent. D'où une seconde
+// exigence, quand elle est possible : son nouveau prénom ne commence par l'initiale d'AUCUN porteur de ce nom de famille. « Lucas Martin » et
+// « Léo Martin » ne sont pas homonymes, mais la carte les écrit tous deux « L. Martin » (cause N2) ; sans prénom qui le permette, c'est le nom
+// COMPLET distinct qui prime, comme avant.
+// LIMITE ÉCRITE : la règle garantit le nom COMPLET, et n'évite l'initiale que pour celui qui CHANGE de prénom. Deux joueurs que le tirage a faits
+// « Lucas Martin » et « Léo Martin » ne sont pas homonymes, personne ne les touche, et la carte les écrit tous deux « L. Martin » : rebaptiser un
+// joueur qui n'est l'homonyme de personne n'a pas été demandé (« Noms distincts »). L'aide, rubrique Transferts, le dit ; `test-aide.mjs` §14 le mesure.
+function cleNom(nom) {
+  return String(nom === undefined || nom === null ? '' : nom).trim().replace(/\s+/g, ' ').toLowerCase();
+}
+// Les noms déjà portés dans une équipe, un joueur excepté — lui-même, quand on lui en cherche un : `sauf` est le JOUEUR, pas son
+// identifiant (même leçon que `numerosPris`). Le club du joueur compte aussi ses PRÊTÉS : absents de `players` mais de retour à
+// l'intersaison, leur nom reste réservé — sinon une recrue arrivée pendant le prêt le prenait, et c'était celui qui revient, que la
+// joueuse connaît depuis des saisons, qui devait en changer.
+function nomsPris(equipe, sauf) {
+  const pris = new Set();
+  const noter = (j) => { if (j && j !== sauf) pris.add(cleNom(j.nom)); };
+  ((equipe && equipe.players) || []).forEach(noter);
+  if (equipe && equipe.human && typeof G === 'object' && G && Array.isArray(G.loanedOut)) G.loanedOut.forEach(noter);
+  return pris;
+}
+// L'initiale que la carte du joueur écrit (« H. Martin »), sans accent ni casse : « É. » et « E. » se lisent presque pareil.
+function initialeDeNom(nom) { return cleNom(nom).charAt(0).normalize('NFD').replace(/[\u0300-\u036f]/g, ''); }
+// Un nom libre pour ce joueur, d'après son IDENTIFIANT. Trois étapes, chacune BORNÉE, et la dernière a une issue garantie :
+//   1. son nom de famille, avec un autre prénom de `PRENOMS` — au plus 30 essais, deux fois : une première passe écarte les prénoms dont
+//      l'INITIALE est celle d'un porteur du même nom de famille (le dernier mot du nom, comme `nomCourtEquipe` : deux « L. Martin » ne se
+//      distinguent plus dans une ligne), une seconde, faute de mieux, prend le premier prénom libre. Les homonymes de famille sont lus dans
+//      `pris` : un prêté qui revient et un cédant déjà rebaptisé comptent comme ceux qui sont là ;
+//   2. toute combinaison prénom × nom — au plus 900 essais, les 900 combinaisons dans un ordre qui part de son identifiant ;
+//   3. le nom de l'étape 1 suivi d'un rang : au plus `pris.size` noms sont pris, donc des `pris.size + 1` candidats un au moins est libre.
+//      Un effectif de 40 n'y arrive jamais ; c'est le seul moyen de ne pas boucler si un état impossible — mille joueurs au même nom,
+//      importés — y arrive quand même.
+// Un nom sans prénom (« Hugo »), vide ou aux espaces étranges prend un nom de famille de `NOMS`, lui aussi tiré de l'identifiant.
+function nomLibre(pris, joueur) {
+  const graine = Number.isInteger(joueur.id) ? Math.abs(joueur.id) : 0;
+  const mots = String(joueur.nom === undefined || joueur.nom === null ? '' : joueur.nom).trim().split(/\s+/).filter(Boolean);
+  const famille = mots.length > 1 ? mots.slice(1).join(' ') : NOMS[graine % NOMS.length];
+  const libre = (n) => !pris.has(cleNom(n));
+  // Les clés de `pris` sont déjà normalisées par `cleNom` : le dernier mot se lit sans la refaire, et la fonction reste rapide sur mille joueurs.
+  const dernierMot = (cle) => cle.slice(cle.lastIndexOf(' ') + 1);
+  const initialesPrises = new Set();
+  const familleCourte = dernierMot(cleNom(famille));
+  pris.forEach(cle => { if (dernierMot(cle) === familleCourte) initialesPrises.add(initialeDeNom(cle)); });
+  for (const eviteLInitiale of [true, false]) {
+    for (let i = 0; i < PRENOMS.length; i++) {
+      const prenom = PRENOMS[(graine + i) % PRENOMS.length];
+      const n = prenom + ' ' + famille;
+      if (libre(n) && !(eviteLInitiale && initialesPrises.has(initialeDeNom(prenom)))) return n;
+    }
+  }
+  const combinaisons = PRENOMS.length * NOMS.length;
+  for (let i = 0; i < combinaisons; i++) {
+    const k = graine + i;
+    const n = PRENOMS[k % PRENOMS.length] + ' ' + NOMS[Math.floor(k / PRENOMS.length) % NOMS.length];
+    if (libre(n)) return n;
+  }
+  const base = PRENOMS[graine % PRENOMS.length] + ' ' + famille;
+  for (let rang = 2; rang <= pris.size + 2; rang++) {
+    const n = base + ' ' + rang;
+    if (libre(n)) return n;
+  }
+  throw new Error('nomLibre : aucun nom libre parmi ' + pris.size + ' noms pris');
+}
+// L'ARRIVÉE dans une équipe : le joueur garde son nom s'il est libre, sinon il en reçoit un autre. Rend le nom porté. Fonctionne que le
+// joueur soit déjà dans `players` ou non.
+function attribuerNom(equipe, joueur) {
+  const pris = nomsPris(equipe, joueur);
+  if (pris.has(cleNom(joueur.nom))) joueur.nom = nomLibre(pris, joueur);
+  return joueur.nom;
+}
+// Les noms d'un GROUPE de joueurs remis d'aplomb : de deux homonymes, celui qui a le plus petit identifiant garde le sien — c'est
+// l'arrivé le plus ancien, et à identifiant égal le premier de la liste —, les suivants en reçoivent un libre. Deux temps, comme
+// `normaliserNumerosEquipe` : on relève d'abord ceux qui gardent, puis on refait les autres, chacun s'ajoutant aux noms pris. Aucun
+// tirage : deux chargements de la même sauvegarde donnent les mêmes noms. Idempotent. Rend le nombre de joueurs rebaptisés.
+function repartirNoms(joueurs) {
+  const rang = (j) => (Number.isInteger(j.id) ? j.id : Infinity);
+  const ordre = joueurs.filter(j => j && typeof j === 'object').map((j, i) => ({ j, i }))
+    .sort((a, b) => (rang(a.j) === rang(b.j) ? a.i - b.i : rang(a.j) - rang(b.j))).map(x => x.j);
+  const gardes = new Set(), aRefaire = [];
+  ordre.forEach(j => { const k = cleNom(j.nom); if (gardes.has(k)) aRefaire.push(j); else gardes.add(k); });
+  aRefaire.forEach(j => { j.nom = nomLibre(gardes, j); gardes.add(cleNom(j.nom)); });
+  return aRefaire.length;
+}
+// Une équipe remise d'aplomb. `pretes` : les joueurs prêtés de ce club, dont le nom compte sans qu'ils soient dans l'effectif.
+function normaliserNomsEquipe(equipe, pretes) {
+  if (equipe && Array.isArray(equipe.players)) repartirNoms(equipe.players.concat(Array.isArray(pretes) ? pretes : []));
+  return equipe;
+}
+// Les sauvegardes d'avant cette règle (4 octobre 2026) peuvent porter des homonymes : chaque équipe de chaque poule est remise d'aplomb à l'installation, et les
+// équipes rangées HORS des poules aussi — celles de la Coupe, l'adversaire d'un barrage, les adversaires d'un tournoi d'accession. L'équipe
+// du joueur, que la Coupe range deux fois, n'est traitée qu'une (`vues`) ; ses prêtés comptent avec elle.
+function normaliserNoms() {
+  const vues = new Set();
+  const traiter = (eq) => {
+    if (!eq || typeof eq !== 'object' || vues.has(eq)) return;
+    vues.add(eq);
+    normaliserNomsEquipe(eq, eq.human ? G.loanedOut : null);
+  };
+  const poules = G.poules && G.poules.length ? G.poules : [G.teams || []];
+  poules.forEach(poule => (poule || []).forEach(traiter));
+  const coupe = G.cup && G.cup.teamsById;
+  if (coupe && typeof coupe === 'object') Object.keys(coupe).forEach(k => { if (coupe[k] && !coupe[k].human) traiter(coupe[k]); });
+  const fin = G.playoff && typeof G.playoff === 'object' ? G.playoff.finDeSaison : null;
+  if (fin && typeof fin === 'object') {
+    traiter(fin.adversaire);
+    if (Array.isArray(fin.equipes)) fin.equipes.forEach(traiter);
+  }
+}
 // TOUS les joueurs d'un état de partie, avec le chemin où ils dorment. Trois gisements, et il n'y en
 // a pas d'autre : l'effectif de chaque équipe de chaque poule, le vivier de recrutement, les prêtés.
 function joueursDeLetat(etat) {
@@ -1907,13 +2030,15 @@ function makeTeam(def, idx, qualBand) {
   for (let i = 0; i < 6; i++) players.push(makePlayer('D', quality));
   for (let i = 0; i < 6; i++) players.push(makePlayer('A', quality));
   // Les numéros se posent sur l'ÉQUIPE, pas dans `makePlayer` : un numéro n'a de sens que par
-  // rapport aux treize autres. Les deux gardiens passent en tête — l'un d'eux porte le 1.
-  return normaliserNumerosEquipe({
+  // rapport aux treize autres. Les deux gardiens passent en tête — l'un d'eux porte le 1. Les noms aussi : deux des quatorze tirages
+  // peuvent tomber sur le même (un club sur dix), et `normaliserNomsEquipe` y met bon ordre APRÈS le tirage — aucun tirage de plus, la
+  // trajectoire du banc ne bouge pas. C'est ce qui couvre les clubs de l'ordinateur, la Coupe, le barrage et le tournoi d'accession.
+  return normaliserNomsEquipe(normaliserNumerosEquipe({
     id: idx, name: def.name, short: def.short, human: !!def.human,
     maillot: maillotDe({ human: !!def.human, name: def.name }),
     players,
     pts: 0, v: 0, vp: 0, dp: 0, n: 0, d: 0, bp: 0, bc: 0, forme5: []
-  });
+  }));
 }
 
 
@@ -2224,6 +2349,7 @@ function simulateAITransferWindow(teams) {
     a.players = a.players.filter(p => p.id !== pA.id);
     b.players = b.players.filter(p => p.id !== pB.id);
     a.players.push(pB); b.players.push(pA);
+    attribuerNom(a, pB); attribuerNom(b, pA);          // et son nom : celui qui arrive cède, celui qui est là ne change jamais
     attribuerNumero(a, pB); attribuerNumero(b, pA);   // chacun garde son numéro s'il est libre chez l'autre
   }
 }
@@ -2906,7 +3032,7 @@ async function effacerSlot(s, ev) {
 // `versionName` du build Android par 4-outils/patch-version.py, qui refuse de s'appliquer
 // si les deux divergent. Le mode d'échec évité est réel : l'APK a annoncé « 1.0 » pendant
 // soixante-dix-sept versions parce que rien ne reliait le jeu à son numéro.
-const VERSION_JEU = '199';
+const VERSION_JEU = '200';
 
 function refreshMenu() {
   // Les textes de l'écran titre sont écrits ICI et non en HTML statique : sinon ils
@@ -10790,6 +10916,7 @@ function migrerPartie() {
   normaliserMaillots();   // v176 : une balise sur chaque équipe de chaque poule
   normaliserIdentites();  // v190 : un identifiant par joueur — AVANT les numéros, qui s'en servent
   normaliserNumeros();    // v179 : un numéro sur chaque joueur, unique dans son équipe
+  normaliserNoms();       // cause N1 : un nom complet par joueur, unique dans son équipe — avant qu'on s'en serve, et sans aucun tirage
   if (!G.coaches) G.coaches = { tir: 0, def: 0, vit: 0, gar: 0 };
   if (!G.lastTraining) G.lastTraining = [];
   if (!G.staff) G.staff = { attaque: null, defense: null, physique: null, gardiens: null, discipline: null, specialistes: null, recruteur: null, medecin: null };
