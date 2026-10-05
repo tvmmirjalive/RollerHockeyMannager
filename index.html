@@ -1711,12 +1711,13 @@ function attribuerNumero(equipe, joueur) {
 //
 // CELUI QUI ARRIVE CÈDE, celui qui est déjà là ne change jamais de nom. L'arrivant garde son NOM DE FAMILLE et change de PRÉNOM : c'est le
 // nom qu'on dit (« But de Martin »), et la carte du joueur n'écrit que « H. Martin » quand deux coéquipiers le partagent. D'où une seconde
-// exigence, quand elle est possible : son nouveau prénom ne commence par l'initiale d'AUCUN porteur de ce nom de famille. « Lucas Martin » et
-// « Léo Martin » ne sont pas homonymes, mais la carte les écrit tous deux « L. Martin » (cause N2) ; sans prénom qui le permette, c'est le nom
-// COMPLET distinct qui prime, comme avant.
-// LIMITE ÉCRITE : la règle garantit le nom COMPLET, et n'évite l'initiale que pour celui qui CHANGE de prénom. Deux joueurs que le tirage a faits
-// « Lucas Martin » et « Léo Martin » ne sont pas homonymes, personne ne les touche, et la carte les écrit tous deux « L. Martin » : rebaptiser un
-// joueur qui n'est l'homonyme de personne n'a pas été demandé (« Noms distincts »). L'aide, rubrique Transferts, le dit ; `test-aide.mjs` §14 le mesure.
+// exigence, quand elle est possible : son nouveau prénom ne commence par l'initiale d'AUCUN porteur de ce nom de famille, pour que les noms courts
+// restent courts. « Lucas Martin » et « Léo Martin » ne sont pas homonymes, mais leurs noms courts devraient s'allonger — « Lu. Martin » et
+// « Lé. Martin » (cause N2) ; sans prénom qui le permette, c'est le nom COMPLET distinct qui prime, comme avant.
+// CE QUE LA RÈGLE NE FAIT PAS, ET QUE LE NOM COURT FAIT À SA PLACE : deux joueurs que le tirage a faits « Lucas Martin » et « Léo Martin » ne sont pas
+// homonymes, personne ne les touche — rebaptiser un joueur qui n'est l'homonyme de personne n'a pas été demandé (« Noms distincts ») — et leurs noms
+// courts ne se confondent pas pour autant : depuis la cause C1 (« Afficher plus de lettres », Mirja, 5 octobre 2026), `nomCourtEquipe` allonge le prénom
+// de chacun juste assez pour les distinguer. L'aide, rubrique Transferts, le dit ; `test-aide.mjs` §14 le mesure.
 function cleNom(nom) {
   return String(nom === undefined || nom === null ? '' : nom).trim().replace(/\s+/g, ' ').toLowerCase();
 }
@@ -1735,8 +1736,8 @@ function nomsPris(equipe, sauf) {
 function initialeDeNom(nom) { return cleNom(nom).charAt(0).normalize('NFD').replace(/[\u0300-\u036f]/g, ''); }
 // Un nom libre pour ce joueur, d'après son IDENTIFIANT. Trois étapes, chacune BORNÉE, et la dernière a une issue garantie :
 //   1. son nom de famille, avec un autre prénom de `PRENOMS` — au plus 30 essais, deux fois : une première passe écarte les prénoms dont
-//      l'INITIALE est celle d'un porteur du même nom de famille (le dernier mot du nom, comme `nomCourtEquipe` : deux « L. Martin » ne se
-//      distinguent plus dans une ligne), une seconde, faute de mieux, prend le premier prénom libre. Les homonymes de famille sont lus dans
+//      l'INITIALE est celle d'un porteur du même nom de famille (le dernier mot du nom, comme `nomCourtEquipe` : deux « L. Martin » devraient s'allonger
+//      dans une ligne), une seconde, faute de mieux, prend le premier prénom libre. Les homonymes de famille sont lus dans
 //      `pris` : un prêté qui revient et un cédant déjà rebaptisé comptent comme ceux qui sont là ;
 //   2. toute combinaison prénom × nom — au plus 900 essais, les 900 combinaisons dans un ordre qui part de son identifiant ;
 //   3. le nom de l'étape 1 suivi d'un rang : au plus `pris.size` noms sont pris, donc des `pris.size + 1` candidats un au moins est libre.
@@ -3032,7 +3033,7 @@ async function effacerSlot(s, ev) {
 // `versionName` du build Android par 4-outils/patch-version.py, qui refuse de s'appliquer
 // si les deux divergent. Le mode d'échec évité est réel : l'APK a annoncé « 1.0 » pendant
 // soixante-dix-sept versions parce que rien ne reliait le jeu à son numéro.
-const VERSION_JEU = '200';
+const VERSION_JEU = '201';
 
 function refreshMenu() {
   // Les textes de l'écran titre sont écrits ICI et non en HTML statique : sinon ils
@@ -9273,14 +9274,70 @@ function forceEntente(v) {
   return t === cle ? String(v) : t;
 }
 
-// Les noms de famille se répètent beaucoup dans un effectif tiré au sort : la mise en scène
-// de test a sorti trois « Laurent » et trois « Moreau » sur quatorze joueurs. Côte à côte
-// dans une ligne, ils ne se distinguent plus. On préfixe l'initiale du prénom, et SEULEMENT
-// en cas de collision — sinon la table s'alourdirait partout pour un cas particulier.
+// Le NOM COURT d'un joueur, tel que l'écrivent les cases de ligne de l'Effectif et la mention du meilleur partenaire sur la carte. Les noms de famille
+// se répètent beaucoup dans un effectif tiré au sort — la mise en scène de test a sorti trois « Laurent » et trois « Moreau » sur quatorze joueurs —, et
+// côte à côte dans une ligne ils ne se distinguent plus. Décision de Mirja, 5 octobre 2026 (cause C1) : à « Deux joueurs d'un même club qui ne sont pas
+// homonymes peuvent avoir le même nom court : « Lucas Chevalier » et « Loïc Chevalier » s'affichent tous deux « L. Chevalier ». Que veux-tu ? », elle a
+// répondu « Afficher plus de lettres » — « Le jeu garde les noms, mais écrit « Lu. Chevalier » et « Lo. Chevalier » quand deux noms courts se confondent. »
+//
+//   - sans coéquipier du même nom de famille, le nom court est le nom de famille seul : « Chevalier » ;
+//   - avec un coéquipier du même nom de famille, il porte le DÉBUT du prénom : « H. Martin ». Ce début s'allonge, une lettre à la fois, tant qu'un coéquipier
+//     du même nom de famille commence pareil : « Lu. » et « Lo. », « Mat. » et « Max. ». Chacun s'arrête là où il ne se confond plus : « Hugo » reste « H. »
+//     à côté de « Lu. » et de « Lo. », et celui que personne ne confondait garde son nom court d'avant. Le prénom ENTIER est le dernier recours, écrit sans
+//     point puisque ce n'est plus une abréviation (« Léo » et « Léon » : « Léo Roux », « Léon Roux ») ;
+//   - la comparaison ignore casse et accents — « Éric » et « Enzo » commencent pareil —, l'écriture les garde : « Ér. », « En. ». Un nom de famille à accent
+//     et son jumeau sans accent sont le même nom de famille ;
+//   - les LETTRES se comptent, pas les signes : un trait d'union, une apostrophe, une espace ou un point n'en sont pas, et un début ne finit jamais sur l'un
+//     d'eux. « Jean-Paul » s'abrège « J. », « Je. », « Jea. », « Jean. », « Jean-P. », « Jean-Pa. ».
+//
+// C'est un AFFICHAGE : calculé à chaque rendu depuis l'équipe qu'on lui passe — la nôtre ou celle d'un adversaire, chacune dans SON effectif —, sans tirage,
+// sans renommage, rien de rangé dans la sauvegarde : une sauvegarde d'avant en profite sans migration. Le prénom est tout ce qui précède le dernier mot
+// du nom, et « le même nom de famille » se lit comme `nomLibre` le lit : ce dernier mot. Les comparaisons se font sur les lettres de chaque prénom, une
+// fois pour toutes, et la recherche du début est BORNÉE par la longueur du prénom : aucune boucle ne peut durer plus que lui.
+//
+// LARGEUR : un nom court allongé peut dépasser sa case — « Max. Marchand » fait 73 px pour 72 en 390 px. Ce n'est pas à cette fonction de le raccourcir (le
+// début de prénom est ce qui distingue deux coéquipiers) : la case de nom (`.slot-nom`, dans styles.css) passe à la ligne au lieu de rogner, « Max. » puis
+// « Marchand ». `5-tests/test-noms-courts.mjs` §4b mesure en pixels tous les noms courts que le jeu peut écrire.
+function cleSansAccent(texte) {
+  return String(texte).normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+}
+
+function prenomEtFamille(nom) {
+  const mots = String(nom === undefined || nom === null ? '' : nom).trim().split(/\s+/).filter(Boolean);
+  const famille = mots.length ? mots.pop() : '';
+  return { prenom: mots.join(' '), famille };
+}
+
+// Les lettres d'un prénom, une par élément : `texte` est la lettre telle qu'elle s'écrit, précédée des signes — trait d'union, apostrophe, espace, point —
+// qui la séparent de la lettre d'avant, `cle` la même lettre sans accent ni casse. Joindre les k premiers `texte` donne le début de k lettres, qui ne
+// finit donc jamais sur un signe. Une marque d'accent isolée se colle à la lettre qui la précède.
+function lettresDuPrenom(prenom) {
+  const lettres = [];
+  let signes = '';
+  for (const c of String(prenom).normalize('NFC')) {
+    if (/[\s.'’\-\u2010-\u2015]/.test(c)) { signes += c; continue; }
+    if (/[\u0300-\u036f]/.test(c) && lettres.length) { lettres[lettres.length - 1].texte += c; continue; }
+    lettres.push({ texte: signes + c, cle: cleSansAccent(c) });
+    signes = '';
+  }
+  return lettres;
+}
+
 function nomCourtEquipe(team, p) {
-  const fam = p.nom.split(' ').pop();
-  const collision = team.players.some(q => q.id !== p.id && q.nom.split(' ').pop() === fam);
-  return collision ? p.nom.charAt(0) + '. ' + fam : fam;
+  const moi = prenomEtFamille(p.nom);
+  const cleFamille = cleSansAccent(moi.famille);
+  const proches = ((team && team.players) || [])
+    .filter(q => q.id !== p.id && cleSansAccent(prenomEtFamille(q.nom).famille) === cleFamille);
+  if (!proches.length) return moi.famille;
+  const miennes = lettresDuPrenom(moi.prenom);
+  if (!miennes.length) return moi.famille;
+  const autres = proches.map(q => lettresDuPrenom(prenomEtFamille(q.nom).prenom).map(l => l.cle));
+  const memeDebut = (autre, k) => autre.length >= k && miennes.slice(0, k).every((l, i) => l.cle === autre[i]);
+  // Le plus court début qu'aucun coéquipier du même nom de famille ne partage ; faute de mieux, le prénom entier.
+  let k = 1;
+  for (; k < miennes.length; k++) if (!autres.some(a => memeDebut(a, k))) break;
+  const debut = miennes.slice(0, k).map(l => l.texte).join('');
+  return (k < miennes.length ? debut + '.' : debut) + ' ' + moi.famille;
 }
 
 function slotJoueur(team, p) {

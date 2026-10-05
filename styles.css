@@ -619,7 +619,13 @@
   .slot-pos { position: absolute; top: 2px; left: 2px; font-size: var(--fs-3xs); font-weight: 800;
     padding: 1px 3px; border-radius: 3px; color: #fff; letter-spacing: .3px;
     box-shadow: var(--ombre-1); }
-  .slot-nom { overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  /* Un nom court allongé — « Max. Marchand », 73 px de texte pour une case de 72 px en 390 px — passe à la LIGNE au lieu d'être rogné en « Max. Marcha… » :
+     « Max. » puis « Marchand », entiers. Pas de réglage au pixel (un espacement de lettres négatif, un retrait de marge) : la largeur d'un texte dépend de la
+     police du système, celle d'un iPhone ou d'un Pixel n'est pas celle de Chromium, et ce qui tient ici ne tient pas là. La ligne de plus tient partout, à
+     toute largeur et sous un texte agrandi. Les quatre cases d'une rangée de la grille se calent sur la plus haute ; un nom qui tient sur une ligne n'en
+     prend qu'une. L'ellipse reste pour le dernier recours — un MOT plus long que la case, que le retour à la ligne ne sait pas couper : aucun nom du jeu
+     n'en est un, une sauvegarde importée peut en porter un, et le `title` de la case porte le nom complet. */
+  .slot-nom { overflow: hidden; text-overflow: ellipsis; white-space: normal;
     width: 100%; text-align: center; }
   /* Une ligne vide n'a rien à aligner sur quatre colonnes : le message occupe toute la
      largeur plutôt que de se serrer dans la première. */
