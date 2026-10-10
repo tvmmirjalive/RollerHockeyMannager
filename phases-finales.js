@@ -73,6 +73,14 @@ function lieuDuPlateau(pl, moiId) {
   return hote === null ? 'neutre' : hote === moiId ? 'domicile' : 'deplacement';
 }
 
+// Ce camp joue-t-il chez lui dans un plateau dont l'hôte est `hoteId` (le résultat de `hoteDuPlateau`) ? Oui s'il EST l'hôte — et alors il a l'avantage
+// du terrain du championnat dans CHACUN de ses matchs du plateau, qu'il soit le club du joueur ou un club de l'ordinateur (cause H1, décision de Mirja du
+// 9 octobre 2026 : « il est chez lui donc il doit avoir un avantage du terrain si le plateau est chez lui »). Le seul endroit qui décide : comparaison explicite à null,
+// parce que l'identifiant 0 est un club et que `if (hoteId)` l'oublierait. Sans hôte, ou dans une rencontre où l'hôte ne joue pas, personne ne reçoit.
+function recoitSonPlateau(equipe, hoteId) {
+  return !!equipe && hoteId !== null && hoteId !== undefined && equipe.id === hoteId;
+}
+
 // Le rang de chaque qualifié à la phase de qualification : son rang dans sa poule, et son ORDRE parmi tous les qualifiés — les premiers
 // de poule d'abord, puis les points, la différence, les buts : le même tri que partout. Les équipes portent encore leurs points pendant toute
 // la phase finale (elle ne les touche pas). `{ id: { rang, ordre } }`.
@@ -148,14 +156,20 @@ function enregistrerRencontrePlateau(pl, idA, idB, ga, gb) {
 // Une rencontre de plateau : format standard, donc PAS de prolongation. On réutilise
 // `butsAttendus()` du championnat — c'est la même simulation de jeu, seul le règlement de
 // fin de match diffère. Aucune écriture sur les équipes : voir l'en-tête du patch.
-function simulerRencontrePlateau(equipeA, equipeB) {
+// `hoteId` : l'identifiant du club qui ORGANISE le plateau (`hoteDuPlateau`), ou null — personne ne reçoit. L'hôte joue chez lui dans chacune de ses
+// rencontres : son camp compte l'avantage du terrain, comme un match de championnat à domicile ; l'autre, jamais. Les deux camps se tirent dans le même
+// ordre qu'avant, et il y a toujours deux appels à `poisson` : l'avantage change le PARAMÈTRE de celui de l'hôte, ni leur nombre ni leur ordre. Un paramètre plus
+// grand consomme au moins autant de nombres uniformes (`poisson` en multiplie jusqu'à passer sous exp(-λ)), et parfois plus : tout ce qui se tire APRÈS se décale,
+// et c'est ce qui fait diverger le banc dès le premier plateau avec hôte.
+function simulerRencontrePlateau(equipeA, equipeB, hoteId) {
   const sa = teamStrength(equipeA), sb = teamStrength(equipeB);
   const fa = tacticFactor(equipeA), fb = tacticFactor(equipeB);
   sa.atk *= fa.atk; sa.def *= fa.def; sb.atk *= fb.atk; sb.def *= fb.def;
-  // Aucun avantage du terrain, même pour l'hôte du plateau : la décision de Mirja (3 octobre 2026, « Suivre le règlement ») porte sur la
-  // recette — billetterie, buvette, loges —, pas sur le jeu. Y toucher changerait toute trajectoire du banc ; ce n'est pas tranché.
-  return { ga: poisson(butsAttendus(sa.atk, sb.def, false)),
-           gb: poisson(butsAttendus(sb.atk, sa.def, false)) };
+  // L'hôte du plateau a l'avantage du terrain. La décision de Mirja du 3 octobre 2026 (« Suivre le règlement ») ne portait que sur la recette ;
+  // celle du 9 octobre 2026 (cause H1) porte sur le jeu : « il est chez lui donc il doit avoir un avantage du terrain si le plateau est chez lui ».
+  // Cela vaut pour tout hôte, le club du joueur comme un club de l'ordinateur, et pour chacune des rencontres où il joue.
+  return { ga: poisson(butsAttendus(sa.atk, sb.def, recoitSonPlateau(equipeA, hoteId))),
+           gb: poisson(butsAttendus(sb.atk, sa.def, recoitSonPlateau(equipeB, hoteId))) };
 }
 
 // Une rencontre de plateau que le CLUB joue sans passer par le bouton — résolue d'un bloc — se paie comme celle du bouton : à domicile
@@ -171,12 +185,13 @@ function encaisserRencontreResolue(pl, equipeA, equipeB, r) {
 function resolvePlateau(pl, resoudre) {
   const trouve = resoudre || (typeof playoffTeam === 'function' ? playoffTeam : null);
   if (!trouve) return pl;
+  const hoteId = hoteDuPlateau(pl);   // le tournoi d'accession n'en a pas : null, terrain neutre
   for (let i = 0; i < pl.ids.length; i++) {
     for (let k = i + 1; k < pl.ids.length; k++) {
       const idA = pl.ids[i], idB = pl.ids[k];
       if (pl.duels[clePlateauDuel(idA, idB)]) continue;   // déjà joué
       const equipeA = trouve(idA), equipeB = trouve(idB);
-      const r = simulerRencontrePlateau(equipeA, equipeB);
+      const r = simulerRencontrePlateau(equipeA, equipeB, hoteId);
       enregistrerRencontrePlateau(pl, idA, idB, r.ga, r.gb);
       // Au bouton, chaque match du club est déjà joué, donc enregistré : cette boucle ne lui en laisse aucun. Elle ne paie que le
       // repli d'`endSeason()` — le chemin du banc —, où le tournoi d'accession se joue d'un bloc.
@@ -200,10 +215,11 @@ function jouerAutresRencontresDuTour(pl, moi, autre, resoudre) {
   const autres = pl.ids.filter(x => x !== moi);
   const r = autres.indexOf(autre), m = autres.length;
   if (r < 0) return;
+  const hoteId = hoteDuPlateau(pl);   // l'hôte reçoit dans les rencontres de ce tour où il figure, comme dans celles de ton club (cause H1)
   for (let k = 1; 2 * k < m; k++) {
     const x = autres[(r + k) % m], y = autres[(r - k + m) % m];
     if (pl_duelJoue(pl, x, y)) continue;
-    const s = simulerRencontrePlateau(resoudre(x), resoudre(y));
+    const s = simulerRencontrePlateau(resoudre(x), resoudre(y), hoteId);
     enregistrerRencontrePlateau(pl, x, y, s.ga, s.gb);
   }
 }
@@ -754,7 +770,9 @@ function avancerPlateaux() {
       // de score (signalé par Mirja, 27 septembre 2026). Le nul est permis : c'est un plateau.
       // Comme avant une journée : une ligne à trois se complète depuis la réserve (onzième relecture).
       preparerLignesAvantMatch();
-      const res = simulatePlayoffMatch(hote, visiteur, { plateau: true });
+      // L'hôte du plateau a l'avantage du terrain dans son match (cause H1) : ton club quand il reçoit, ton adversaire quand c'est lui l'hôte. Chez un
+      // troisième club, le camp « domicile » du rapport est ton adversaire, qui n'est pas l'hôte : aucun avantage, ni pour lui ni pour toi.
+      const res = simulatePlayoffMatch(hote, visiteur, { plateau: true, avantageHote: recoitSonPlateau(hote, hoteId) });
       const ga = chezMoi ? res.gH : res.gA, gb = chezMoi ? res.gA : res.gH;
       enregistrerRencontrePlateau(mien, moi, autre, ga, gb);
       // Le tour des deux autres clubs se joue avec le match du club : le rang du titre se lit contre des clubs qui ont joué

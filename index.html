@@ -3033,7 +3033,7 @@ async function effacerSlot(s, ev) {
 // `versionName` du build Android par 4-outils/patch-version.py, qui refuse de s'appliquer
 // si les deux divergent. Le mode d'échec évité est réel : l'APK a annoncé « 1.0 » pendant
 // soixante-dix-sept versions parce que rien ne reliait le jeu à son numéro.
-const VERSION_JEU = '201';
+const VERSION_JEU = '202';
 
 function refreshMenu() {
   // Les textes de l'écran titre sont écrits ICI et non en HTML statique : sinon ils
@@ -7777,11 +7777,18 @@ function playDay(forfait) {
 }
 
 // ---------------- Playoffs (top 4, demi-finales puis finale) ----------------
-// `options.plateau` : un match de plateau (N3, N2) se joue au format standard — ni avantage du terrain, même pour l'hôte du
-// plateau (la décision de Mirja porte sur la recette, pas sur le jeu), ni prolongation : le nul y est permis (voir
+// `options.plateau` : un match de plateau (N3, N2) se joue au format standard — pas de prolongation, le nul y est permis (voir
 // `simulerRencontrePlateau`).
+// `options.avantageHote` : le premier nommé, `home`, est l'HÔTE du plateau. Il est chez lui, donc il a l'avantage du terrain du championnat
+// (`butsAttendus(…, true)` : AVANTAGE_DOMICILE et le plancher de 0,4), et le visiteur n'en a aucun. Décision de Mirja, 9 octobre 2026 (cause H1) :
+// « il est chez lui donc il doit avoir un avantage du terrain si le plateau est chez lui ». Elle répondait à la limite que la cause W1
+// avait écrite — la décision du 3 octobre portait sur la recette seule. L'option est EXPLICITE, jamais déduite de l'ordre des arguments : dans un match
+// du club chez un TROISIÈME club, la finale, une demi-finale sans hôte, un plateau d'une version d'avant et le tournoi d'accession, le premier nommé
+// n'est pas l'hôte de CE match et n'a aucun avantage (voir `recoitSonPlateau`). Hors plateau — une série, la Coupe, le barrage, le play-down —, le
+// premier nommé reçoit toujours.
 function simulatePlayoffMatch(home, away, options) {
   const plateau = !!(options && options.plateau);
+  const recoit = plateau ? !!(options && options.avantageHote === true) : true;
   const sh = teamStrength(home), sa = teamStrength(away);
   const fh = tacticFactor(home), fa = tacticFactor(away);
   sh.atk *= fh.atk; sh.def *= fh.def; sa.atk *= fa.atk; sa.def *= fa.def;
@@ -7790,7 +7797,7 @@ function simulatePlayoffMatch(home, away, options) {
   const penalties = [...pensH, ...pensA].sort((a, b) => a.minute - b.minute);
   const ppMinVsHome = pensH.filter(p => p.shorthand).reduce((s, p) => s + p.dur, 0);
   const ppMinVsAway = pensA.filter(p => p.shorthand).reduce((s, p) => s + p.dur, 0);
-  let lH = butsAttendus(sh.atk, sa.def, !plateau);
+  let lH = butsAttendus(sh.atk, sa.def, recoit);
   let lA = butsAttendus(sa.atk, sh.def, false);
   const stH2 = specialTeamsFactor(home), stA2 = specialTeamsFactor(away);
   lH = lH * (1 + 0.030 * ppMinVsAway * stH2.pp) * (1 - 0.012 * ppMinVsHome * stH2.pk);
@@ -10438,6 +10445,8 @@ function lieuDuMatch(r) {
 //     3.6.3 A a et d ; sans candidat libre le plateau est neutre, voir plus bas). Cet HÔTE encaisse comme à domicile :
 //     billetterie, buvette et loges. Tous les autres se déplacent : des frais de route, et le fixe des contrats, leur clause de victoire et
 //     les indemnités se paient comme à l'extérieur au championnat. L'hôte est rangé dans le plateau (`plateau.hote`, phases-finales.js).
+//     L'hôte joue aussi chez lui dans le match : l'avantage du terrain du championnat, pour le club comme pour un club de l'ordinateur
+//     (décision de Mirja, 9 octobre 2026, cause H1 — voir `simulatePlayoffMatch`).
 //   · TERRAIN NEUTRE. D'abord un plateau SANS hôte, dont le rapport porte `r.lieu === 'neutre'` : la finale, qui se joue vraiment en un lieu
 //     désigné par la Commission Technique Sportive (4.5.4 A, 3.6.4 A) ; une demi-finale dont aucun club libre ne peut être l'hôte (4.5.3 A a et d,
 //     3.6.3 A a et d) ; et un plateau d'une version d'avant dont l'hôte n'a pas pu se calculer. Ensuite `r.neutre` SANS `r.lieu` : le tournoi
